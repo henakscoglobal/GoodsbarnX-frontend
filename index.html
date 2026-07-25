@@ -218,13 +218,23 @@
       </div>
     </div>
 
-    <!-- ============ ONBOARD — coming soon ============ -->
+    <!-- ============ ONBOARD — real registration ============ -->
     <div class="screen" id="screen-onboard">
-      <div class="section-label">Onboarding <span class="coming-soon-tag">Coming soon</span></div>
-      <div class="coming-soon-shell">
+      <div class="section-label">Join ShelfMatch</div>
+      <div class="manifest">
+        <div class="m-name" style="margin-bottom:6px;">Register today</div>
+        <div style="font-size:12.5px; color:rgba(18,21,28,0.65); line-height:1.55; margin-bottom:14px;">
+          List your business as a distributor, or register as a buyer looking for goods. You'll appear on the Market tab immediately.
+        </div>
+        <button class="btn-inquire" style="width:100%; margin-bottom:10px; box-sizing:border-box;" onclick="openRegisterModal('distributor')">Register as Distributor</button>
+        <button class="btn-inquire" style="width:100%; box-sizing:border-box; background:var(--brass); color:var(--ink); box-shadow:0 3px 8px rgba(200,138,52,0.35);" onclick="openRegisterModal('buyer')">Register as Buyer</button>
+      </div>
+
+      <div class="section-label">Guided onboarding <span class="coming-soon-tag">Coming soon</span></div>
+      <div class="coming-soon-shell" style="padding:30px 20px;">
         <div class="cs-icon">🧭</div>
-        <h3>Guided onboarding is on the way</h3>
-        <p>Supplier agent, distributor, and buyer role flows are in development. To register today, use the Register buttons on the Market tab.</p>
+        <h3 style="font-size:15px;">Supplier agent &amp; handshake flows</h3>
+        <p style="font-size:12.5px;">Multi-party verification between agents, companies, and distributors is in development.</p>
       </div>
     </div>
   </main>
@@ -240,6 +250,20 @@
       <button class="submit-btn" onclick="submitInquiry()">Send inquiry now</button>
       <button class="cancel-btn" onclick="closeModal()">Cancel</button>
       <div class="status-msg" id="status-msg"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="register-modal">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <div class="sheet-handle"></div>
+      <h3 id="register-modal-title">Register</h3>
+      <div class="sub">Takes less than a minute.</div>
+      <div class="field"><label>Business / your name</label><input type="text" id="register-name"></div>
+      <div class="field"><label>Location (e.g. Onitsha)</label><input type="text" id="register-location"></div>
+      <div class="field"><label id="register-extra-label">Category</label><input type="text" id="register-extra"></div>
+      <button class="submit-btn" onclick="submitRegister()">Register</button>
+      <button class="cancel-btn" onclick="closeRegisterModal()">Cancel</button>
+      <div class="status-msg" id="register-status-msg"></div>
     </div>
   </div>
 
@@ -379,6 +403,49 @@
     document.getElementById("inquiry-modal").classList.add("active");
   }
   function closeModal() { document.getElementById("inquiry-modal").classList.remove("active"); }
+
+  let registerType = "";
+  function openRegisterModal(type) {
+    registerType = type;
+    document.getElementById("register-modal-title").innerText = type === "distributor" ? "Register as Distributor" : "Register as Buyer";
+    document.getElementById("register-extra-label").innerText = type === "distributor" ? "Category (e.g. Dairy)" : "Looking for (e.g. Dairy)";
+    document.getElementById("register-status-msg").innerText = "";
+    document.getElementById("register-modal").classList.add("active");
+  }
+  function closeRegisterModal() { document.getElementById("register-modal").classList.remove("active"); }
+
+  function submitRegister() {
+    const name = document.getElementById("register-name").value;
+    const location = document.getElementById("register-location").value;
+    const extra = document.getElementById("register-extra").value;
+    if (!name || !location || !extra) {
+      document.getElementById("register-status-msg").innerText = "Please fill in all fields.";
+      return;
+    }
+    fetch(BACKEND + "/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        secret: SECRET,
+        registerType,
+        name,
+        location,
+        category: registerType === "distributor" ? extra : "",
+        lookingFor: registerType === "buyer" ? extra : "",
+      }),
+    })
+      .then(r => r.json())
+      .then(() => {
+        document.getElementById("register-status-msg").innerText = "Registered! Visit Market tab to see your listing.";
+        document.getElementById("register-name").value = "";
+        document.getElementById("register-location").value = "";
+        document.getElementById("register-extra").value = "";
+        setTimeout(closeRegisterModal, 1800);
+      })
+      .catch(() => {
+        document.getElementById("register-status-msg").innerText = "Something went wrong. Try again.";
+      });
+  }
 
   function submitInquiry() {
     const name = document.getElementById("inquiry-name").value;
