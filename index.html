@@ -309,7 +309,7 @@
     c.innerHTML = "";
     if (list.length === 0) { c.innerHTML = '<div class="loading-text">No distributors match your search.</div>'; return; }
     list.forEach(d => {
-      const tier = d["VERIFICATION_TIER "] ? d["VERIFICATION_TIER "].trim() : "";
+      const tier = d["VERIFIED_TIER"] ? d["VERIFIED_TIER"].trim() : "";
       let verifiedBadge = "";
       if (tier.toLowerCase() === "association") verifiedBadge = '<div class="m-verified">✓ Association Verified</div>';
       else if (tier.toLowerCase() === "market board") verifiedBadge = '<div class="m-verified market-board">✓ Market Board Verified</div>';
@@ -335,7 +335,7 @@
     c.innerHTML = "";
     if (list.length === 0) { c.innerHTML = '<div class="loading-text">No buyers match your search.</div>'; return; }
     list.forEach(b => {
-      const tier = b["VERIFICATION_TIER"] ? b["VERIFICATION_TIER"].trim() : "";
+      const tier = b["VERIFIED_TIER"] ? b["VERIFIED_TIER"].trim() : "";
       let verifiedBadge = "";
       if (tier.toLowerCase() === "association") verifiedBadge = '<div class="m-verified">✓ Association Verified</div>';
       else if (tier.toLowerCase() === "market board") verifiedBadge = '<div class="m-verified market-board">✓ Market Board Verified</div>';
