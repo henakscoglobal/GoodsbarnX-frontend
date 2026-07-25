@@ -101,6 +101,10 @@
     font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em;
     color:#fff; background:var(--ok); padding:3px 7px; border-radius:6px; margin-top:6px;
   }
+  .m-verified.market-board{ background:#2E6B8C; }
+  .m-verified.self-attested{
+    background:none; border:1.3px solid var(--brass-dark, #9A6A22); color:#9A6A22;
+  }
   .stamp-badge{
     font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;
     border:2px solid var(--stamp); color:var(--stamp); padding:4px 8px; border-radius:6px; transform:rotate(-4deg); white-space:nowrap;
@@ -305,7 +309,11 @@
     c.innerHTML = "";
     if (list.length === 0) { c.innerHTML = '<div class="loading-text">No distributors match your search.</div>'; return; }
     list.forEach(d => {
-      const isVerified = d["VERIFIED "] && d["VERIFIED "].trim().toUpperCase() === "YES";
+      const tier = d["VERIFICATION_TIER "] ? d["VERIFICATION_TIER "].trim() : "";
+      let verifiedBadge = "";
+      if (tier.toLowerCase() === "association") verifiedBadge = '<div class="m-verified">✓ Association Verified</div>';
+      else if (tier.toLowerCase() === "market board") verifiedBadge = '<div class="m-verified market-board">✓ Market Board Verified</div>';
+      else if (tier.toLowerCase() === "self-attested") verifiedBadge = '<div class="m-verified self-attested">Self-Attested (Pending)</div>';
       const card = document.createElement("div");
       card.className = "manifest";
       card.innerHTML = `
@@ -313,7 +321,7 @@
           <div>
             <div class="m-name">${d.NAME}</div>
             <div class="m-loc">${d["LOCATION "]}</div>
-            ${isVerified ? '<div class="m-verified">✓ Verified by ShelfMatch</div>' : ''}
+            ${verifiedBadge}
           </div>
           <div class="stamp-badge">${d["CATEGORY "] ? d["CATEGORY "].trim().toUpperCase() : "LISTED"}</div>
         </div>
@@ -327,7 +335,11 @@
     c.innerHTML = "";
     if (list.length === 0) { c.innerHTML = '<div class="loading-text">No buyers match your search.</div>'; return; }
     list.forEach(b => {
-      const isVerified = b["VERIFIED "] && b["VERIFIED "].trim().toUpperCase() === "YES";
+      const tier = b["VERIFICATION_TIER"] ? b["VERIFICATION_TIER"].trim() : "";
+      let verifiedBadge = "";
+      if (tier.toLowerCase() === "association") verifiedBadge = '<div class="m-verified">✓ Association Verified</div>';
+      else if (tier.toLowerCase() === "market board") verifiedBadge = '<div class="m-verified market-board">✓ Market Board Verified</div>';
+      else if (tier.toLowerCase() === "self-attested") verifiedBadge = '<div class="m-verified self-attested">Self-Attested (Pending)</div>';
       const card = document.createElement("div");
       card.className = "manifest";
       card.innerHTML = `
@@ -335,7 +347,7 @@
           <div>
             <div class="m-name">${b.NAME}</div>
             <div class="m-loc">${b.LOCATION}</div>
-            ${isVerified ? '<div class="m-verified">✓ Verified by ShelfMatch</div>' : ''}
+            ${verifiedBadge}
           </div>
           <div class="stamp-badge" style="border-color:var(--brass); color:var(--brass);">${b.LOOKING_FOR ? b.LOOKING_FOR.toUpperCase() : "BUYER"}</div>
         </div>
