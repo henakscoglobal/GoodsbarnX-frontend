@@ -305,7 +305,7 @@
     c.innerHTML = "";
     if (list.length === 0) { c.innerHTML = '<div class="loading-text">No distributors match your search.</div>'; return; }
     list.forEach(d => {
-      const isVerified = d.VERIFIED && d.VERIFIED.trim().toUpperCase() === "YES";
+      const isVerified = d["VERIFIED "] && d["VERIFIED "].trim().toUpperCase() === "YES";
       const card = document.createElement("div");
       card.className = "manifest";
       card.innerHTML = `
@@ -327,7 +327,7 @@
     c.innerHTML = "";
     if (list.length === 0) { c.innerHTML = '<div class="loading-text">No buyers match your search.</div>'; return; }
     list.forEach(b => {
-      const isVerified = b.VERIFIED && b.VERIFIED.trim().toUpperCase() === "YES";
+      const isVerified = b["VERIFIED "] && b["VERIFIED "].trim().toUpperCase() === "YES";
       const card = document.createElement("div");
       card.className = "manifest";
       card.innerHTML = `
