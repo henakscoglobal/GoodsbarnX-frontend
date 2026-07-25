@@ -1,825 +1,484 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ShelfMatch</title>
-  <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#0F3D2E">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --ink: #1A1A1A;
-      --forest: #0F3D2E;
-      --forest-soft: #3D6B52;
-      --parchment: #F6F1E4;
-      --parchment-dim: #EDE5D2;
-      --brass: #C9A227;
-      --brass-soft: #E4C766;
-      --rust: #B5482A;
-      --line: rgba(15,61,46,0.16);
-      --shadow: 0 12px 30px rgba(15,61,46,0.12);
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ShelfMatch — Onitsha · Nnewi · Awka · Asaba</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#12151C">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@500;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#12151C; --ink-2:#1B1F29;
+    --paper:#EFE9DE; --paper-dim:#E2DBCC;
+    --brass:#C88A34; --brass-bright:#E3A94F;
+    --stamp:#A63D2F; --stamp-bright:#C24632;
+    --ok:#3F7A4E;
+    --line: rgba(239,233,222,0.14);
+    --line-dark: rgba(18,21,28,0.12);
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{ background:var(--ink); color:var(--paper); min-height:100vh; font-family:'Inter',-apple-system,sans-serif; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
+  ::selection{ background:var(--brass); color:var(--ink); }
+  h1,h2,h3,.display{ font-family:'Roboto Slab', Georgia, serif; font-weight:700; letter-spacing:-0.01em; }
+  .mono{ font-family:'JetBrains Mono','Courier New',monospace; letter-spacing:0.02em; }
 
-    * { box-sizing: border-box; }
+  #app{ max-width:480px; margin:0 auto; min-height:100vh; position:relative; background:var(--ink); }
+  .status-bar{ height:env(safe-area-inset-top, 0px); background:var(--ink); }
 
-    body {
-      margin: 0;
-      background: var(--parchment);
-      color: var(--ink);
-      font-family: 'Inter', sans-serif;
-      -webkit-font-smoothing: antialiased;
-    }
+  header.top{
+    padding:22px 20px 16px; display:flex; align-items:center; justify-content:space-between;
+    border-bottom:1px solid var(--line); position:sticky; top:0; z-index:40;
+    background:linear-gradient(180deg, var(--ink) 80%, rgba(18,21,28,0.96)); backdrop-filter:blur(6px);
+  }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand-name{ font-family:'Roboto Slab',serif; font-size:18px; font-weight:700; letter-spacing:-0.01em;}
+  .brand-sub{ font-size:10px; color:var(--brass-bright); text-transform:uppercase; letter-spacing:0.14em; margin-top:1px;}
+  .locale-pill{
+    font-size:10.5px; padding:6px 10px; border-radius:20px;
+    background:rgba(239,233,222,0.08); border:1px solid var(--line); color:var(--paper);
+    display:flex; align-items:center; gap:6px; white-space:nowrap;
+  }
+  .locale-dot{ width:6px; height:6px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 3px rgba(63,122,78,0.25);}
 
-    .mono { font-family: 'IBM Plex Mono', monospace; }
-    .display { font-family: 'Fraunces', serif; }
+  main{ padding:20px 20px 100px; }
 
-    .eyebrow {
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 10.5px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--forest-soft);
-      font-weight: 600;
-    }
+  .coming-soon-tag{
+    display:inline-block; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;
+    background:rgba(200,138,52,0.15); color:var(--brass-bright); padding:3px 9px; border-radius:20px; margin-left:8px; vertical-align:middle;
+  }
 
-    .top-bar {
-      background: var(--forest);
-      padding: 24px 20px 22px;
-      color: var(--parchment);
-    }
+  /* ---------- Hero ---------- */
+  .hero{
+    position:relative; border:1px solid var(--line); border-radius:18px;
+    background: radial-gradient(120% 140% at 0% 0%, #232838 0%, #171B24 55%, #12151C 100%);
+    padding:24px 20px 22px; overflow:hidden; margin-bottom:22px;
+  }
+  .hero-eyebrow{ font-size:11px; text-transform:uppercase; letter-spacing:0.16em; color:var(--brass-bright); font-weight:600; margin-bottom:10px; }
+  .hero-headline{ font-size:24px; line-height:1.18; margin-bottom:14px; }
+  .hero-headline em{ color:var(--brass-bright); font-style:normal; }
 
-    .brand-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
+  .clock-seal{ display:flex; align-items:center; gap:14px; background:rgba(239,233,222,0.05); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
+  .seal-ring{ position:relative; width:56px; height:56px; flex-shrink:0; }
+  .seal-ring svg{ transform:rotate(-90deg); }
+  .seal-ring .bg{ stroke:rgba(239,233,222,0.1); }
+  .seal-ring .fg{ stroke:var(--brass-bright); stroke-linecap:round; }
+  .seal-ring .num{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:15px; color:var(--paper); }
+  .clock-copy .clock-title{ font-size:13px; font-weight:600; color:var(--paper); margin-bottom:2px;}
+  .clock-copy .clock-sub{ font-size:12px; color:rgba(239,233,222,0.55); }
 
-    .brand-mark {
-      width: 30px;
-      height: 30px;
-      border-radius: 7px;
-      background: var(--parchment);
-      color: var(--forest);
-      font-family: 'IBM Plex Mono', monospace;
-      font-weight: 600;
-      font-size: 13px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
+  .trust-strip{ display:flex; gap:10px; margin-top:16px; }
+  .trust-item{ flex:1; text-align:center; background:rgba(239,233,222,0.04); border:1px solid var(--line); border-radius:12px; padding:10px 6px; }
+  .trust-item .n{ font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:700; color:var(--brass-bright); }
+  .trust-item .t{ font-size:9.5px; color:rgba(239,233,222,0.45); margin-top:2px; text-transform:uppercase; letter-spacing:0.05em;}
 
-    .top-bar .brand {
-      font-family: 'Fraunces', serif;
-      font-weight: 600;
-      font-size: 25px;
-      letter-spacing: -0.01em;
-      margin: 0;
-    }
+  /* ---------- Section labels ---------- */
+  .section-label{ display:flex; align-items:center; gap:8px; font-size:11px; text-transform:uppercase; letter-spacing:0.14em; color:rgba(239,233,222,0.45); font-weight:600; margin:26px 0 12px; }
+  .section-label::after{ content:""; flex:1; height:1px; background:var(--line); }
 
-    .top-bar .tagline {
-      font-size: 13px;
-      color: rgba(246,241,228,0.72);
-      margin-top: 8px;
-      line-height: 1.5;
-    }
+  /* ---------- Search + filters ---------- */
+  .search-bar-wrap{ display:flex; align-items:center; gap:10px; background:var(--ink-2); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:10px; }
+  .search-bar-wrap span{ flex-shrink:0; }
+  .search-bar-wrap input{ background:none; border:none; outline:none; color:var(--paper); font-size:14px; flex:1; font-family:'Inter',sans-serif; }
+  .search-bar-wrap input::placeholder{ color:rgba(239,233,222,0.35); }
 
-    .register-row {
-      display: flex;
-      gap: 10px;
-      margin-top: 18px;
-    }
+  .filter-pills{ display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; }
+  .filter-pills::-webkit-scrollbar{ display:none; }
+  .filter-pill{
+    flex-shrink:0; font-family:'JetBrains Mono',monospace; font-size:11.5px; font-weight:600;
+    padding:7px 14px; border-radius:20px; background:var(--ink-2); border:1px solid var(--line); color:rgba(239,233,222,0.7); white-space:nowrap;
+  }
+  .filter-pill.active{ background:var(--brass); color:var(--ink); border-color:var(--brass); font-weight:700; }
 
-    .register-btn {
-      flex: 1;
-      padding: 11px;
-      border: 1px solid rgba(246,241,228,0.4);
-      border-radius: 100px;
-      background: transparent;
-      color: var(--parchment);
-      font-size: 12.5px;
-      font-weight: 600;
-      font-family: 'Inter', sans-serif;
-    }
+  /* ---------- Manifest cards ---------- */
+  .manifest{ background:var(--paper); color:var(--ink); border-radius:16px; padding:16px 16px 14px; margin-bottom:12px; position:relative; box-shadow:0 6px 18px rgba(0,0,0,0.25); }
+  .manifest-top{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;}
+  .m-name{ font-family:'Roboto Slab',serif; font-weight:700; font-size:15.5px; }
+  .m-loc{ font-size:11.5px; color:rgba(18,21,28,0.55); margin-top:2px; }
+  .stamp-badge{
+    font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;
+    border:2px solid var(--stamp); color:var(--stamp); padding:4px 8px; border-radius:6px; transform:rotate(-4deg); white-space:nowrap;
+  }
+  .m-meta{ display:flex; justify-content:flex-end; align-items:center; border-top:1px dashed var(--line-dark); padding-top:11px; margin-top:2px; }
+  .btn-inquire{ background:var(--stamp); color:#fff; border:none; border-radius:10px; padding:9px 16px; font-size:12.5px; font-weight:700; box-shadow:0 3px 8px rgba(166,61,47,0.35); }
+  .btn-inquire:active{ transform:scale(0.96); }
 
-    /* Ledger stitch divider */
-    .stitch {
-      height: 1px;
-      width: 100%;
-      background-image: repeating-linear-gradient(to right, var(--forest) 0 8px, transparent 8px 14px);
-      opacity: 0.3;
-    }
+  .loading-text{ color:rgba(239,233,222,0.5); font-size:13px; font-family:'JetBrains Mono',monospace; padding:8px 0; }
 
-    .section {
-      padding: 26px 16px 6px;
-    }
+  /* ---------- Inquiries screen ---------- */
+  .inq-item{ display:flex; justify-content:space-between; align-items:center; }
+  .inq-name{ font-family:'Roboto Slab',serif; font-weight:700; font-size:15.5px; }
+  .inq-sub{ font-size:11.5px; color:rgba(18,21,28,0.55); margin-top:2px; }
 
-    .section-header {
-      margin-bottom: 16px;
-    }
+  /* ---------- Coming soon shell ---------- */
+  .coming-soon-shell{ text-align:center; padding:60px 20px; color:rgba(239,233,222,0.5); }
+  .coming-soon-shell .cs-icon{ font-size:34px; margin-bottom:14px; }
+  .coming-soon-shell h3{ color:var(--paper); font-size:17px; margin-bottom:8px; }
+  .coming-soon-shell p{ font-size:13px; line-height:1.6; max-width:280px; margin:0 auto; }
 
-    .section-header .eyebrow {
-      display: block;
-      margin-bottom: 4px;
-    }
+  /* ---------- Modal (inquiry form) ---------- */
+  .sheet-overlay{ position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:100; display:none; align-items:flex-end; justify-content:center; }
+  .sheet-overlay.active{ display:flex; }
+  .sheet{ background:var(--paper); color:var(--ink); width:100%; max-width:480px; border-radius:22px 22px 0 0; padding:22px 20px calc(24px + env(safe-area-inset-bottom,0px)); max-height:88vh; overflow-y:auto; }
+  .sheet-handle{ width:36px; height:4px; background:var(--line-dark); border-radius:3px; margin:0 auto 16px; }
+  .sheet h3{ font-size:18px; margin-bottom:4px; }
+  .sheet .sub{ font-size:12.5px; color:rgba(18,21,28,0.55); margin-bottom:18px; }
+  .field{ margin-bottom:14px; }
+  .field label{ font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:rgba(18,21,28,0.6); display:block; margin-bottom:6px;}
+  .field input{ width:100%; border:1.5px solid var(--line-dark); border-radius:10px; padding:11px 12px; font-size:14px; font-family:'Inter',sans-serif; background:#fff; color:var(--ink); box-sizing:border-box; }
+  .submit-btn{ width:100%; background:var(--stamp); color:#fff; border:none; border-radius:12px; padding:15px; font-size:14.5px; font-weight:700; margin-top:6px; }
+  .cancel-btn{ width:100%; background:none; border:1.5px solid var(--line-dark); color:rgba(18,21,28,0.55); border-radius:12px; padding:13px; font-size:13.5px; font-weight:600; margin-top:8px; }
+  .status-msg{ margin-top:11px; font-size:12.5px; color:var(--stamp); text-align:center; }
+  .queue-badge{ display:none; margin:10px 20px 0; font-size:11px; color:var(--brass-bright); background:rgba(200,138,52,0.12); border:1px solid rgba(200,138,52,0.3); padding:7px 12px; border-radius:100px; text-align:center; }
 
-    .section-header-row {
-      display: flex;
-      align-items: baseline;
-      gap: 8px;
-    }
+  /* ---------- Bottom nav ---------- */
+  nav.bottom{
+    position:fixed; left:50%; transform:translateX(-50%); bottom:0; width:100%; max-width:480px;
+    background:rgba(18,21,28,0.94); backdrop-filter:blur(10px); border-top:1px solid var(--line);
+    display:flex; padding:10px 8px calc(10px + env(safe-area-inset-bottom,0px)); z-index:50;
+  }
+  .nav-item{ flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; color:rgba(239,233,222,0.4); font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; }
+  .nav-item .ic{ font-size:19px; }
+  .nav-item.active{ color:var(--brass-bright); }
 
-    .section-header h2 {
-      font-family: 'Fraunces', serif;
-      font-size: 21px;
-      font-weight: 600;
-      margin: 0;
-      color: var(--ink);
-      letter-spacing: -0.01em;
-    }
-
-    .section-header .count {
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 11px;
-      color: var(--forest-soft);
-      background: var(--parchment-dim);
-      border: 1px solid var(--line);
-      padding: 2px 9px;
-      border-radius: 100px;
-    }
-
-    .card {
-      background: #fff;
-      border-radius: 14px;
-      border: 1px solid var(--line);
-      margin-bottom: 12px;
-      overflow: hidden;
-      box-shadow: 0 2px 8px rgba(15,61,46,0.05);
-    }
-
-    .card-bar {
-      height: 4px;
-      width: 100%;
-    }
-
-    .card.distributor .card-bar { background: var(--forest); }
-    .card.buyer .card-bar { background: var(--brass); }
-
-    .card-body {
-      padding: 15px 16px 16px;
-    }
-
-    .card-name {
-      font-family: 'Fraunces', serif;
-      font-weight: 600;
-      font-size: 17px;
-      color: var(--ink);
-      letter-spacing: -0.005em;
-    }
-
-    .card-details {
-      color: #6b6b60;
-      font-size: 13px;
-      margin-top: 4px;
-      font-family: 'IBM Plex Mono', monospace;
-      letter-spacing: 0.01em;
-    }
-
-    .tag {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 100px;
-      margin-top: 10px;
-    }
-
-    .tag .dot {
-      width: 5px;
-      height: 5px;
-      border-radius: 50%;
-    }
-
-    .card.distributor .tag { background: rgba(15,61,46,0.08); color: var(--forest); }
-    .card.distributor .tag .dot { background: var(--forest); }
-    .card.buyer .tag { background: rgba(201,162,39,0.14); color: #8a6c14; }
-    .card.buyer .tag .dot { background: var(--brass); }
-
-    .contact-btn {
-      margin-top: 12px;
-      padding: 10px 10px;
-      border: none;
-      border-radius: 100px;
-      font-size: 13px;
-      font-weight: 600;
-      font-family: 'Inter', sans-serif;
-      color: white;
-      display: block;
-      width: 100%;
-      text-align: center;
-      box-sizing: border-box;
-    }
-
-    .card.distributor .contact-btn { background: var(--forest); }
-    .card.buyer .contact-btn { background: var(--rust); }
-
-    .modal {
-      display: none;
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(15, 30, 22, 0.55);
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      backdrop-filter: blur(2px);
-    }
-
-    .modal.active { display: flex; }
-
-    .modal-box {
-      background: var(--parchment);
-      padding: 24px;
-      border-radius: 18px;
-      width: 100%;
-      max-width: 340px;
-      max-height: 85vh;
-      overflow-y: auto;
-      border: 1px solid var(--line);
-      box-shadow: var(--shadow);
-    }
-
-    .modal-box .modal-title {
-      font-family: 'Fraunces', serif;
-      font-weight: 600;
-      font-size: 18px;
-      margin-bottom: 14px;
-      color: var(--ink);
-    }
-
-    .modal-box input {
-      width: 100%;
-      padding: 12px 13px;
-      margin-top: 9px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      box-sizing: border-box;
-      font-size: 14px;
-      background: #fff;
-      font-family: 'Inter', sans-serif;
-    }
-
-    .modal-box input:focus {
-      outline: 2px solid var(--forest);
-      outline-offset: 1px;
-    }
-
-    .modal-actions {
-      display: flex;
-      gap: 8px;
-      margin-top: 18px;
-    }
-
-    .modal-box button {
-      flex: 1;
-      padding: 12px 14px;
-      border: none;
-      border-radius: 100px;
-      font-size: 14px;
-      font-weight: 600;
-      font-family: 'Inter', sans-serif;
-    }
-
-    .submit-btn { background: var(--forest); color: white; }
-    .cancel-btn { background: var(--parchment-dim); color: var(--ink); border: 1px solid var(--line) !important; }
-
-    .status-msg {
-      margin-top: 11px;
-      font-size: 13px;
-      color: var(--forest);
-      font-family: 'IBM Plex Mono', monospace;
-    }
-
-    .loading-text {
-      color: #8a8a7f;
-      font-size: 14px;
-      padding: 6px 0;
-      font-family: 'IBM Plex Mono', monospace;
-    }
-
-    .search-bar-wrap input {
-      width: 100%;
-      padding: 12px 14px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      font-size: 14px;
-      background: #fff;
-      font-family: 'Inter', sans-serif;
-      box-sizing: border-box;
-    }
-
-    .search-bar-wrap input:focus {
-      outline: 2px solid var(--forest);
-      outline-offset: 1px;
-    }
-
-    .filter-pills {
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      margin-top: 10px;
-      padding-bottom: 4px;
-    }
-
-    .filter-pills::-webkit-scrollbar { display: none; }
-
-    .filter-pill {
-      flex-shrink: 0;
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 11.5px;
-      font-weight: 600;
-      padding: 7px 14px;
-      border-radius: 100px;
-      background: #fff;
-      border: 1px solid var(--line);
-      color: var(--forest-soft);
-      white-space: nowrap;
-    }
-
-    .filter-pill.active {
-      background: var(--forest);
-      color: var(--parchment);
-      border-color: var(--forest);
-    }
-  </style>
+  .screen{ display:none; }
+  .screen.active{ display:block; animation:fadein .25s ease; }
+  @keyframes fadein{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+</style>
 </head>
 <body>
+<div id="app">
+  <div class="status-bar"></div>
 
-  <div class="top-bar">
-    <div class="brand-row">
-      <div class="brand-mark">SM</div>
-      <p class="brand">ShelfMatch</p>
-    </div>
-    <p class="tagline">Connecting distributors and buyers across Onitsha, Nnewi, Awka &amp; Asaba</p>
-    <div class="register-row">
-      <button class="register-btn" onclick="openRegisterModal('distributor')">Register as Distributor</button>
-      <button class="register-btn" onclick="openRegisterModal('buyer')">Register as Buyer</button>
-    </div>
-    <div class="register-row" style="margin-top:8px;">
-      <button class="register-btn" onclick="openHistoryModal()">My Inquiries</button>
-    </div>
-    <div id="queue-badge" class="mono" style="display:none;margin-top:10px;font-size:11px;color:var(--brass-soft);background:rgba(201,162,39,0.15);border:1px solid rgba(201,162,39,0.3);padding:7px 12px;border-radius:100px;text-align:center;"></div>
-  </div>
-
-  <div class="stitch"></div>
-
-  <div class="section" style="padding-bottom:2px;">
-    <div class="search-bar-wrap">
-      <input type="text" id="search-input" placeholder="Search by name, location, or category…" oninput="applyFilters()">
-    </div>
-    <div class="filter-pills" id="filter-pills"></div>
-  </div>
-
-  <div class="section">
-    <div class="section-header">
-      <span class="eyebrow">Supply Side</span>
-      <div class="section-header-row">
-        <h2>Distributors</h2>
-        <span class="count" id="distributor-count"></span>
+  <header class="top">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="2" y="6" width="16" height="16" rx="4" fill="#E3A94F"/>
+        <rect x="16" y="12" width="16" height="16" rx="4" fill="#A63D2F"/>
+      </svg>
+      <div>
+        <div class="brand-name">ShelfMatch</div>
+        <div class="brand-sub">Stock meets buyer</div>
       </div>
     </div>
-    <div id="distributor-list"><div class="loading-text">Loading distributors…</div></div>
-  </div>
+    <div class="locale-pill"><span class="locale-dot"></span>4 markets</div>
+  </header>
 
-  <div class="stitch"></div>
+  <main>
+    <!-- ============ HOME ============ -->
+    <div class="screen active" id="screen-home">
+      <div class="hero">
+        <div class="hero-eyebrow">ShelfMatch Network</div>
+        <h1 class="hero-headline">Real inquiries.<br><em>Real distributors and buyers.</em></h1>
+        <div class="clock-seal">
+          <div class="seal-ring">
+            <svg width="56" height="56">
+              <circle class="bg" cx="28" cy="28" r="24" stroke-width="4" fill="none"/>
+              <circle class="fg" cx="28" cy="28" r="24" stroke-width="4" fill="none" stroke-dasharray="150.8" stroke-dashoffset="0"/>
+            </svg>
+            <div class="num" id="inquiry-count-ring">–</div>
+          </div>
+          <div class="clock-copy">
+            <div class="clock-title">Total inquiries sent</div>
+            <div class="clock-sub">Real connections made through ShelfMatch so far</div>
+          </div>
+        </div>
+        <div class="trust-strip">
+          <div class="trust-item"><div class="n" id="stat-distributors">–</div><div class="t">Distributors</div></div>
+          <div class="trust-item"><div class="n" id="stat-buyers">–</div><div class="t">Buyers</div></div>
+          <div class="trust-item"><div class="n">4</div><div class="t">Markets live</div></div>
+        </div>
+      </div>
 
-  <div class="section">
-    <div class="section-header">
-      <span class="eyebrow">Demand Side</span>
-      <div class="section-header-row">
-        <h2>Buyers</h2>
-        <span class="count" id="buyer-count"></span>
+      <div class="search-bar-wrap"><span>🔍</span><input type="text" id="search-input" placeholder="Search by name, location, category…" oninput="applyFilters()"></div>
+      <div class="filter-pills" id="filter-pills"></div>
+
+      <div class="section-label">Distributors <span class="mono" id="distributor-count"></span></div>
+      <div id="distributor-list"><div class="loading-text">Loading distributors…</div></div>
+
+      <div class="section-label">Buyers <span class="mono" id="buyer-count"></span></div>
+      <div id="buyer-list"><div class="loading-text">Loading buyers…</div></div>
+    </div>
+
+    <!-- ============ INQUIRIES (real local history) ============ -->
+    <div class="screen" id="screen-inquiries">
+      <div class="section-label">Your inquiries</div>
+      <div id="history-list"></div>
+      <div class="queue-badge" id="queue-badge"></div>
+    </div>
+
+    <!-- ============ TRUST — coming soon ============ -->
+    <div class="screen" id="screen-trust">
+      <div class="section-label">Trust &amp; verification <span class="coming-soon-tag">Coming soon</span></div>
+      <div class="coming-soon-shell">
+        <div class="cs-icon">🛡️</div>
+        <h3>Verification is on the way</h3>
+        <p>We're building trade association checks, physical shop verification, and public dispute history. For now, reach out directly — we personally vet every listing before it goes live.</p>
       </div>
     </div>
-    <div id="buyer-list"><div class="loading-text">Loading buyers…</div></div>
-  </div>
 
-  <div class="modal" id="inquiry-modal">
-    <div class="modal-box">
-      <div class="modal-title" id="modal-title">Contact</div>
-      <input type="text" id="inquiry-name" placeholder="Your name">
-      <input type="text" id="inquiry-phone" placeholder="Your phone number">
-      <input type="email" id="inquiry-email" placeholder="Your email (for confirmation)">
-      <div class="modal-actions">
-        <button class="submit-btn" onclick="submitInquiry()">Send</button>
-        <button class="cancel-btn" onclick="closeModal()">Cancel</button>
+    <!-- ============ ONBOARD — coming soon ============ -->
+    <div class="screen" id="screen-onboard">
+      <div class="section-label">Onboarding <span class="coming-soon-tag">Coming soon</span></div>
+      <div class="coming-soon-shell">
+        <div class="cs-icon">🧭</div>
+        <h3>Guided onboarding is on the way</h3>
+        <p>Supplier agent, distributor, and buyer role flows are in development. To register today, use the Register buttons on the Market tab.</p>
       </div>
+    </div>
+  </main>
+
+  <div class="sheet-overlay" id="inquiry-modal">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <div class="sheet-handle"></div>
+      <h3 id="modal-title">Contact</h3>
+      <div class="sub">Send your details — they'll be in touch directly.</div>
+      <div class="field"><label>Your name</label><input type="text" id="inquiry-name"></div>
+      <div class="field"><label>Your phone</label><input type="text" id="inquiry-phone"></div>
+      <div class="field"><label>Your email (for confirmation)</label><input type="email" id="inquiry-email"></div>
+      <button class="submit-btn" onclick="submitInquiry()">Send inquiry now</button>
+      <button class="cancel-btn" onclick="closeModal()">Cancel</button>
       <div class="status-msg" id="status-msg"></div>
     </div>
   </div>
 
-  <div class="modal" id="register-modal">
-    <div class="modal-box">
-      <div class="modal-title" id="register-modal-title">Register</div>
-      <input type="text" id="register-name" placeholder="Business / your name">
-      <input type="text" id="register-location" placeholder="Location (e.g. Onitsha)">
-      <input type="text" id="register-extra" placeholder="Category">
-      <div class="modal-actions">
-        <button class="submit-btn" onclick="submitRegister()">Register</button>
-        <button class="cancel-btn" onclick="closeRegisterModal()">Cancel</button>
-      </div>
-      <div class="status-msg" id="register-status-msg"></div>
-    </div>
-  </div>
+  <nav class="bottom">
+    <div class="nav-item active" id="nav-home" onclick="showScreen('home')"><span class="ic">🏬</span>Market</div>
+    <div class="nav-item" id="nav-inquiries" onclick="showScreen('inquiries')"><span class="ic">📋</span>Inquiries</div>
+    <div class="nav-item" id="nav-trust" onclick="showScreen('trust')"><span class="ic">🛡️</span>Trust</div>
+    <div class="nav-item" id="nav-onboard" onclick="showScreen('onboard')"><span class="ic">➕</span>Onboard</div>
+  </nav>
+</div>
 
-  <div class="modal" id="history-modal">
-    <div class="modal-box">
-      <div class="modal-title">My Inquiries</div>
-      <div id="history-list" style="margin-top:4px;"></div>
-      <div class="modal-actions">
-        <button class="cancel-btn" onclick="closeHistoryModal()" style="flex:1;">Close</button>
-      </div>
-    </div>
-  </div>
+<script>
+  let allDistributors = [];
+  let allBuyers = [];
+  let activeCategory = "All";
+  let selectedContactName = "";
+  let selectedContactType = "";
 
-  <script>
-    let selectedContactName = "";
-    let selectedContactType = "";
-    let registerType = "";
+  const BACKEND = "https://shelfmatch-backend-5mjl.vercel.app/api";
+  const SECRET = "shelfmatch-2026-secure";
 
-    function openModal(contactName, contactType) {
-      selectedContactName = contactName;
-      selectedContactType = contactType;
-      document.getElementById("modal-title").innerText = "Contact " + contactName;
-      document.getElementById("status-msg").innerText = "";
-      document.getElementById("inquiry-modal").classList.add("active");
-    }
+  function showScreen(name) {
+    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+    document.getElementById("screen-" + name).classList.add("active");
+    document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+    document.getElementById("nav-" + name).classList.add("active");
+    if (name === "inquiries") renderHistory();
+    window.scrollTo(0, 0);
+  }
 
-    function closeModal() {
-      document.getElementById("inquiry-modal").classList.remove("active");
-    }
-
-    function submitInquiry() {
-      const name = document.getElementById("inquiry-name").value;
-      const phone = document.getElementById("inquiry-phone").value;
-      const email = document.getElementById("inquiry-email").value;
-
-      if (!name || !phone) {
-        document.getElementById("status-msg").innerText = "Please fill in both fields.";
-        return;
-      }
-
-      const payload = {
-        secret: "shelfmatch-2026-secure",
-        name,
-        phone,
-        email,
-        distributor: selectedContactType === "distributor" ? selectedContactName : "",
-        buyer: selectedContactType === "buyer" ? selectedContactName : "",
-        contactType: selectedContactType,
-      };
-
-      if (!navigator.onLine) {
-        queueInquiry(payload, selectedContactName, selectedContactType);
-        document.getElementById("status-msg").innerText = "No connection — saved. Will send automatically when you're back online.";
-        document.getElementById("inquiry-name").value = "";
-        document.getElementById("inquiry-phone").value = "";
-        document.getElementById("inquiry-email").value = "";
-        setTimeout(closeModal, 2200);
-        return;
-      }
-
-      fetch("https://shelfmatch-backend-5mjl.vercel.app/api/inquiries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-        .then(response => response.json())
-        .then(data => {
-          saveInquiryToHistory(selectedContactName, selectedContactType);
-          document.getElementById("status-msg").innerText = "Sent! We'll be in touch.";
-          document.getElementById("inquiry-name").value = "";
-          document.getElementById("inquiry-phone").value = "";
-          document.getElementById("inquiry-email").value = "";
-          setTimeout(closeModal, 1500);
-        })
-        .catch(error => {
-          queueInquiry(payload, selectedContactName, selectedContactType);
-          document.getElementById("status-msg").innerText = "Connection issue — saved. Will send automatically when you're back online.";
-          document.getElementById("inquiry-name").value = "";
-          document.getElementById("inquiry-phone").value = "";
-          document.getElementById("inquiry-email").value = "";
-          setTimeout(closeModal, 2200);
-          console.error(error);
-        });
-    }
-
-    function queueInquiry(payload, contactName, contactType) {
-      try {
-        const queue = JSON.parse(localStorage.getItem("shelfmatch_queue") || "[]");
-        queue.push({ payload, contactName, contactType });
-        localStorage.setItem("shelfmatch_queue", JSON.stringify(queue));
-        updateQueueBadge();
-      } catch (e) {
-        console.error("Could not queue inquiry:", e);
-      }
-    }
-
-    function processQueue() {
-      let queue = [];
-      try {
-        queue = JSON.parse(localStorage.getItem("shelfmatch_queue") || "[]");
-      } catch (e) {
-        queue = [];
-      }
-
-      if (queue.length === 0) return;
-
-      const remaining = [];
-      let processed = 0;
-
-      queue.forEach(item => {
-        fetch("https://shelfmatch-backend-5mjl.vercel.app/api/inquiries", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(item.payload),
-        })
-          .then(response => response.json())
-          .then(() => {
-            saveInquiryToHistory(item.contactName, item.contactType);
-            processed++;
-            localStorage.setItem("shelfmatch_queue", JSON.stringify(remaining));
-            updateQueueBadge();
-          })
-          .catch(() => {
-            remaining.push(item);
-            localStorage.setItem("shelfmatch_queue", JSON.stringify(remaining));
-            updateQueueBadge();
-          });
-      });
-    }
-
-    function updateQueueBadge() {
-      let queue = [];
-      try {
-        queue = JSON.parse(localStorage.getItem("shelfmatch_queue") || "[]");
-      } catch (e) {
-        queue = [];
-      }
-      const badge = document.getElementById("queue-badge");
-      if (!badge) return;
-      if (queue.length > 0) {
-        badge.style.display = "block";
-        badge.innerText = queue.length + " inquiry" + (queue.length > 1 ? "ies" : "") + " waiting to send";
-      } else {
-        badge.style.display = "none";
-      }
-    }
-
-    window.addEventListener("online", processQueue);
-    window.addEventListener("load", () => {
-      updateQueueBadge();
-      if (navigator.onLine) processQueue();
+  // ---------- Home: real data ----------
+  function renderDistributors(list) {
+    const c = document.getElementById("distributor-list");
+    c.innerHTML = "";
+    if (list.length === 0) { c.innerHTML = '<div class="loading-text">No distributors match your search.</div>'; return; }
+    list.forEach(d => {
+      const card = document.createElement("div");
+      card.className = "manifest";
+      card.innerHTML = `
+        <div class="manifest-top">
+          <div><div class="m-name">${d.NAME}</div><div class="m-loc">${d["LOCATION "]}</div></div>
+          <div class="stamp-badge">${d["CATEGORY "] ? d["CATEGORY "].trim().toUpperCase() : "LISTED"}</div>
+        </div>
+        <div class="m-meta"><button class="btn-inquire" onclick="openModal('${d.NAME}','distributor')">Inquire</button></div>`;
+      c.appendChild(card);
     });
+  }
 
-    function saveInquiryToHistory(contactName, contactType) {
-      try {
-        const existing = JSON.parse(localStorage.getItem("shelfmatch_history") || "[]");
-        existing.unshift({
-          name: contactName,
-          type: contactType,
-          date: new Date().toLocaleString(),
+  function renderBuyers(list) {
+    const c = document.getElementById("buyer-list");
+    c.innerHTML = "";
+    if (list.length === 0) { c.innerHTML = '<div class="loading-text">No buyers match your search.</div>'; return; }
+    list.forEach(b => {
+      const card = document.createElement("div");
+      card.className = "manifest";
+      card.innerHTML = `
+        <div class="manifest-top">
+          <div><div class="m-name">${b.NAME}</div><div class="m-loc">${b.LOCATION}</div></div>
+          <div class="stamp-badge" style="border-color:var(--brass); color:var(--brass);">${b.LOOKING_FOR ? b.LOOKING_FOR.toUpperCase() : "BUYER"}</div>
+        </div>
+        <div class="m-meta"><button class="btn-inquire" onclick="openModal('${b.NAME}','buyer')">Inquire</button></div>`;
+      c.appendChild(card);
+    });
+  }
+
+  function buildFilterPills() {
+    const categories = new Set();
+    allDistributors.forEach(d => { if (d["CATEGORY "]) categories.add(d["CATEGORY "].trim()); });
+    allBuyers.forEach(b => { if (b.LOOKING_FOR) categories.add(b.LOOKING_FOR.trim()); });
+    const wrap = document.getElementById("filter-pills");
+    wrap.innerHTML = "";
+    const allPill = document.createElement("div");
+    allPill.className = "filter-pill active";
+    allPill.innerText = "All";
+    allPill.onclick = () => selectCategory("All", allPill);
+    wrap.appendChild(allPill);
+    categories.forEach(cat => {
+      const p = document.createElement("div");
+      p.className = "filter-pill";
+      p.innerText = cat;
+      p.onclick = () => selectCategory(cat, p);
+      wrap.appendChild(p);
+    });
+  }
+
+  function selectCategory(cat, el) {
+    activeCategory = cat;
+    document.querySelectorAll(".filter-pill").forEach(p => p.classList.remove("active"));
+    el.classList.add("active");
+    applyFilters();
+  }
+
+  function applyFilters() {
+    const q = document.getElementById("search-input").value.trim().toLowerCase();
+    const fd = allDistributors.filter(d => {
+      const mc = activeCategory === "All" || (d["CATEGORY "] && d["CATEGORY "].trim() === activeCategory);
+      const ms = !q || (d.NAME||"").toLowerCase().includes(q) || (d["LOCATION "]||"").toLowerCase().includes(q) || (d["CATEGORY "]||"").toLowerCase().includes(q);
+      return mc && ms;
+    });
+    const fb = allBuyers.filter(b => {
+      const mc = activeCategory === "All" || (b.LOOKING_FOR && b.LOOKING_FOR.trim() === activeCategory);
+      const ms = !q || (b.NAME||"").toLowerCase().includes(q) || (b.LOCATION||"").toLowerCase().includes(q) || (b.LOOKING_FOR||"").toLowerCase().includes(q);
+      return mc && ms;
+    });
+    renderDistributors(fd);
+    renderBuyers(fb);
+    document.getElementById("distributor-count").innerText = fd.length;
+    document.getElementById("buyer-count").innerText = fb.length;
+  }
+
+  fetch(BACKEND + "/distributors").then(r => r.json()).then(data => {
+    allDistributors = data.distributors;
+    document.getElementById("distributor-count").innerText = allDistributors.length;
+    document.getElementById("stat-distributors").innerText = allDistributors.length;
+    renderDistributors(allDistributors);
+    buildFilterPills();
+  }).catch(() => { document.getElementById("distributor-list").innerHTML = '<div class="loading-text">Could not load distributors.</div>'; });
+
+  fetch(BACKEND + "/buyers").then(r => r.json()).then(data => {
+    allBuyers = data.buyers;
+    document.getElementById("buyer-count").innerText = allBuyers.length;
+    document.getElementById("stat-buyers").innerText = allBuyers.length;
+    renderBuyers(allBuyers);
+    buildFilterPills();
+  }).catch(() => { document.getElementById("buyer-list").innerHTML = '<div class="loading-text">Could not load buyers.</div>'; });
+
+  fetch(BACKEND + "/inquiry-count").then(r => r.json()).then(data => {
+    document.getElementById("inquiry-count-ring").innerText = data.count;
+  }).catch(() => { document.getElementById("inquiry-count-ring").innerText = "–"; });
+
+  // ---------- Contact modal ----------
+  function openModal(name, type) {
+    selectedContactName = name;
+    selectedContactType = type;
+    document.getElementById("modal-title").innerText = "Contact " + name;
+    document.getElementById("status-msg").innerText = "";
+    document.getElementById("inquiry-modal").classList.add("active");
+  }
+  function closeModal() { document.getElementById("inquiry-modal").classList.remove("active"); }
+
+  function submitInquiry() {
+    const name = document.getElementById("inquiry-name").value;
+    const phone = document.getElementById("inquiry-phone").value;
+    const email = document.getElementById("inquiry-email").value;
+    if (!name || !phone) { document.getElementById("status-msg").innerText = "Please fill in name and phone."; return; }
+
+    const payload = { secret: SECRET, name, phone, email,
+      distributor: selectedContactType === "distributor" ? selectedContactName : "",
+      buyer: selectedContactType === "buyer" ? selectedContactName : "",
+      contactType: selectedContactType };
+
+    if (!navigator.onLine) {
+      queueInquiry(payload, selectedContactName, selectedContactType);
+      document.getElementById("status-msg").innerText = "No connection — saved, will send automatically.";
+      clearForm(); setTimeout(closeModal, 2000); return;
+    }
+
+    fetch(BACKEND + "/inquiries", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) })
+      .then(r => r.json())
+      .then(() => {
+        saveInquiryToHistory(selectedContactName, selectedContactType);
+        document.getElementById("status-msg").innerText = "Sent! We'll be in touch.";
+        clearForm(); setTimeout(closeModal, 1500);
+      })
+      .catch(() => {
+        queueInquiry(payload, selectedContactName, selectedContactType);
+        document.getElementById("status-msg").innerText = "Connection issue — saved, will send automatically.";
+        clearForm(); setTimeout(closeModal, 2000);
+      });
+  }
+  function clearForm() {
+    document.getElementById("inquiry-name").value = "";
+    document.getElementById("inquiry-phone").value = "";
+    document.getElementById("inquiry-email").value = "";
+  }
+
+  // ---------- Offline queue ----------
+  function queueInquiry(payload, name, type) {
+    try {
+      const q = JSON.parse(localStorage.getItem("shelfmatch_queue") || "[]");
+      q.push({ payload, contactName: name, contactType: type });
+      localStorage.setItem("shelfmatch_queue", JSON.stringify(q));
+      updateQueueBadge();
+    } catch (e) { console.error(e); }
+  }
+  function processQueue() {
+    let q = [];
+    try { q = JSON.parse(localStorage.getItem("shelfmatch_queue") || "[]"); } catch (e) { q = []; }
+    if (q.length === 0) return;
+    const remaining = [];
+    q.forEach(item => {
+      fetch(BACKEND + "/inquiries", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(item.payload) })
+        .then(r => r.json()).then(() => {
+          saveInquiryToHistory(item.contactName, item.contactType);
+          localStorage.setItem("shelfmatch_queue", JSON.stringify(remaining));
+          updateQueueBadge();
+        }).catch(() => {
+          remaining.push(item);
+          localStorage.setItem("shelfmatch_queue", JSON.stringify(remaining));
+          updateQueueBadge();
         });
-        localStorage.setItem("shelfmatch_history", JSON.stringify(existing.slice(0, 50)));
-      } catch (e) {
-        console.error("Could not save history:", e);
-      }
+    });
+  }
+  function updateQueueBadge() {
+    let q = [];
+    try { q = JSON.parse(localStorage.getItem("shelfmatch_queue") || "[]"); } catch (e) { q = []; }
+    const badge = document.getElementById("queue-badge");
+    if (q.length > 0) { badge.style.display = "block"; badge.innerText = q.length + " inquiry" + (q.length > 1 ? "ies" : "") + " waiting to send"; }
+    else { badge.style.display = "none"; }
+  }
+  window.addEventListener("online", processQueue);
+  window.addEventListener("load", () => { updateQueueBadge(); if (navigator.onLine) processQueue(); });
+
+  // ---------- History (Inquiries tab) ----------
+  function saveInquiryToHistory(name, type) {
+    try {
+      const h = JSON.parse(localStorage.getItem("shelfmatch_history") || "[]");
+      h.unshift({ name, type, date: new Date().toLocaleString() });
+      localStorage.setItem("shelfmatch_history", JSON.stringify(h.slice(0, 50)));
+    } catch (e) { console.error(e); }
+  }
+  function renderHistory() {
+    const list = document.getElementById("history-list");
+    let h = [];
+    try { h = JSON.parse(localStorage.getItem("shelfmatch_history") || "[]"); } catch (e) { h = []; }
+    if (h.length === 0) {
+      list.innerHTML = '<div class="loading-text">No inquiries sent yet on this device.</div>';
+      return;
     }
+    list.innerHTML = h.map(item => `
+      <div class="manifest">
+        <div class="inq-item">
+          <div><div class="inq-name">${item.name}</div><div class="inq-sub">${item.type === 'distributor' ? 'Contacted distributor' : 'Contacted buyer'} · ${item.date}</div></div>
+          <div class="stamp-badge">SENT</div>
+        </div>
+      </div>`).join("");
+  }
 
-    function openHistoryModal() {
-      const list = document.getElementById("history-list");
-      let history = [];
-      try {
-        history = JSON.parse(localStorage.getItem("shelfmatch_history") || "[]");
-      } catch (e) {
-        history = [];
-      }
-
-      if (history.length === 0) {
-        list.innerHTML = '<div class="loading-text">No inquiries sent yet on this device.</div>';
-      } else {
-        list.innerHTML = history.map(item => `
-          <div style="padding:10px 0;border-bottom:1px dashed var(--line);">
-            <div style="font-family:'Fraunces',serif;font-weight:600;font-size:15px;">${item.name}</div>
-            <div class="mono" style="font-size:11px;color:#8a8a7f;margin-top:2px;">${item.type === 'distributor' ? 'Contacted distributor' : 'Contacted buyer'} · ${item.date}</div>
-          </div>
-        `).join("");
-      }
-
-      document.getElementById("history-modal").classList.add("active");
-    }
-
-    function closeHistoryModal() {
-      document.getElementById("history-modal").classList.remove("active");
-    }
-
-    function openRegisterModal(type) {
-      registerType = type;
-      const title = type === "distributor" ? "Register as Distributor" : "Register as Buyer";
-      document.getElementById("register-modal-title").innerText = title;
-      document.getElementById("register-extra").placeholder = type === "distributor" ? "Category (e.g. Dairy)" : "Looking for (e.g. Dairy)";
-      document.getElementById("register-status-msg").innerText = "";
-      document.getElementById("register-modal").classList.add("active");
-    }
-
-    function closeRegisterModal() {
-      document.getElementById("register-modal").classList.remove("active");
-    }
-
-    function submitRegister() {
-      const name = document.getElementById("register-name").value;
-      const location = document.getElementById("register-location").value;
-      const extra = document.getElementById("register-extra").value;
-
-      if (!name || !location || !extra) {
-        document.getElementById("register-status-msg").innerText = "Please fill in all fields.";
-        return;
-      }
-
-      fetch("https://shelfmatch-backend-5mjl.vercel.app/api/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          secret: "shelfmatch-2026-secure",
-          registerType,
-          name,
-          location,
-          category: registerType === "distributor" ? extra : "",
-          lookingFor: registerType === "buyer" ? extra : "",
-        }),
-      })
-        .then(response => response.json())
-        .then(data => {
-          document.getElementById("register-status-msg").innerText = "Registered! Refresh to see your listing.";
-          document.getElementById("register-name").value = "";
-          document.getElementById("register-location").value = "";
-          document.getElementById("register-extra").value = "";
-          setTimeout(closeRegisterModal, 1800);
-        })
-        .catch(error => {
-          document.getElementById("register-status-msg").innerText = "Something went wrong. Try again.";
-          console.error(error);
-        });
-    }
-
-    let allDistributors = [];
-    let allBuyers = [];
-    let activeCategory = "All";
-
-    function renderDistributors(list) {
-      const container = document.getElementById("distributor-list");
-      container.innerHTML = "";
-
-      if (list.length === 0) {
-        container.innerHTML = '<div class="loading-text">No distributors match your search.</div>';
-        return;
-      }
-
-      list.forEach(d => {
-        const card = document.createElement("div");
-        card.className = "card distributor";
-        card.innerHTML = `
-          <div class="card-bar"></div>
-          <div class="card-body">
-            <div class="card-name">${d.NAME}</div>
-            <div class="card-details">${d["LOCATION "]} — ${d["CATEGORY "]}</div>
-            <span class="tag"><span class="dot"></span>Distributor</span>
-            <button class="contact-btn" onclick="openModal('${d.NAME}', 'distributor')">Contact this distributor</button>
-          </div>
-        `;
-        container.appendChild(card);
-      });
-    }
-
-    function renderBuyers(list) {
-      const container = document.getElementById("buyer-list");
-      container.innerHTML = "";
-
-      if (list.length === 0) {
-        container.innerHTML = '<div class="loading-text">No buyers match your search.</div>';
-        return;
-      }
-
-      list.forEach(b => {
-        const card = document.createElement("div");
-        card.className = "card buyer";
-        card.innerHTML = `
-          <div class="card-bar"></div>
-          <div class="card-body">
-            <div class="card-name">${b.NAME}</div>
-            <div class="card-details">${b.LOCATION} — ${b.LOOKING_FOR}</div>
-            <span class="tag"><span class="dot"></span>Buyer</span>
-            <button class="contact-btn" onclick="openModal('${b.NAME}', 'buyer')">Contact this buyer</button>
-          </div>
-        `;
-        container.appendChild(card);
-      });
-    }
-
-    function buildFilterPills() {
-      const categories = new Set();
-      allDistributors.forEach(d => { if (d["CATEGORY "]) categories.add(d["CATEGORY "].trim()); });
-      allBuyers.forEach(b => { if (b.LOOKING_FOR) categories.add(b.LOOKING_FOR.trim()); });
-
-      const pillsContainer = document.getElementById("filter-pills");
-      pillsContainer.innerHTML = "";
-
-      const allPill = document.createElement("div");
-      allPill.className = "filter-pill active";
-      allPill.innerText = "All";
-      allPill.onclick = () => selectCategory("All", allPill);
-      pillsContainer.appendChild(allPill);
-
-      categories.forEach(cat => {
-        const pill = document.createElement("div");
-        pill.className = "filter-pill";
-        pill.innerText = cat;
-        pill.onclick = () => selectCategory(cat, pill);
-        pillsContainer.appendChild(pill);
-      });
-    }
-
-    function selectCategory(cat, pillEl) {
-      activeCategory = cat;
-      document.querySelectorAll(".filter-pill").forEach(p => p.classList.remove("active"));
-      pillEl.classList.add("active");
-      applyFilters();
-    }
-
-    function applyFilters() {
-      const query = document.getElementById("search-input").value.trim().toLowerCase();
-
-      const filteredDistributors = allDistributors.filter(d => {
-        const matchesCategory = activeCategory === "All" || (d["CATEGORY "] && d["CATEGORY "].trim() === activeCategory);
-        const matchesSearch = !query ||
-          (d.NAME && d.NAME.toLowerCase().includes(query)) ||
-          (d["LOCATION "] && d["LOCATION "].toLowerCase().includes(query)) ||
-          (d["CATEGORY "] && d["CATEGORY "].toLowerCase().includes(query));
-        return matchesCategory && matchesSearch;
-      });
-
-      const filteredBuyers = allBuyers.filter(b => {
-        const matchesCategory = activeCategory === "All" || (b.LOOKING_FOR && b.LOOKING_FOR.trim() === activeCategory);
-        const matchesSearch = !query ||
-          (b.NAME && b.NAME.toLowerCase().includes(query)) ||
-          (b.LOCATION && b.LOCATION.toLowerCase().includes(query)) ||
-          (b.LOOKING_FOR && b.LOOKING_FOR.toLowerCase().includes(query));
-        return matchesCategory && matchesSearch;
-      });
-
-      renderDistributors(filteredDistributors);
-      renderBuyers(filteredBuyers);
-      document.getElementById("distributor-count").innerText = filteredDistributors.length;
-      document.getElementById("buyer-count").innerText = filteredBuyers.length;
-    }
-
-    fetch("https://shelfmatch-backend-5mjl.vercel.app/api/distributors")
-      .then(response => response.json())
-      .then(data => {
-        allDistributors = data.distributors;
-        document.getElementById("distributor-count").innerText = allDistributors.length;
-        renderDistributors(allDistributors);
-        buildFilterPills();
-      })
-      .catch(error => {
-        document.getElementById("distributor-list").innerHTML = '<div class="loading-text">Could not load distributors.</div>';
-        console.error(error);
-      });
-
-    fetch("https://shelfmatch-backend-5mjl.vercel.app/api/buyers")
-      .then(response => response.json())
-      .then(data => {
-        allBuyers = data.buyers;
-        document.getElementById("buyer-count").innerText = allBuyers.length;
-        renderBuyers(allBuyers);
-        buildFilterPills();
-      })
-      .catch(error => {
-        document.getElementById("buyer-list").innerHTML = '<div class="loading-text">Could not load buyers.</div>';
-        console.error(error);
-      });
-
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js");
-    }
-  </script>
-
+  if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/sw.js"); }
+</script>
 </body>
 </html>
