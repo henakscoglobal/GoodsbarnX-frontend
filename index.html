@@ -96,6 +96,11 @@
   .manifest-top{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;}
   .m-name{ font-family:'Roboto Slab',serif; font-weight:700; font-size:15.5px; }
   .m-loc{ font-size:11.5px; color:rgba(18,21,28,0.55); margin-top:2px; }
+  .m-verified{
+    display:inline-flex; align-items:center; gap:4px;
+    font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em;
+    color:#fff; background:var(--ok); padding:3px 7px; border-radius:6px; margin-top:6px;
+  }
   .stamp-badge{
     font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;
     border:2px solid var(--stamp); color:var(--stamp); padding:4px 8px; border-radius:6px; transform:rotate(-4deg); white-space:nowrap;
@@ -300,11 +305,16 @@
     c.innerHTML = "";
     if (list.length === 0) { c.innerHTML = '<div class="loading-text">No distributors match your search.</div>'; return; }
     list.forEach(d => {
+      const isVerified = d.VERIFIED && d.VERIFIED.trim().toUpperCase() === "YES";
       const card = document.createElement("div");
       card.className = "manifest";
       card.innerHTML = `
         <div class="manifest-top">
-          <div><div class="m-name">${d.NAME}</div><div class="m-loc">${d["LOCATION "]}</div></div>
+          <div>
+            <div class="m-name">${d.NAME}</div>
+            <div class="m-loc">${d["LOCATION "]}</div>
+            ${isVerified ? '<div class="m-verified">✓ Verified by ShelfMatch</div>' : ''}
+          </div>
           <div class="stamp-badge">${d["CATEGORY "] ? d["CATEGORY "].trim().toUpperCase() : "LISTED"}</div>
         </div>
         <div class="m-meta"><button class="btn-inquire" onclick="openModal('${d.NAME}','distributor')">Inquire</button></div>`;
@@ -317,11 +327,16 @@
     c.innerHTML = "";
     if (list.length === 0) { c.innerHTML = '<div class="loading-text">No buyers match your search.</div>'; return; }
     list.forEach(b => {
+      const isVerified = b.VERIFIED && b.VERIFIED.trim().toUpperCase() === "YES";
       const card = document.createElement("div");
       card.className = "manifest";
       card.innerHTML = `
         <div class="manifest-top">
-          <div><div class="m-name">${b.NAME}</div><div class="m-loc">${b.LOCATION}</div></div>
+          <div>
+            <div class="m-name">${b.NAME}</div>
+            <div class="m-loc">${b.LOCATION}</div>
+            ${isVerified ? '<div class="m-verified">✓ Verified by ShelfMatch</div>' : ''}
+          </div>
           <div class="stamp-badge" style="border-color:var(--brass); color:var(--brass);">${b.LOOKING_FOR ? b.LOOKING_FOR.toUpperCase() : "BUYER"}</div>
         </div>
         <div class="m-meta"><button class="btn-inquire" onclick="openModal('${b.NAME}','buyer')">Inquire</button></div>`;
