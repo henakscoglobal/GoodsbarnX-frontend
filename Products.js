@@ -1,50 +1,43 @@
-// ===============================
-// ShelfMatch Product Service
-// ===============================
+// =====================================
+// ShelfMatch MVP - Product Loader
+// =====================================
 
-// Replace with your own SheetDB API
 const PRODUCT_API = "https://sheetdb.io/api/v1/r8sckg9grdjob";
 
-let allProducts = [];
+let products = [];
 
-/**
- * Load products from SheetDB
- */
 async function loadProducts() {
 
     try {
 
         const response = await fetch(PRODUCT_API);
 
-        const data = await response.json();
+        if (!response.ok) {
+            throw new Error("Unable to load products");
+        }
 
-        allProducts = data;
+        products = await response.json();
 
-        // Save offline copy
         localStorage.setItem(
             "shelfmatch_products",
-            JSON.stringify(data)
+            JSON.stringify(products)
         );
 
-        console.log(
-            "Products loaded:",
-            allProducts.length
+        console.log("✅ Products Loaded");
+        console.table(products);
+
+    } catch (error) {
+
+        console.warn("Offline mode");
+
+        products = JSON.parse(
+            localStorage.getItem("shelfmatch_products") || "[]"
         );
 
-    }
-
-    catch(error){
-
-        console.log(
-            "Offline mode..."
-        );
-
-        allProducts = JSON.parse(
-            localStorage.getItem(
-                "shelfmatch_products"
-            ) || "[]"
-        );
+        console.table(products);
 
     }
 
 }
+
+loadProducts();
