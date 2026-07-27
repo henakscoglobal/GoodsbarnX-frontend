@@ -114,6 +114,10 @@
   .btn-inquire:active{ transform:scale(0.96); }
   .btn-whatsapp{ background:#25D366; color:#fff; border:none; border-radius:10px; padding:9px 14px; font-size:12.5px; font-weight:700; }
   .btn-whatsapp:active{ transform:scale(0.96); }
+  .dispute-row{ margin-top:8px; display:flex; justify-content:space-between; align-items:center; }
+  .dispute-link{ font-size:11px; color:rgba(18,21,28,0.4); text-decoration:underline; }
+  .dispute-count{ font-size:10.5px; color:var(--stamp); font-weight:600; }
+  .dispute-none{ font-size:10.5px; color:var(--ok); font-weight:600; }
 
   .loading-text{ color:rgba(239,233,222,0.5); font-size:13px; font-family:'JetBrains Mono',monospace; padding:8px 0; }
 
@@ -294,6 +298,20 @@
     </div>
   </div>
 
+  <div class="sheet-overlay" id="dispute-modal">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <div class="sheet-handle"></div>
+      <h3>Report an issue</h3>
+      <div class="sub">About <span id="dispute-target-name"></span>. Reviewed before it's made public.</div>
+      <div class="field"><label>Your name</label><input type="text" id="dispute-submitted-by"></div>
+      <div class="field"><label>Your phone</label><input type="text" id="dispute-phone"></div>
+      <div class="field"><label>What happened</label><input type="text" id="dispute-description" placeholder="Describe the issue briefly"></div>
+      <button class="submit-btn" onclick="submitDispute()">Submit for review</button>
+      <button class="cancel-btn" onclick="closeDisputeModal()">Cancel</button>
+      <div class="status-msg" id="dispute-status-msg"></div>
+    </div>
+  </div>
+
   <nav class="bottom">
     <div class="nav-item active" id="nav-home" onclick="showScreen('home')"><span class="ic">🏬</span>Market</div>
     <div class="nav-item" id="nav-inquiries" onclick="showScreen('inquiries')"><span class="ic">📋</span>Inquiries</div>
@@ -346,6 +364,9 @@
         <div class="m-meta">
           ${d.PHONE ? `<button class="btn-whatsapp" onclick="openWhatsApp('${d.PHONE}','${d.NAME}')">WhatsApp</button>` : ''}
           <button class="btn-inquire" onclick="openModal('${d.NAME}','distributor')">Inquire</button>
+        </div>
+        <div class="dispute-row" id="dispute-count-${d.NAME.replace(/[^a-zA-Z0-9]/g, '')}">
+          <span class="dispute-link" onclick="openDisputeModal('${d.NAME}')">Report an issue</span>
         </div>`;
       c.appendChild(card);
     });
@@ -470,6 +491,66 @@
     document.getElementById("register-modal").classList.add("active");
   }
   function closeRegisterModal() { document.getElementById("register-modal").classList.remove("active"); }
+
+  let disputeTargetName = "";
+  function openDisputeModal(distributorName) {
+    disputeTargetName = distributorName;
+    document.getElementById("dispute-target-name").innerText = distributorName;
+    document.getElementById("dispute-status-msg").innerText = "";
+    document.getElementById("dispute-modal").classList.add("active");
+  }
+  function closeDisputeModal() { document.getElementById("dispute-modal").classList.remove("active"); }
+
+  function submitDispute() {
+    const submittedBy = document.getElementById("dispute-submitted-by").value;
+    const phone = document.getElementById("dispute-phone").value;
+    const description = document.getElementById("dispute-description").value;
+    if (!submittedBy || !phone || !description) {
+      document.getElementById("dispute-status-msg").innerText = "Please fill in all fields.";
+      return;
+    }
+    fetch(BACKEND + "/submit-dispute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        secret: SECRET,
+        distributorName: disputeTargetName,
+        submittedBy,
+        phone,
+        description,
+      }),
+    })
+      .then(r => r.json())
+      .then(() => {
+        document.getElementById("dispute-status-msg").innerText = "Submitted for review. Thank you.";
+        document.getElementById("dispute-submitted-by").value = "";
+        document.getElementById("dispute-phone").value = "";
+        document.getElementById("dispute-description").value = "";
+        setTimeout(closeDisputeModal, 1800);
+      })
+      .catch(() => {
+        document.getElementById("dispute-status-msg").innerText = "Something went wrong. Try again.";
+      });
+  }
+
+  fetch(BACKEND + "/get-disputes").then(r => r.json()).then(data => {
+    const disputes = data.disputes || [];
+    const counts = {};
+    disputes.forEach(d => {
+      const name = d.DISTRIBUTOR_NAME;
+      counts[name] = (counts[name] || 0) + 1;
+    });
+    Object.keys(counts).forEach(name => {
+      const safeName = name.replace(/[^a-zA-Z0-9]/g, "");
+      const el = document.getElementById("dispute-count-" + safeName);
+      if (el) {
+        const countSpan = document.createElement("span");
+        countSpan.className = "dispute-count";
+        countSpan.innerText = counts[name] + " dispute" + (counts[name] > 1 ? "s" : "") + " on record";
+        el.appendChild(countSpan);
+      }
+    });
+  }).catch(() => {});
 
   function submitRegister() {
     const name = document.getElementById("register-name").value;
