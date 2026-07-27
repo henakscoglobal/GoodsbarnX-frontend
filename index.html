@@ -118,6 +118,12 @@
   .dispute-link{ font-size:11px; color:rgba(18,21,28,0.4); text-decoration:underline; }
   .dispute-count{ font-size:10.5px; color:var(--stamp); font-weight:600; }
   .dispute-none{ font-size:10.5px; color:var(--ok); font-weight:600; }
+  .territory-row{ display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px dashed var(--line-dark); }
+  .territory-row:last-child{ border-bottom:none; }
+  .territory-name{ font-family:'Roboto Slab',serif; font-weight:700; font-size:13.5px; }
+  .territory-status{ font-size:10.5px; font-weight:600; padding:3px 9px; border-radius:20px; }
+  .territory-status.verified{ background:rgba(63,122,78,0.15); color:var(--ok); }
+  .territory-status.pending{ background:rgba(200,138,52,0.15); color:var(--brass-dark, #9A6A22); }
 
   .loading-text{ color:rgba(239,233,222,0.5); font-size:13px; font-family:'JetBrains Mono',monospace; padding:8px 0; }
 
@@ -214,6 +220,15 @@
 
       <div class="search-bar-wrap"><span>🔍</span><input type="text" id="search-input" placeholder="Search by name, location, category…" oninput="applyFilters()"></div>
       <div class="queue-badge" id="queue-badge"></div>
+
+      <div class="section-label">Territory trust status</div>
+      <div class="manifest" style="padding:14px 16px;">
+        <div class="territory-row"><span class="territory-name">Onitsha</span><span class="territory-status verified">Association-verified network</span></div>
+        <div class="territory-row"><span class="territory-name">Nnewi</span><span class="territory-status pending">Self-attested for now</span></div>
+        <div class="territory-row"><span class="territory-name">Awka</span><span class="territory-status pending">Self-attested for now</span></div>
+        <div class="territory-row"><span class="territory-name">Asaba</span><span class="territory-status pending">Self-attested for now</span></div>
+      </div>
+
       <div class="filter-pills" id="filter-pills"></div>
 
       <div class="section-label">Distributors <span class="mono" id="distributor-count"></span></div>
