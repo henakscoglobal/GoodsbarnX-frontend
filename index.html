@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#12151C">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@500;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     --ink:#12151C; --ink-2:#1B1F29;
@@ -172,10 +173,174 @@
   .screen{ display:none; }
   .screen.active{ display:block; animation:fadein .25s ease; }
   @keyframes fadein{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+  /* ---------- Auth screen ---------- */
+  .auth-shell{
+    max-width:480px; margin:0 auto; min-height:100vh; background:var(--ink);
+    display:flex; flex-direction:column; justify-content:center; padding:32px 24px;
+  }
+  .auth-shell.hidden{ display:none; }
+  .auth-brand{ text-align:center; margin-bottom:36px; }
+  .auth-brand svg{ margin-bottom:14px; }
+  .auth-brand h1{ font-size:24px; color:var(--paper); }
+  .auth-brand p{ font-size:12.5px; color:rgba(239,233,222,0.5); margin-top:6px; }
+  .auth-box{ background:var(--ink-2); border:1px solid var(--line); border-radius:16px; padding:22px; }
+  .role-picker{ display:flex; gap:8px; margin-bottom:18px; }
+  .role-pick{ flex:1; text-align:center; padding:10px 4px; border-radius:10px; border:1.5px solid var(--line); font-size:11.5px; font-weight:600; color:rgba(239,233,222,0.6); }
+  .role-pick.sel{ border-color:var(--brass); background:rgba(200,138,52,0.1); color:var(--brass-bright); }
+  .auth-box input{ width:100%; padding:12px; margin-bottom:10px; border:1px solid var(--line); border-radius:10px; background:var(--ink); color:var(--paper); font-size:14px; font-family:'Inter',sans-serif; box-sizing:border-box; }
+  .auth-box input::placeholder{ color:rgba(239,233,222,0.35); }
+  .auth-submit{ width:100%; background:var(--stamp); color:#fff; border:none; border-radius:10px; padding:13px; font-size:14px; font-weight:700; margin-top:6px; }
+  .auth-switch{ text-align:center; margin-top:16px; font-size:12.5px; color:rgba(239,233,222,0.5); }
+  .auth-switch span{ color:var(--brass-bright); font-weight:600; }
+  .auth-guest{ text-align:center; margin-top:20px; font-size:12px; color:rgba(239,233,222,0.35); text-decoration:underline; }
+  .auth-error{ font-size:12.5px; color:var(--stamp-bright); text-align:center; margin-top:10px; }
 </style>
 </head>
 <body>
-<div id="app">
+
+<div class="auth-shell" id="auth-shell">
+  <div class="auth-brand">
+    <svg width="40" height="40" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin:0 auto;display:block;">
+      <rect x="2" y="6" width="16" height="16" rx="4" fill="#E3A94F"/>
+      <rect x="16" y="12" width="16" height="16" rx="4" fill="#A63D2F"/>
+    </svg>
+    <h1>ShelfMatch</h1>
+    <p>Onitsha · Nnewi · Awka · Asaba</p>
+  </div>
+
+  <div class="auth-box">
+    <div id="signup-role-picker" class="role-picker">
+      <div class="role-pick sel" data-role="buyer" onclick="selectRole(this)">Buyer</div>
+      <div class="role-pick" data-role="distributor" onclick="selectRole(this)">Distributor</div>
+      <div class="role-pick" data-role="agent" onclick="selectRole(this)">Supplier Agent</div>
+    </div>
+    <input type="text" id="auth-name" placeholder="Full name">
+    <input type="tel" id="auth-phone" placeholder="Phone number">
+    <input type="email" id="auth-email" placeholder="Email">
+    <input type="password" id="auth-password" placeholder="Password">
+    <button class="auth-submit" onclick="handleSignup()">Create account</button>
+    <div class="auth-error" id="auth-error"></div>
+  </div>
+
+  <div class="auth-switch">Already have an account? <span onclick="showLogin()">Log in</span></div>
+  <div class="auth-guest" onclick="continueAsGuest()">Continue browsing without an account</div>
+</div>
+
+<div class="auth-shell hidden" id="login-shell">
+  <div class="auth-brand">
+    <svg width="40" height="40" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin:0 auto;display:block;">
+      <rect x="2" y="6" width="16" height="16" rx="4" fill="#E3A94F"/>
+      <rect x="16" y="12" width="16" height="16" rx="4" fill="#A63D2F"/>
+    </svg>
+    <h1>Welcome back</h1>
+    <p>Log in to ShelfMatch</p>
+  </div>
+
+  <div class="auth-box">
+    <input type="email" id="login-email" placeholder="Email">
+    <input type="password" id="login-password" placeholder="Password">
+    <button class="auth-submit" onclick="handleLogin()">Log in</button>
+    <div class="auth-error" id="login-error"></div>
+  </div>
+
+  <div class="auth-switch">New here? <span onclick="showSignup()">Create an account</span></div>
+  <div class="auth-guest" onclick="continueAsGuest()">Continue browsing without an account</div>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://zcxecnxirfdfvywnvcjp.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjeGVjbnhpcmZkZnZ5d252Y2pwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxMDIyMTMsImV4cCI6MjEwMDY3ODIxM30.ooKObFp6Mj_gKlVLZXnVyeDAdfdjzDJwqx2buimmBtI";
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  let selectedSignupRole = "buyer";
+  function selectRole(el) {
+    document.querySelectorAll("#signup-role-picker .role-pick").forEach(r => r.classList.remove("sel"));
+    el.classList.add("sel");
+    selectedSignupRole = el.dataset.role;
+  }
+
+  function showLogin() {
+    document.getElementById("auth-shell").classList.add("hidden");
+    document.getElementById("login-shell").classList.remove("hidden");
+  }
+  function showSignup() {
+    document.getElementById("login-shell").classList.add("hidden");
+    document.getElementById("auth-shell").classList.remove("hidden");
+  }
+
+  function continueAsGuest() {
+    document.getElementById("auth-shell").classList.add("hidden");
+    document.getElementById("login-shell").classList.add("hidden");
+    document.getElementById("app").style.display = "block";
+  }
+
+  async function handleSignup() {
+    const name = document.getElementById("auth-name").value;
+    const phone = document.getElementById("auth-phone").value;
+    const email = document.getElementById("auth-email").value;
+    const password = document.getElementById("auth-password").value;
+    const errorEl = document.getElementById("auth-error");
+    errorEl.innerText = "";
+
+    if (!name || !phone || !email || !password) {
+      errorEl.innerText = "Please fill in every field.";
+      return;
+    }
+
+    const { data, error } = await sb.auth.signUp({ email, password });
+    if (error) {
+      errorEl.innerText = error.message;
+      return;
+    }
+
+    const userId = data.user.id;
+
+    await sb.from("profiles").insert({ id: userId, full_name: name, phone: phone, role: selectedSignupRole });
+
+    if (selectedSignupRole === "distributor") {
+      await sb.from("distributor_profiles").insert({ id: userId, business_name: name });
+    } else if (selectedSignupRole === "buyer") {
+      await sb.from("buyer_profiles").insert({ id: userId });
+    } else if (selectedSignupRole === "agent") {
+      await sb.from("agent_profiles").insert({ id: userId });
+    }
+
+    document.getElementById("auth-shell").classList.add("hidden");
+    document.getElementById("app").style.display = "block";
+  }
+
+  async function handleLogin() {
+    const email = document.getElementById("login-email").value;
+    const password = document.getElementById("login-password").value;
+    const errorEl = document.getElementById("login-error");
+    errorEl.innerText = "";
+
+    if (!email || !password) {
+      errorEl.innerText = "Please fill in both fields.";
+      return;
+    }
+
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) {
+      errorEl.innerText = error.message;
+      return;
+    }
+
+    document.getElementById("login-shell").classList.add("hidden");
+    document.getElementById("app").style.display = "block";
+  }
+
+  (async () => {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+      document.getElementById("auth-shell").classList.add("hidden");
+      document.getElementById("app").style.display = "block";
+    }
+  })();
+</script>
+
+<div id="app" style="display:none;">
   <div class="status-bar"></div>
 
   <header class="top">
