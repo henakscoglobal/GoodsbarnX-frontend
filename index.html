@@ -523,30 +523,31 @@
   function renderDistributors(list) {
     const c = document.getElementById("distributor-list");
     c.innerHTML = "";
-    if (list.length === 0) { c.innerHTML = '<div class="loading-text">No distributors match your search.</div>'; return; }
+    if (list.length === 0) { c.innerHTML = '<div class="loading-text">No distributors yet. Be the first to register on the Onboard tab.</div>'; return; }
     list.forEach(d => {
-      const tier = d["VERIFIED_TIER"] ? d["VERIFIED_TIER"].trim() : "";
+      const tier = d.verification_tier || "";
       let verifiedBadge = "";
       if (tier.toLowerCase() === "association") verifiedBadge = '<div class="m-verified">✓ Association Verified</div>';
       else if (tier.toLowerCase() === "market board") verifiedBadge = '<div class="m-verified market-board">✓ Market Board Verified</div>';
       else if (tier.toLowerCase() === "self-attested") verifiedBadge = '<div class="m-verified self-attested">Self-Attested (Pending)</div>';
+      const phone = d.profiles ? d.profiles.phone : "";
       const card = document.createElement("div");
       card.className = "manifest";
       card.innerHTML = `
         <div class="manifest-top">
           <div>
-            <div class="m-name">${d.NAME}</div>
-            <div class="m-loc">${d["LOCATION "]}</div>
+            <div class="m-name">${d.business_name}</div>
+            <div class="m-loc">${d.location || ""}</div>
             ${verifiedBadge}
           </div>
-          <div class="stamp-badge">${d["CATEGORY "] ? d["CATEGORY "].trim().toUpperCase() : "LISTED"}</div>
+          <div class="stamp-badge">${d.category ? d.category.toUpperCase() : "LISTED"}</div>
         </div>
         <div class="m-meta">
-          ${d.PHONE ? `<button class="btn-whatsapp" onclick="openWhatsApp('${d.PHONE}','${d.NAME}')">WhatsApp</button>` : ''}
-          <button class="btn-inquire" onclick="openModal('${d.NAME}','distributor')">Inquire</button>
+          ${phone ? `<button class="btn-whatsapp" onclick="openWhatsApp('${phone}','${d.business_name}')">WhatsApp</button>` : ''}
+          <button class="btn-inquire" onclick="openModal('${d.id}','${d.business_name}','distributor')">Inquire</button>
         </div>
-        <div class="dispute-row" id="dispute-count-${d.NAME.replace(/[^a-zA-Z0-9]/g, '')}">
-          <span class="dispute-link" onclick="openDisputeModal('${d.NAME}')">Report an issue</span>
+        <div class="dispute-row" id="dispute-count-${d.id}">
+          <span class="dispute-link" onclick="openDisputeModal('${d.id}','${d.business_name}')">Report an issue</span>
         </div>`;
       c.appendChild(card);
     });
@@ -555,27 +556,23 @@
   function renderBuyers(list) {
     const c = document.getElementById("buyer-list");
     c.innerHTML = "";
-    if (list.length === 0) { c.innerHTML = '<div class="loading-text">No buyers match your search.</div>'; return; }
+    if (list.length === 0) { c.innerHTML = '<div class="loading-text">No buyers yet. Be the first to register on the Onboard tab.</div>'; return; }
     list.forEach(b => {
-      const tier = b["VERIFIED_TIER"] ? b["VERIFIED_TIER"].trim() : "";
-      let verifiedBadge = "";
-      if (tier.toLowerCase() === "association") verifiedBadge = '<div class="m-verified">✓ Association Verified</div>';
-      else if (tier.toLowerCase() === "market board") verifiedBadge = '<div class="m-verified market-board">✓ Market Board Verified</div>';
-      else if (tier.toLowerCase() === "self-attested") verifiedBadge = '<div class="m-verified self-attested">Self-Attested (Pending)</div>';
+      const name = b.profiles ? b.profiles.full_name : "Buyer";
+      const phone = b.profiles ? b.profiles.phone : "";
       const card = document.createElement("div");
       card.className = "manifest";
       card.innerHTML = `
         <div class="manifest-top">
           <div>
-            <div class="m-name">${b.NAME}</div>
-            <div class="m-loc">${b.LOCATION}</div>
-            ${verifiedBadge}
+            <div class="m-name">${name}</div>
+            <div class="m-loc">${b.location || ""}</div>
           </div>
-          <div class="stamp-badge" style="border-color:var(--brass); color:var(--brass);">${b.LOOKING_FOR ? b.LOOKING_FOR.toUpperCase() : "BUYER"}</div>
+          <div class="stamp-badge" style="border-color:var(--brass); color:var(--brass);">${b.looking_for ? b.looking_for.toUpperCase() : "BUYER"}</div>
         </div>
         <div class="m-meta">
-          ${b.PHONE ? `<button class="btn-whatsapp" onclick="openWhatsApp('${b.PHONE}','${b.NAME}')">WhatsApp</button>` : ''}
-          <button class="btn-inquire" onclick="openModal('${b.NAME}','buyer')">Inquire</button>
+          ${phone ? `<button class="btn-whatsapp" onclick="openWhatsApp('${phone}','${name}')">WhatsApp</button>` : ''}
+          <button class="btn-inquire" onclick="openModal('${b.id}','${name}','buyer')">Inquire</button>
         </div>`;
       c.appendChild(card);
     });
@@ -583,8 +580,8 @@
 
   function buildFilterPills() {
     const categories = new Set();
-    allDistributors.forEach(d => { if (d["CATEGORY "]) categories.add(d["CATEGORY "].trim()); });
-    allBuyers.forEach(b => { if (b.LOOKING_FOR) categories.add(b.LOOKING_FOR.trim()); });
+    allDistributors.forEach(d => { if (d.category) categories.add(d.category.trim()); });
+    allBuyers.forEach(b => { if (b.looking_for) categories.add(b.looking_for.trim()); });
     const wrap = document.getElementById("filter-pills");
     wrap.innerHTML = "";
     const allPill = document.createElement("div");
@@ -611,13 +608,14 @@
   function applyFilters() {
     const q = document.getElementById("search-input").value.trim().toLowerCase();
     const fd = allDistributors.filter(d => {
-      const mc = activeCategory === "All" || (d["CATEGORY "] && d["CATEGORY "].trim() === activeCategory);
-      const ms = !q || (d.NAME||"").toLowerCase().includes(q) || (d["LOCATION "]||"").toLowerCase().includes(q) || (d["CATEGORY "]||"").toLowerCase().includes(q);
+      const mc = activeCategory === "All" || (d.category && d.category.trim() === activeCategory);
+      const ms = !q || (d.business_name||"").toLowerCase().includes(q) || (d.location||"").toLowerCase().includes(q) || (d.category||"").toLowerCase().includes(q);
       return mc && ms;
     });
     const fb = allBuyers.filter(b => {
-      const mc = activeCategory === "All" || (b.LOOKING_FOR && b.LOOKING_FOR.trim() === activeCategory);
-      const ms = !q || (b.NAME||"").toLowerCase().includes(q) || (b.LOCATION||"").toLowerCase().includes(q) || (b.LOOKING_FOR||"").toLowerCase().includes(q);
+      const bName = b.profiles ? b.profiles.full_name : "";
+      const mc = activeCategory === "All" || (b.looking_for && b.looking_for.trim() === activeCategory);
+      const ms = !q || (bName||"").toLowerCase().includes(q) || (b.location||"").toLowerCase().includes(q) || (b.looking_for||"").toLowerCase().includes(q);
       return mc && ms;
     });
     renderDistributors(fd);
@@ -626,25 +624,41 @@
     document.getElementById("buyer-count").innerText = fb.length;
   }
 
-  fetch(BACKEND + "/distributors").then(r => r.json()).then(data => {
-    allDistributors = data.distributors;
-    document.getElementById("distributor-count").innerText = allDistributors.length;
-    document.getElementById("stat-distributors").innerText = allDistributors.length;
-    renderDistributors(allDistributors);
-    buildFilterPills();
-  }).catch(() => { document.getElementById("distributor-list").innerHTML = '<div class="loading-text">Could not load distributors.</div>'; });
+  async function loadDistributorsAndBuyers() {
+    const { data: distributors, error: distError } = await sb
+      .from("distributor_profiles")
+      .select("id, business_name, location, category, verification_tier, profiles(phone)");
 
-  fetch(BACKEND + "/buyers").then(r => r.json()).then(data => {
-    allBuyers = data.buyers;
-    document.getElementById("buyer-count").innerText = allBuyers.length;
-    document.getElementById("stat-buyers").innerText = allBuyers.length;
-    renderBuyers(allBuyers);
-    buildFilterPills();
-  }).catch(() => { document.getElementById("buyer-list").innerHTML = '<div class="loading-text">Could not load buyers.</div>'; });
+    if (distError) {
+      document.getElementById("distributor-list").innerHTML = '<div class="loading-text">Could not load distributors.</div>';
+    } else {
+      allDistributors = distributors || [];
+      document.getElementById("distributor-count").innerText = allDistributors.length;
+      document.getElementById("stat-distributors").innerText = allDistributors.length;
+      renderDistributors(allDistributors);
+      buildFilterPills();
+    }
 
-  fetch(BACKEND + "/inquiry-count").then(r => r.json()).then(data => {
-    document.getElementById("inquiry-count-ring").innerText = data.count;
-  }).catch(() => { document.getElementById("inquiry-count-ring").innerText = "–"; });
+    const { data: buyers, error: buyerError } = await sb
+      .from("buyer_profiles")
+      .select("id, location, looking_for, profiles(full_name, phone)");
+
+    if (buyerError) {
+      document.getElementById("buyer-list").innerHTML = '<div class="loading-text">Could not load buyers.</div>';
+    } else {
+      allBuyers = buyers || [];
+      document.getElementById("buyer-count").innerText = allBuyers.length;
+      document.getElementById("stat-buyers").innerText = allBuyers.length;
+      renderBuyers(allBuyers);
+      buildFilterPills();
+    }
+  }
+
+  loadDistributorsAndBuyers();
+
+  sb.from("inquiries").select("*", { count: "exact", head: true }).then(({ count }) => {
+    document.getElementById("inquiry-count-ring").innerText = count != null ? count : "–";
+  });
 
   // ---------- Contact modal ----------
   function openWhatsApp(phone, name) {
@@ -653,7 +667,9 @@
     window.open("https://wa.me/" + cleanPhone + "?text=" + message, "_blank");
   }
 
-  function openModal(name, type) {
+  let selectedContactId = "";
+  function openModal(id, name, type) {
+    selectedContactId = id;
     selectedContactName = name;
     selectedContactType = type;
     document.getElementById("modal-title").innerText = "Contact " + name;
@@ -672,8 +688,10 @@
   }
   function closeRegisterModal() { document.getElementById("register-modal").classList.remove("active"); }
 
+  let disputeTargetId = "";
   let disputeTargetName = "";
-  function openDisputeModal(distributorName) {
+  function openDisputeModal(distributorId, distributorName) {
+    disputeTargetId = distributorId;
     disputeTargetName = distributorName;
     document.getElementById("dispute-target-name").innerText = distributorName;
     document.getElementById("dispute-status-msg").innerText = "";
