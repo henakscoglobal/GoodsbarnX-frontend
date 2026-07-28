@@ -740,10 +740,17 @@
     const quantity = document.getElementById("inquiry-quantity").value;
     if (!name || !phone) { document.getElementById("status-msg").innerText = "Please fill in name and phone."; return; }
 
-    const payload = { secret: SECRET, name, phone, email, item, orderScale: selectedTier, quantity,
-      distributor: selectedContactType === "distributor" ? selectedContactName : "",
-      buyer: selectedContactType === "buyer" ? selectedContactName : "",
-      contactType: selectedContactType };
+    const payload = {
+      inquirer_name: name,
+      inquirer_phone: phone,
+      inquirer_email: email || null,
+      item: item || null,
+      order_scale: selectedTier || null,
+      quantity: quantity || null,
+      distributor_id: selectedContactType === "distributor" ? selectedContactId : null,
+      buyer_id: selectedContactType === "buyer" ? selectedContactId : null,
+      contact_type: selectedContactType,
+    };
 
     if (!navigator.onLine) {
       queueInquiry(payload, selectedContactName, selectedContactType);
@@ -751,18 +758,17 @@
       clearForm(); setTimeout(closeModal, 2000); return;
     }
 
-    fetch(BACKEND + "/inquiries", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) })
-      .then(r => r.json())
-      .then(() => {
-        saveInquiryToHistory(selectedContactName, selectedContactType);
-        document.getElementById("status-msg").innerText = "Sent! We'll be in touch.";
-        clearForm(); setTimeout(closeModal, 1500);
-      })
-      .catch(() => {
+    sb.from("inquiries").insert(payload).then(({ error }) => {
+      if (error) {
         queueInquiry(payload, selectedContactName, selectedContactType);
         document.getElementById("status-msg").innerText = "Connection issue — saved, will send automatically.";
         clearForm(); setTimeout(closeModal, 2000);
-      });
+        return;
+      }
+      saveInquiryToHistory(selectedContactName, selectedContactType);
+      document.getElementById("status-msg").innerText = "Sent! We'll be in touch.";
+      clearForm(); setTimeout(closeModal, 1500);
+    });
   }
   function clearForm() {
     document.getElementById("inquiry-name").value = "";
@@ -789,16 +795,15 @@
     if (q.length === 0) return;
     const remaining = [];
     q.forEach(item => {
-      fetch(BACKEND + "/inquiries", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(item.payload) })
-        .then(r => r.json()).then(() => {
-          saveInquiryToHistory(item.contactName, item.contactType);
-          localStorage.setItem("shelfmatch_queue", JSON.stringify(remaining));
-          updateQueueBadge();
-        }).catch(() => {
+      sb.from("inquiries").insert(item.payload).then(({ error }) => {
+        if (error) {
           remaining.push(item);
-          localStorage.setItem("shelfmatch_queue", JSON.stringify(remaining));
-          updateQueueBadge();
-        });
+        } else {
+          saveInquiryToHistory(item.contactName, item.contactType);
+        }
+        localStorage.setItem("shelfmatch_queue", JSON.stringify(remaining));
+        updateQueueBadge();
+      });
     });
   }
   function updateQueueBadge() {
