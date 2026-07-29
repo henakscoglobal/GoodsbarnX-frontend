@@ -766,6 +766,16 @@
         return;
       }
       saveInquiryToHistory(selectedContactName, selectedContactType);
+      fetch(BACKEND + "/notify-inquiry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secret: SECRET,
+          name, phone, email, item, orderScale: selectedTier, quantity,
+          contactedName: selectedContactName,
+          contactType: selectedContactType,
+        }),
+      }).catch(() => {});
       document.getElementById("status-msg").innerText = "Sent! We'll be in touch.";
       clearForm(); setTimeout(closeModal, 1500);
     });
@@ -800,6 +810,21 @@
           remaining.push(item);
         } else {
           saveInquiryToHistory(item.contactName, item.contactType);
+          fetch(BACKEND + "/notify-inquiry", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              secret: SECRET,
+              name: item.payload.inquirer_name,
+              phone: item.payload.inquirer_phone,
+              email: item.payload.inquirer_email,
+              item: item.payload.item,
+              orderScale: item.payload.order_scale,
+              quantity: item.payload.quantity,
+              contactedName: item.contactName,
+              contactType: item.contactType,
+            }),
+          }).catch(() => {});
         }
         localStorage.setItem("shelfmatch_queue", JSON.stringify(remaining));
         updateQueueBadge();
