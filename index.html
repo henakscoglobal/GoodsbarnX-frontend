@@ -682,48 +682,41 @@
       document.getElementById("dispute-status-msg").innerText = "Please fill in all fields.";
       return;
     }
-    fetch(BACKEND + "/submit-dispute", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        secret: SECRET,
-        distributorName: disputeTargetName,
-        submittedBy,
-        phone,
-        description,
-      }),
-    })
-      .then(r => r.json())
-      .then(() => {
-        document.getElementById("dispute-status-msg").innerText = "Submitted for review. Thank you.";
-        document.getElementById("dispute-submitted-by").value = "";
-        document.getElementById("dispute-phone").value = "";
-        document.getElementById("dispute-description").value = "";
-        setTimeout(closeDisputeModal, 1800);
-      })
-      .catch(() => {
+    sb.from("disputes").insert({
+      distributor_id: disputeTargetId,
+      submitted_by: submittedBy,
+      submitted_phone: phone,
+      description: description,
+      status: "Pending",
+    }).then(({ error }) => {
+      if (error) {
         document.getElementById("dispute-status-msg").innerText = "Something went wrong. Try again.";
-      });
+        return;
+      }
+      document.getElementById("dispute-status-msg").innerText = "Submitted for review. Thank you.";
+      document.getElementById("dispute-submitted-by").value = "";
+      document.getElementById("dispute-phone").value = "";
+      document.getElementById("dispute-description").value = "";
+      setTimeout(closeDisputeModal, 1800);
+    });
   }
 
-  fetch(BACKEND + "/get-disputes").then(r => r.json()).then(data => {
-    const disputes = data.disputes || [];
+  sb.from("disputes").select("distributor_id").eq("status", "Approved").then(({ data }) => {
+    const disputes = data || [];
     const counts = {};
     disputes.forEach(d => {
-      const name = d.DISTRIBUTOR_NAME;
-      counts[name] = (counts[name] || 0) + 1;
+      counts[d.distributor_id] = (counts[d.distributor_id] || 0) + 1;
     });
-    Object.keys(counts).forEach(name => {
-      const safeName = name.replace(/[^a-zA-Z0-9]/g, "");
-      const el = document.getElementById("dispute-count-" + safeName);
+    Object.keys(counts).forEach(distributorId => {
+      const el = document.getElementById("dispute-count-" + distributorId);
       if (el) {
         const countSpan = document.createElement("span");
         countSpan.className = "dispute-count";
-        countSpan.innerText = counts[name] + " dispute" + (counts[name] > 1 ? "s" : "") + " on record";
+        countSpan.innerText = counts[distributorId] + " dispute" + (counts[distributorId] > 1 ? "s" : "") + " on record";
         el.appendChild(countSpan);
       }
     });
-  }).catch(() => {});
+  });
 
   let selectedTier = "";
   function selectTier(el) {
