@@ -126,6 +126,16 @@
   .territory-status.verified{ background:rgba(63,122,78,0.15); color:var(--ok); }
   .territory-status.pending{ background:rgba(200,138,52,0.15); color:var(--brass-dark, #9A6A22); }
 
+  .lock-banner{ background:rgba(63,122,78,0.12); border:1px solid rgba(63,122,78,0.3); border-radius:14px; padding:14px 16px; margin-bottom:16px; }
+  .lock-banner .lb-title{ font-family:'Roboto Slab',serif; font-weight:700; font-size:14px; color:var(--paper); margin-bottom:4px; }
+  .lock-banner .lb-sub{ font-size:12px; color:rgba(239,233,222,0.6); line-height:1.5; margin-bottom:10px; }
+  .lock-banner button{ background:none; border:1.3px solid var(--brass); color:var(--brass-bright); border-radius:8px; padding:7px 12px; font-size:11.5px; font-weight:600; }
+
+  .distributor-tools{ background:var(--ink-2); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:16px; }
+  .distributor-tools .dt-title{ font-family:'Roboto Slab',serif; font-weight:700; font-size:14px; color:var(--paper); margin-bottom:4px; }
+  .distributor-tools .dt-sub{ font-size:12px; color:rgba(239,233,222,0.5); line-height:1.5; margin-bottom:10px; }
+  .distributor-tools button{ background:var(--brass); color:var(--ink); border:none; border-radius:8px; padding:8px 14px; font-size:12px; font-weight:700; }
+
   .loading-text{ color:rgba(239,233,222,0.5); font-size:13px; font-family:'JetBrains Mono',monospace; padding:8px 0; }
 
   /* ---------- Inquiries screen ---------- */
@@ -275,6 +285,22 @@
     document.getElementById("app").style.display = "block";
   }
 
+  let currentUser = null;
+
+  async function loadCurrentUser() {
+    const { data: { user } } = await sb.auth.getUser();
+    if (!user) { currentUser = null; return; }
+
+    const { data: profile } = await sb.from("profiles").select("*").eq("id", user.id).single();
+    currentUser = { id: user.id, ...profile };
+
+    if (currentUser.role === "distributor") {
+      showDistributorTools();
+    } else if (currentUser.role === "buyer") {
+      checkBuyerLock();
+    }
+  }
+
   async function handleSignup() {
     const name = document.getElementById("auth-name").value;
     const phone = document.getElementById("auth-phone").value;
@@ -306,6 +332,7 @@
       await sb.from("agent_profiles").insert({ id: userId });
     }
 
+    await loadCurrentUser();
     document.getElementById("auth-shell").classList.add("hidden");
     document.getElementById("app").style.display = "block";
   }
@@ -327,6 +354,7 @@
       return;
     }
 
+    await loadCurrentUser();
     document.getElementById("login-shell").classList.add("hidden");
     document.getElementById("app").style.display = "block";
   }
@@ -334,6 +362,7 @@
   (async () => {
     const { data: { session } } = await sb.auth.getSession();
     if (session) {
+      await loadCurrentUser();
       document.getElementById("auth-shell").classList.add("hidden");
       document.getElementById("app").style.display = "block";
     }
@@ -382,6 +411,9 @@
           <div class="trust-item"><div class="n">4</div><div class="t">Markets live</div></div>
         </div>
       </div>
+
+      <div id="lock-banner-holder"></div>
+      <div id="distributor-tools-holder"></div>
 
       <div class="search-bar-wrap"><span>🔍</span><input type="text" id="search-input" placeholder="Search by name, location, category…" oninput="applyFilters()"></div>
       <div class="queue-badge" id="queue-badge"></div>
@@ -477,6 +509,31 @@
     </div>
   </div>
 
+  <div class="sheet-overlay" id="add-buyer-modal">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <div class="sheet-handle"></div>
+      <h3>Add your buyer</h3>
+      <div class="sub">They'll see a consent screen before anything is connected.</div>
+      <div class="field"><label>Buyer's phone number</label><input type="tel" id="add-buyer-phone" placeholder="Must match their ShelfMatch account"></div>
+      <button class="submit-btn" onclick="submitAddBuyer()">Send connection request</button>
+      <button class="cancel-btn" onclick="closeAddBuyerModal()">Cancel</button>
+      <div class="status-msg" id="add-buyer-status-msg"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="consent-modal">
+    <div class="sheet" onclick="event.stopPropagation()">
+      <div class="sheet-handle"></div>
+      <h3>Connection request</h3>
+      <div class="sub" id="consent-sub"></div>
+      <div class="modal-actions">
+        <button class="submit-btn" style="flex:1;" onclick="acceptLock()">Accept</button>
+        <button class="cancel-btn" style="flex:1;" onclick="declineLock()">Not now</button>
+      </div>
+      <div class="status-msg" id="consent-status-msg"></div>
+    </div>
+  </div>
+
   <nav class="bottom">
     <div class="nav-item active" id="nav-home" onclick="showScreen('home')"><span class="ic">🏬</span>Market</div>
     <div class="nav-item" id="nav-inquiries" onclick="showScreen('inquiries')"><span class="ic">📋</span>Inquiries</div>
@@ -486,6 +543,112 @@
 </div>
 
 <script>
+  // ---------- Distributor: add a buyer ----------
+  function showDistributorTools() {
+    const holder = document.getElementById("distributor-tools-holder");
+    holder.innerHTML = `
+      <div class="distributor-tools">
+        <div class="dt-title">Bring your own buyer</div>
+        <div class="dt-sub">Connect a buyer you already know. They'll confirm before anything is locked.</div>
+        <button onclick="openAddBuyerModal()">Add a buyer</button>
+      </div>`;
+  }
+
+  function openAddBuyerModal() {
+    document.getElementById("add-buyer-phone").value = "";
+    document.getElementById("add-buyer-status-msg").innerText = "";
+    document.getElementById("add-buyer-modal").classList.add("active");
+  }
+  function closeAddBuyerModal() { document.getElementById("add-buyer-modal").classList.remove("active"); }
+
+  async function submitAddBuyer() {
+    const phone = document.getElementById("add-buyer-phone").value;
+    const statusEl = document.getElementById("add-buyer-status-msg");
+    if (!phone) { statusEl.innerText = "Please enter a phone number."; return; }
+
+    const { data: matchingProfile } = await sb.from("profiles").select("id, role").eq("phone", phone).eq("role", "buyer").single();
+
+    if (!matchingProfile) {
+      statusEl.innerText = "No buyer account found with that phone number yet. They'll need to sign up first.";
+      return;
+    }
+
+    const { error } = await sb.from("buyer_locks").insert({
+      buyer_id: matchingProfile.id,
+      distributor_id: currentUser.id,
+      status: "pending_consent",
+    });
+
+    if (error) {
+      statusEl.innerText = "Could not send request. They may already be connected elsewhere.";
+      return;
+    }
+
+    statusEl.innerText = "Sent! They'll see this request next time they open ShelfMatch.";
+    setTimeout(closeAddBuyerModal, 1800);
+  }
+
+  // ---------- Buyer: check for a lock and show consent/banner ----------
+  let pendingLockId = "";
+  async function checkBuyerLock() {
+    const { data: pendingLock } = await sb
+      .from("buyer_locks")
+      .select("id, distributor_id, distributor_profiles(business_name)")
+      .eq("buyer_id", currentUser.id)
+      .eq("status", "pending_consent")
+      .maybeSingle();
+
+    if (pendingLock) {
+      pendingLockId = pendingLock.id;
+      const distName = pendingLock.distributor_profiles ? pendingLock.distributor_profiles.business_name : "A distributor";
+      document.getElementById("consent-sub").innerText = distName + " wants to connect you as their buyer. You'll be primarily connected to them, but can still browse everyone else.";
+      document.getElementById("consent-modal").classList.add("active");
+      return;
+    }
+
+    const { data: lock } = await sb
+      .from("buyer_locks")
+      .select("id, status, distributor_id, distributor_profiles(business_name)")
+      .eq("buyer_id", currentUser.id)
+      .in("status", ["active", "release_requested"])
+      .maybeSingle();
+
+    if (!lock) return;
+
+    const holder = document.getElementById("lock-banner-holder");
+    const distName = lock.distributor_profiles ? lock.distributor_profiles.business_name : "a distributor";
+
+    if (lock.status === "active") {
+      holder.innerHTML = `
+        <div class="lock-banner">
+          <div class="lb-title">Connected to ${distName}</div>
+          <div class="lb-sub">You can browse everyone, but you're primarily connected to this distributor.</div>
+          <button onclick="requestRelease('${lock.id}')">Request open-market access</button>
+        </div>`;
+    } else if (lock.status === "release_requested") {
+      holder.innerHTML = `
+        <div class="lock-banner">
+          <div class="lb-title">Release requested</div>
+          <div class="lb-sub">Waiting on ${distName} to approve your open-market access. You'll keep your connection to them either way.</div>
+        </div>`;
+    }
+  }
+
+  async function requestRelease(lockId) {
+    await sb.from("buyer_locks").update({ status: "release_requested" }).eq("id", lockId);
+    checkBuyerLock();
+  }
+
+  async function acceptLock() {
+    await sb.from("buyer_locks").update({ status: "active" }).eq("id", pendingLockId);
+    document.getElementById("consent-modal").classList.remove("active");
+    checkBuyerLock();
+  }
+  async function declineLock() {
+    await sb.from("buyer_locks").delete().eq("id", pendingLockId);
+    document.getElementById("consent-modal").classList.remove("active");
+  }
+
   let allDistributors = [];
   let allBuyers = [];
   let activeCategory = "All";
