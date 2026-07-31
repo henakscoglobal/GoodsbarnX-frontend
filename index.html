@@ -602,12 +602,14 @@
   // ---------- Buyer: check for a lock and show consent/banner ----------
   let pendingLockId = "";
   async function checkBuyerLock() {
-    const { data: pendingLock } = await sb
+    const { data: pendingLock, error: pendingError } = await sb
       .from("buyer_locks")
       .select("id, distributor_id, distributor_profiles(business_name)")
       .eq("buyer_id", currentUser.id)
       .eq("status", "pending_consent")
       .maybeSingle();
+
+    alert("DEBUG — currentUser.id: " + currentUser.id + " | pendingLock: " + JSON.stringify(pendingLock) + " | error: " + JSON.stringify(pendingError));
 
     if (pendingLock) {
       pendingLockId = pendingLock.id;
