@@ -42,6 +42,7 @@
     display:flex; align-items:center; gap:6px; white-space:nowrap;
   }
   .locale-dot{ width:6px; height:6px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 3px rgba(63,122,78,0.25);}
+  .logout-btn{ font-size:10.5px; color:rgba(239,233,222,0.45); text-decoration:underline; padding:6px 4px; }
 
   main{ padding:20px 20px 100px; }
 
@@ -294,11 +295,18 @@
     const { data: profile } = await sb.from("profiles").select("*").eq("id", user.id).single();
     currentUser = { id: user.id, ...profile };
 
+    document.getElementById("logout-btn-holder").innerHTML = '<span class="logout-btn" onclick="handleLogout()">Log out</span>';
+
     if (currentUser.role === "distributor") {
       showDistributorTools();
     } else if (currentUser.role === "buyer") {
       checkBuyerLock();
     }
+  }
+
+  async function handleLogout() {
+    await sb.auth.signOut();
+    location.reload();
   }
 
   async function handleSignup() {
@@ -383,7 +391,10 @@
         <div class="brand-sub">Stock meets buyer</div>
       </div>
     </div>
-    <div class="locale-pill"><span class="locale-dot"></span>4 markets</div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <div class="locale-pill"><span class="locale-dot"></span>4 markets</div>
+      <div id="logout-btn-holder"></div>
+    </div>
   </header>
 
   <main>
