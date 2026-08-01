@@ -230,6 +230,7 @@
     <input type="tel" id="auth-phone" placeholder="Phone number">
     <input type="email" id="auth-email" placeholder="Email">
     <input type="password" id="auth-password" placeholder="Password">
+    <input type="text" id="auth-company" placeholder="Company you work for" style="display:none;">
     <button class="auth-submit" onclick="handleSignup()">Create account</button>
     <div class="auth-error" id="auth-error"></div>
   </div>
@@ -269,6 +270,7 @@
     document.querySelectorAll("#signup-role-picker .role-pick").forEach(r => r.classList.remove("sel"));
     el.classList.add("sel");
     selectedSignupRole = el.dataset.role;
+    document.getElementById("auth-company").style.display = selectedSignupRole === "agent" ? "block" : "none";
   }
 
   function showLogin() {
@@ -340,7 +342,20 @@
     } else if (selectedSignupRole === "buyer") {
       await sb.from("buyer_profiles").insert({ id: userId });
     } else if (selectedSignupRole === "agent") {
-      await sb.from("agent_profiles").insert({ id: userId });
+      const companyName = document.getElementById("auth-company").value;
+      let companyId = null;
+
+      if (companyName) {
+        const { data: existingCompany } = await sb.from("companies").select("id").ilike("name", companyName).maybeSingle();
+        if (existingCompany) {
+          companyId = existingCompany.id;
+        } else {
+          const { data: newCompany } = await sb.from("companies").insert({ name: companyName }).select("id").single();
+          companyId = newCompany ? newCompany.id : null;
+        }
+      }
+
+      await sb.from("agent_profiles").insert({ id: userId, company_id: companyId, employment_confirmed: false });
     }
 
     await loadCurrentUser();
@@ -583,12 +598,30 @@
   // ---------- Agent: propose distributor attachment ----------
   async function showAgentTools() {
     const holder = document.getElementById("distributor-tools-holder");
-    holder.innerHTML = `
-      <div class="distributor-tools">
-        <div class="dt-title">Attach to a distributor</div>
-        <div class="dt-sub">Propose a relationship. The distributor must accept before it's active.</div>
-        <button onclick="openAttachModal()">Attach to a distributor</button>
-      </div>`;
+
+    const { data: agentProfile } = await sb
+      .from("agent_profiles")
+      .select("employment_confirmed, companies(name)")
+      .eq("id", currentUser.id)
+      .single();
+
+    const confirmed = agentProfile && agentProfile.employment_confirmed;
+    const companyName = agentProfile && agentProfile.companies ? agentProfile.companies.name : "your company";
+
+    if (confirmed) {
+      holder.innerHTML = `
+        <div class="distributor-tools">
+          <div class="dt-title">Attach to a distributor</div>
+          <div class="dt-sub">Propose a relationship. The distributor must accept before it's active.</div>
+          <button onclick="openAttachModal()">Attach to a distributor</button>
+        </div>`;
+    } else {
+      holder.innerHTML = `
+        <div class="distributor-tools">
+          <div class="dt-title">Employment pending confirmation</div>
+          <div class="dt-sub">We're confirming your employment with ${companyName}. You'll be able to attach to distributors once that's verified.</div>
+        </div>`;
+    }
   }
 
   function openAttachModal() {
