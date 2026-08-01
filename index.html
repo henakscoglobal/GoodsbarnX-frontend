@@ -609,8 +609,6 @@
       .eq("status", "pending_consent")
       .maybeSingle();
 
-    alert("DEBUG — currentUser.id: " + currentUser.id + " | pendingLock: " + JSON.stringify(pendingLock) + " | error: " + JSON.stringify(pendingError));
-
     if (pendingLock) {
       pendingLockId = pendingLock.id;
       const distName = pendingLock.distributor_profiles ? pendingLock.distributor_profiles.business_name : "A distributor";
