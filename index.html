@@ -283,36 +283,6 @@
       background: var(--line);
     }
 
-    /* ---------- Search ---------- */
-    .search-bar-wrap {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: var(--ink-2);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 12px 14px;
-      margin-bottom: 10px;
-    }
-
-    .search-bar-wrap span {
-      flex-shrink: 0;
-    }
-
-    .search-bar-wrap input {
-      background: none;
-      border: none;
-      outline: none;
-      color: var(--paper);
-      font-size: 14px;
-      flex: 1;
-      font-family: 'Inter', sans-serif;
-    }
-
-    .search-bar-wrap input::placeholder {
-      color: rgba(239, 233, 222, 0.35);
-    }
-
     /* ---------- Category grid ---------- */
     .category-grid {
       display: grid;
@@ -476,47 +446,6 @@
       font-size: 10.5px;
       color: var(--stamp);
       font-weight: 600;
-    }
-
-    .dispute-none {
-      font-size: 10.5px;
-      color: var(--ok);
-      font-weight: 600;
-    }
-
-    .territory-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 7px 0;
-      border-bottom: 1px dashed var(--line-dark);
-    }
-
-    .territory-row:last-child {
-      border-bottom: none;
-    }
-
-    .territory-name {
-      font-family: 'Roboto Slab', serif;
-      font-weight: 700;
-      font-size: 13.5px;
-    }
-
-    .territory-status {
-      font-size: 10.5px;
-      font-weight: 600;
-      padding: 3px 9px;
-      border-radius: 20px;
-    }
-
-    .territory-status.verified {
-      background: rgba(63, 122, 78, 0.15);
-      color: var(--ok);
-    }
-
-    .territory-status.pending {
-      background: rgba(200, 138, 52, 0.15);
-      color: var(--brass-dark);
     }
 
     .lock-banner {
@@ -1055,44 +984,34 @@
       <div id="lock-banner-holder"></div>
       <div id="distributor-tools-holder"></div>
 
-      <div class="search-bar-wrap">
-        <span>🔍</span>
-        <input type="text" id="search-input" placeholder="Search by name, location, category…" oninput="applyFilters()" />
-      </div>
-      <div class="queue-badge" id="queue-badge"></div>
-
-      <div class="section-label">Territory trust status</div>
-      <div class="manifest" style="padding:14px 16px;">
-        <div class="territory-row">
-          <span class="territory-name">Onitsha</span>
-          <span class="territory-status verified">Association-verified network</span>
-        </div>
-        <div class="territory-row">
-          <span class="territory-name">Nnewi</span>
-          <span class="territory-status pending">Self-attested for now</span>
-        </div>
-        <div class="territory-row">
-          <span class="territory-name">Awka</span>
-          <span class="territory-status pending">Self-attested for now</span>
-        </div>
-        <div class="territory-row">
-          <span class="territory-name">Asaba</span>
-          <span class="territory-status pending">Self-attested for now</span>
-        </div>
-      </div>
-
       <!-- ========== CATEGORY GRID ========== -->
       <div class="section-label">Browse Market Verticals</div>
       <div class="category-grid">
         <div class="category-card active" onclick="selectCategory('All',this)">🏪<span>All</span></div>
         <div class="category-card" onclick="selectCategory('Auto Parts',this)">⚙️<span>Auto Parts</span></div>
+        <div class="category-card" onclick="selectCategory('Motorcycle',this)">🏍<span>Motorcycle</span></div>
+        <div class="category-card" onclick="selectCategory('Tyres',this)">🚗<span>Tyres</span></div>
+        <div class="category-card" onclick="selectCategory('Batteries',this)">🔋<span>Batteries</span></div>
+        <div class="category-card" onclick="selectCategory('Lubricants',this)">🛢<span>Lubricants</span></div>
         <div class="category-card" onclick="selectCategory('Electronics',this)">📱<span>Electronics</span></div>
         <div class="category-card" onclick="selectCategory('Pharma',this)">💊<span>Pharma</span></div>
         <div class="category-card" onclick="selectCategory('Textiles',this)">🧵<span>Textiles</span></div>
-        <div class="category-card" onclick="selectCategory('Building',this)">🧱<span>Building</span></div>
-        <div class="category-card" onclick="selectCategory('Motorcycle',this)">🏍️<span>Motorcycle</span></div>
-        <div class="category-card" onclick="selectCategory('General',this)">🛒<span>General</span></div>
-        <div class="category-card" onclick="selectCategory('Raw Material',this)">🏭<span>Raw Material</span></div>
+        <div class="category-card" onclick="selectCategory('Building Materials',this)">🧱<span>Building</span></div>
+        <div class="category-card" onclick="selectCategory('General Goods',this)">🛒<span>General</span></div>
+        <div class="category-card" onclick="selectCategory('Raw Materials',this)">🏭<span>Raw Material</span></div>
+        <div class="category-card" onclick="selectCategory('Food & Beverages',this)">🥫<span>Food & Bev</span></div>
+        <div class="category-card" onclick="selectCategory('Agriculture',this)">🌾<span>Agriculture</span></div>
+        <div class="category-card" onclick="selectCategory('Cosmetics',this)">🧴<span>Cosmetics</span></div>
+        <div class="category-card" onclick="selectCategory('Baby Products',this)">👶<span>Baby</span></div>
+        <div class="category-card" onclick="selectCategory('Frozen Foods',this)">🐟<span>Frozen</span></div>
+        <div class="category-card" onclick="selectCategory('Poultry',this)">🐓<span>Poultry</span></div>
+        <div class="category-card" onclick="selectCategory('Computers',this)">💻<span>Computers</span></div>
+        <div class="category-card" onclick="selectCategory('Electrical',this)">🔌<span>Electrical</span></div>
+        <div class="category-card" onclick="selectCategory('Plumbing',this)">🚿<span>Plumbing</span></div>
+        <div class="category-card" onclick="selectCategory('Furniture',this)">🪑<span>Furniture</span></div>
+        <div class="category-card" onclick="selectCategory('Home Appliances',this)">🏠<span>Appliances</span></div>
+        <div class="category-card" onclick="selectCategory('Packaging',this)">📦<span>Packaging</span></div>
+        <div class="category-card" onclick="selectCategory('Logistics',this)">🚚<span>Logistics</span></div>
       </div>
 
       <div class="section-label">Distributors <span class="mono" id="distributor-count"></span></div>
@@ -1490,7 +1409,6 @@
       window.scrollTo(0, 0);
     }
 
-    // ---------- FULL RENDER FUNCTIONS ----------
     function renderDistributors(list) {
       const c = document.getElementById("distributor-list");
       c.innerHTML = "";
@@ -1555,7 +1473,6 @@
       });
     }
 
-    // ---------- Filtering ----------
     function selectCategory(cat, el) {
       activeCategory = cat;
       document.querySelectorAll(".category-card").forEach(c => c.classList.remove("active"));
@@ -1564,17 +1481,13 @@
     }
 
     function applyFilters() {
-      const q = document.getElementById("search-input").value.trim().toLowerCase();
       const fd = allDistributors.filter(d => {
         const mc = activeCategory === "All" || (d.category && d.category.trim() === activeCategory);
-        const ms = !q || (d.business_name||"").toLowerCase().includes(q) || (d.location||"").toLowerCase().includes(q) || (d.category||"").toLowerCase().includes(q);
-        return mc && ms;
+        return mc;
       });
       const fb = allBuyers.filter(b => {
-        const bName = b.profiles ? b.profiles.full_name : "";
         const mc = activeCategory === "All" || (b.looking_for && b.looking_for.trim() === activeCategory);
-        const ms = !q || (bName||"").toLowerCase().includes(q) || (b.location||"").toLowerCase().includes(q) || (b.looking_for||"").toLowerCase().includes(q);
-        return mc && ms;
+        return mc;
       });
       renderDistributors(fd);
       renderBuyers(fb);
@@ -1583,30 +1496,25 @@
     }
 
     async function loadDistributorsAndBuyers() {
-      const { data: distributors, error: distError } = await sb
-        .from("distributor_profiles")
-        .select("id, business_name, location, category, verification_tier, profiles(phone)");
-      if (distError) {
+      const { data: distributors } = await sb.from("distributor_profiles").select("id, business_name, location, category, verification_tier, profiles(phone)");
+      if (!distributors) {
         document.getElementById("distributor-list").innerHTML = '<div class="loading-text">Could not load distributors.</div>';
       } else {
-        allDistributors = distributors || [];
+        allDistributors = distributors;
         document.getElementById("distributor-count").innerText = allDistributors.length;
         document.getElementById("stat-distributors").innerText = allDistributors.length;
         renderDistributors(allDistributors);
       }
-      const { data: buyers, error: buyerError } = await sb
-        .from("buyer_profiles")
-        .select("id, location, looking_for, profiles(full_name, phone)");
-      if (buyerError) {
+      const { data: buyers } = await sb.from("buyer_profiles").select("id, location, looking_for, profiles(full_name, phone)");
+      if (!buyers) {
         document.getElementById("buyer-list").innerHTML = '<div class="loading-text">Could not load buyers.</div>';
       } else {
-        allBuyers = buyers || [];
+        allBuyers = buyers;
         document.getElementById("buyer-count").innerText = allBuyers.length;
         document.getElementById("stat-buyers").innerText = allBuyers.length;
         renderBuyers(allBuyers);
       }
     }
-
     loadDistributorsAndBuyers();
 
     sb.from("inquiries").select("*", { count: "exact", head: true }).then(({ count }) => {
@@ -1621,34 +1529,22 @@
     }
 
     let selectedContactId = "";
-
     function openModal(id, name, type) {
-      selectedContactId = id;
-      selectedContactName = name;
-      selectedContactType = type;
+      selectedContactId = id; selectedContactName = name; selectedContactType = type;
       document.getElementById("modal-title").innerText = "Contact " + name;
       document.getElementById("status-msg").innerText = "";
       document.getElementById("inquiry-modal").classList.add("active");
     }
+    function closeModal() { document.getElementById("inquiry-modal").classList.remove("active"); }
 
-    function closeModal() {
-      document.getElementById("inquiry-modal").classList.remove("active");
-    }
-
-    let disputeTargetId = "";
-    let disputeTargetName = "";
-
+    let disputeTargetId = "", disputeTargetName = "";
     function openDisputeModal(distributorId, distributorName) {
-      disputeTargetId = distributorId;
-      disputeTargetName = distributorName;
+      disputeTargetId = distributorId; disputeTargetName = distributorName;
       document.getElementById("dispute-target-name").innerText = distributorName;
       document.getElementById("dispute-status-msg").innerText = "";
       document.getElementById("dispute-modal").classList.add("active");
     }
-
-    function closeDisputeModal() {
-      document.getElementById("dispute-modal").classList.remove("active");
-    }
+    function closeDisputeModal() { document.getElementById("dispute-modal").classList.remove("active"); }
 
     function submitDispute() {
       const submittedBy = document.getElementById("dispute-submitted-by").value;
@@ -1678,24 +1574,20 @@
     }
 
     sb.from("disputes").select("distributor_id").eq("status", "Approved").then(({ data }) => {
-      const disputes = data || [];
       const counts = {};
-      disputes.forEach(d => {
-        counts[d.distributor_id] = (counts[d.distributor_id] || 0) + 1;
-      });
+      (data || []).forEach(d => counts[d.distributor_id] = (counts[d.distributor_id] || 0) + 1);
       Object.keys(counts).forEach(distributorId => {
         const el = document.getElementById("dispute-count-" + distributorId);
         if (el) {
-          const countSpan = document.createElement("span");
-          countSpan.className = "dispute-count";
-          countSpan.innerText = counts[distributorId] + " dispute" + (counts[distributorId] > 1 ? "s" : "") + " on record";
-          el.appendChild(countSpan);
+          const span = document.createElement("span");
+          span.className = "dispute-count";
+          span.innerText = counts[distributorId] + " dispute" + (counts[distributorId] > 1 ? "s" : "") + " on record";
+          el.appendChild(span);
         }
       });
     });
 
     let selectedTier = "";
-
     function selectTier(el) {
       document.querySelectorAll(".tier-opt").forEach(o => o.classList.remove("sel"));
       el.classList.add("sel");
@@ -1828,7 +1720,6 @@
       if (navigator.onLine) processQueue();
     });
 
-    // ---------- History (Inquiries tab) ----------
     function saveInquiryToHistory(name, type) {
       try {
         const h = JSON.parse(localStorage.getItem("shelfmatch_history") || "[]");
