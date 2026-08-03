@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>GoodsbarnX — Onitsha · Nnewi · Awka · Asaba</title>
+  <title>ShelfMatch — Onitsha · Nnewi · Awka · Asaba</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@600;700&family=Roboto+Slab:wght@700&display=swap" rel="stylesheet" />
@@ -1207,7 +1207,7 @@
     </div>
   </div>
 
-  <!-- ========== ADD BUYER MODAL (Distributor) ========== -->
+  <!-- ========== ADD BUYER MODAL (Distributor & Agent) ========== -->
   <div class="sheet-overlay" id="add-buyer-modal">
     <div class="sheet">
       <div class="sheet-handle"></div>
@@ -1217,7 +1217,7 @@
         <label>Buyer's phone number</label>
         <input type="tel" id="add-buyer-phone" />
       </div>
-      <button class="submit-btn" onclick="submitAddBuyer()">Send connection request</button>
+      <button class="submit-btn" id="add-buyer-submit-btn">Send connection request</button>
       <button class="cancel-btn" onclick="closeAddBuyerModal()">Cancel</button>
       <div class="status-msg" id="add-buyer-status-msg"></div>
     </div>
@@ -1385,11 +1385,11 @@
         <div class="distributor-tools">
           <div class="dt-title">Bring your own buyer</div>
           <div class="dt-sub">Connect a buyer you already know. They'll confirm before anything is locked.</div>
-          <button onclick="openAddBuyerModal()">Add a buyer</button>
+          <button onclick="openAddBuyerModal('distributor')">Add a buyer</button>
         </div>`;
     }
 
-    // ---------- Agent: propose distributor attachment ----------
+    // ---------- Agent: propose distributor attachment + add buyer ----------
     async function showAgentTools() {
       const holder = document.getElementById("distributor-tools-holder");
       const { data: agentProfile } = await sb
@@ -1399,22 +1399,29 @@
         .single();
       const confirmed = agentProfile && agentProfile.employment_confirmed;
       const companyName = agentProfile && agentProfile.companies ? agentProfile.companies.name : "your company";
+
       if (confirmed) {
         holder.innerHTML = `
           <div class="distributor-tools">
             <div class="dt-title">Attach to a distributor</div>
             <div class="dt-sub">Propose a relationship. The distributor must accept before it's active.</div>
             <button onclick="openAttachModal()">Attach to a distributor</button>
+          </div>
+          <div class="distributor-tools" style="margin-top:12px;">
+            <div class="dt-title">Add a buyer to your distributor</div>
+            <div class="dt-sub">Bring a buyer you're working with. They'll be connected directly to your attached distributor.</div>
+            <button onclick="openAddBuyerModal('agent')">Add a buyer</button>
           </div>`;
       } else {
         holder.innerHTML = `
           <div class="distributor-tools">
             <div class="dt-title">Employment pending confirmation</div>
-            <div class="dt-sub">We're confirming your employment with ${companyName}. You'll be able to attach to distributors once that's verified.</div>
+            <div class="dt-sub">We're confirming your employment with ${companyName}. You'll be able to attach to distributors and add buyers once that's verified.</div>
           </div>`;
       }
     }
 
+    // ---------- Modals for attachments ----------
     function openAttachModal() {
       document.getElementById("attach-distributor-name").value = "";
       document.getElementById("attach-status-msg").innerText = "";
@@ -1476,17 +1483,25 @@
       checkPendingAttachments();
     }
 
-    function openAddBuyerModal() {
+    // ---------- Add buyer modal (shared: distributor & agent) ----------
+    let addBuyerMode = ""; // "distributor" or "agent"
+
+    function openAddBuyerModal(mode) {
+      addBuyerMode = mode;
       document.getElementById("add-buyer-phone").value = "";
       document.getElementById("add-buyer-status-msg").innerText = "";
       document.getElementById("add-buyer-modal").classList.add("active");
+      // Re-bind the submit button to the correct handler
+      const submitBtn = document.getElementById("add-buyer-submit-btn");
+      submitBtn.onclick = (mode === "agent") ? submitAgentAddBuyer : submitDistributorAddBuyer;
     }
 
     function closeAddBuyerModal() {
       document.getElementById("add-buyer-modal").classList.remove("active");
     }
 
-    async function submitAddBuyer() {
+    // Distributor's add buyer (original)
+    async function submitDistributorAddBuyer() {
       const phone = document.getElementById("add-buyer-phone").value;
       const statusEl = document.getElementById("add-buyer-status-msg");
       if (!phone) {
@@ -1501,6 +1516,52 @@
       const { error } = await sb.from("buyer_locks").insert({
         buyer_id: matchingProfile.id,
         distributor_id: currentUser.id,
+        status: "pending_consent",
+      });
+      if (error) {
+        statusEl.innerText = "Could not send request. They may already be connected elsewhere.";
+        return;
+      }
+      statusEl.innerText = "Sent! They'll see this request next time they open ShelfMatch.";
+      setTimeout(closeAddBuyerModal, 1800);
+    }
+
+    // Agent's add buyer (new)
+    async function submitAgentAddBuyer() {
+      const phone = document.getElementById("add-buyer-phone").value;
+      const statusEl = document.getElementById("add-buyer-status-msg");
+      if (!phone) {
+        statusEl.innerText = "Please enter a phone number.";
+        return;
+      }
+      // Find the agent's first accepted distributor attachment
+      const { data: attachment } = await sb
+        .from("agent_distributor_attachments")
+        .select("distributor_id")
+        .eq("agent_id", currentUser.id)
+        .eq("status", "accepted")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!attachment) {
+        statusEl.innerText = "You don't have an accepted distributor attachment yet. Please attach to a distributor first.";
+        return;
+      }
+
+      const distributorId = attachment.distributor_id;
+
+      // Find buyer by phone
+      const { data: matchingProfile } = await sb.from("profiles").select("id, role").eq("phone", phone).eq("role", "buyer").single();
+      if (!matchingProfile) {
+        statusEl.innerText = "No buyer account found with that phone number yet. They'll need to sign up first.";
+        return;
+      }
+
+      const { error } = await sb.from("buyer_locks").insert({
+        buyer_id: matchingProfile.id,
+        distributor_id: distributorId,
+        agent_id: currentUser.id,
         status: "pending_consent",
       });
       if (error) {
