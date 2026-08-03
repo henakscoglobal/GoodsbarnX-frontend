@@ -1081,7 +1081,7 @@
         </div>
       </div>
 
-      <!-- ========== NEW CATEGORY GRID (replaces filter-pills) ========== -->
+      <!-- ========== CATEGORY GRID ========== -->
       <div class="section-label">Browse Market Verticals</div>
       <div class="category-grid">
         <div class="category-card active" onclick="selectCategory('All',this)">🏪<span>All</span></div>
@@ -1490,11 +1490,72 @@
       window.scrollTo(0, 0);
     }
 
-    function renderDistributors(list) { /* unchanged */ }
-    function renderBuyers(list) { /* unchanged */ }
+    // ---------- FULL RENDER FUNCTIONS ----------
+    function renderDistributors(list) {
+      const c = document.getElementById("distributor-list");
+      c.innerHTML = "";
+      if (list.length === 0) {
+        c.innerHTML = '<div class="loading-text">No distributors yet. Be the first to register on the Onboard tab.</div>';
+        return;
+      }
+      list.forEach(d => {
+        const tier = d.verification_tier || "";
+        let verifiedBadge = "";
+        if (tier.toLowerCase() === "association") verifiedBadge = '<div class="m-verified">✓ Association Verified</div>';
+        else if (tier.toLowerCase() === "market board") verifiedBadge = '<div class="m-verified market-board">✓ Market Board Verified</div>';
+        else if (tier.toLowerCase() === "self-attested") verifiedBadge = '<div class="m-verified self-attested">Self-Attested (Pending)</div>';
+        const phone = d.profiles ? d.profiles.phone : "";
+        const card = document.createElement("div");
+        card.className = "manifest";
+        card.innerHTML = `
+          <div class="manifest-top">
+            <div>
+              <div class="m-name">${d.business_name}</div>
+              <div class="m-loc">${d.location || ""}</div>
+              ${verifiedBadge}
+            </div>
+            <div class="stamp-badge">${d.category ? d.category.toUpperCase() : "LISTED"}</div>
+          </div>
+          <div class="m-meta">
+            ${phone ? `<button class="btn-whatsapp" onclick="openWhatsApp('${phone}','${d.business_name}')">WhatsApp</button>` : ''}
+            <button class="btn-inquire" onclick="openModal('${d.id}','${d.business_name}','distributor')">Inquire</button>
+          </div>
+          <div class="dispute-row" id="dispute-count-${d.id}">
+            <span class="dispute-link" onclick="openDisputeModal('${d.id}','${d.business_name}')">Report an issue</span>
+          </div>`;
+        c.appendChild(card);
+      });
+    }
 
-    // REMOVED buildFilterPills()
+    function renderBuyers(list) {
+      const c = document.getElementById("buyer-list");
+      c.innerHTML = "";
+      if (list.length === 0) {
+        c.innerHTML = '<div class="loading-text">No buyers yet. Be the first to register on the Onboard tab.</div>';
+        return;
+      }
+      list.forEach(b => {
+        const name = b.profiles ? b.profiles.full_name : "Buyer";
+        const phone = b.profiles ? b.profiles.phone : "";
+        const card = document.createElement("div");
+        card.className = "manifest";
+        card.innerHTML = `
+          <div class="manifest-top">
+            <div>
+              <div class="m-name">${name}</div>
+              <div class="m-loc">${b.location || ""}</div>
+            </div>
+            <div class="stamp-badge" style="border-color:var(--brass); color:var(--brass);">${b.looking_for ? b.looking_for.toUpperCase() : "BUYER"}</div>
+          </div>
+          <div class="m-meta">
+            ${phone ? `<button class="btn-whatsapp" onclick="openWhatsApp('${phone}','${name}')">WhatsApp</button>` : ''}
+            <button class="btn-inquire" onclick="openModal('${b.id}','${name}','buyer')">Inquire</button>
+          </div>`;
+        c.appendChild(card);
+      });
+    }
 
+    // ---------- Filtering ----------
     function selectCategory(cat, el) {
       activeCategory = cat;
       document.querySelectorAll(".category-card").forEach(c => c.classList.remove("active"));
@@ -1522,22 +1583,30 @@
     }
 
     async function loadDistributorsAndBuyers() {
-      const { data: distributors } = await sb.from("distributor_profiles").select("id, business_name, location, category, verification_tier, profiles(phone)");
-      if (!distributors) return;
-      allDistributors = distributors;
-      document.getElementById("distributor-count").innerText = allDistributors.length;
-      document.getElementById("stat-distributors").innerText = allDistributors.length;
-      renderDistributors(allDistributors);
-      // no buildFilterPills call
-
-      const { data: buyers } = await sb.from("buyer_profiles").select("id, location, looking_for, profiles(full_name, phone)");
-      if (!buyers) return;
-      allBuyers = buyers;
-      document.getElementById("buyer-count").innerText = allBuyers.length;
-      document.getElementById("stat-buyers").innerText = allBuyers.length;
-      renderBuyers(allBuyers);
-      // no buildFilterPills call
+      const { data: distributors, error: distError } = await sb
+        .from("distributor_profiles")
+        .select("id, business_name, location, category, verification_tier, profiles(phone)");
+      if (distError) {
+        document.getElementById("distributor-list").innerHTML = '<div class="loading-text">Could not load distributors.</div>';
+      } else {
+        allDistributors = distributors || [];
+        document.getElementById("distributor-count").innerText = allDistributors.length;
+        document.getElementById("stat-distributors").innerText = allDistributors.length;
+        renderDistributors(allDistributors);
+      }
+      const { data: buyers, error: buyerError } = await sb
+        .from("buyer_profiles")
+        .select("id, location, looking_for, profiles(full_name, phone)");
+      if (buyerError) {
+        document.getElementById("buyer-list").innerHTML = '<div class="loading-text">Could not load buyers.</div>';
+      } else {
+        allBuyers = buyers || [];
+        document.getElementById("buyer-count").innerText = allBuyers.length;
+        document.getElementById("stat-buyers").innerText = allBuyers.length;
+        renderBuyers(allBuyers);
+      }
     }
+
     loadDistributorsAndBuyers();
 
     sb.from("inquiries").select("*", { count: "exact", head: true }).then(({ count }) => {
@@ -1550,42 +1619,244 @@
       const message = encodeURIComponent("Hi " + name + ", I found you on ShelfMatch and I'm interested in connecting.");
       window.open("https://wa.me/" + cleanPhone + "?text=" + message, "_blank");
     }
+
     let selectedContactId = "";
+
     function openModal(id, name, type) {
-      selectedContactId = id; selectedContactName = name; selectedContactType = type;
+      selectedContactId = id;
+      selectedContactName = name;
+      selectedContactType = type;
       document.getElementById("modal-title").innerText = "Contact " + name;
       document.getElementById("status-msg").innerText = "";
       document.getElementById("inquiry-modal").classList.add("active");
     }
-    function closeModal() { document.getElementById("inquiry-modal").classList.remove("active"); }
 
-    let disputeTargetId = "", disputeTargetName = "";
+    function closeModal() {
+      document.getElementById("inquiry-modal").classList.remove("active");
+    }
+
+    let disputeTargetId = "";
+    let disputeTargetName = "";
+
     function openDisputeModal(distributorId, distributorName) {
-      disputeTargetId = distributorId; disputeTargetName = distributorName;
+      disputeTargetId = distributorId;
+      disputeTargetName = distributorName;
       document.getElementById("dispute-target-name").innerText = distributorName;
       document.getElementById("dispute-status-msg").innerText = "";
       document.getElementById("dispute-modal").classList.add("active");
     }
-    function closeDisputeModal() { document.getElementById("dispute-modal").classList.remove("active"); }
-    function submitDispute() { /* unchanged */ }
-    sb.from("disputes").select("distributor_id").eq("status", "Approved").then(({ data }) => { /* unchanged */ });
+
+    function closeDisputeModal() {
+      document.getElementById("dispute-modal").classList.remove("active");
+    }
+
+    function submitDispute() {
+      const submittedBy = document.getElementById("dispute-submitted-by").value;
+      const phone = document.getElementById("dispute-phone").value;
+      const description = document.getElementById("dispute-description").value;
+      if (!submittedBy || !phone || !description) {
+        document.getElementById("dispute-status-msg").innerText = "Please fill in all fields.";
+        return;
+      }
+      sb.from("disputes").insert({
+        distributor_id: disputeTargetId,
+        submitted_by: submittedBy,
+        submitted_phone: phone,
+        description: description,
+        status: "Pending",
+      }).then(({ error }) => {
+        if (error) {
+          document.getElementById("dispute-status-msg").innerText = "Something went wrong. Try again.";
+          return;
+        }
+        document.getElementById("dispute-status-msg").innerText = "Submitted for review. Thank you.";
+        document.getElementById("dispute-submitted-by").value = "";
+        document.getElementById("dispute-phone").value = "";
+        document.getElementById("dispute-description").value = "";
+        setTimeout(closeDisputeModal, 1800);
+      });
+    }
+
+    sb.from("disputes").select("distributor_id").eq("status", "Approved").then(({ data }) => {
+      const disputes = data || [];
+      const counts = {};
+      disputes.forEach(d => {
+        counts[d.distributor_id] = (counts[d.distributor_id] || 0) + 1;
+      });
+      Object.keys(counts).forEach(distributorId => {
+        const el = document.getElementById("dispute-count-" + distributorId);
+        if (el) {
+          const countSpan = document.createElement("span");
+          countSpan.className = "dispute-count";
+          countSpan.innerText = counts[distributorId] + " dispute" + (counts[distributorId] > 1 ? "s" : "") + " on record";
+          el.appendChild(countSpan);
+        }
+      });
+    });
 
     let selectedTier = "";
-    function selectTier(el) { /* unchanged */ }
-    function submitInquiry() { /* unchanged */ }
-    function clearForm() { /* unchanged */ }
+
+    function selectTier(el) {
+      document.querySelectorAll(".tier-opt").forEach(o => o.classList.remove("sel"));
+      el.classList.add("sel");
+      selectedTier = el.dataset.tier;
+    }
+
+    function submitInquiry() {
+      const name = document.getElementById("inquiry-name").value;
+      const phone = document.getElementById("inquiry-phone").value;
+      const email = document.getElementById("inquiry-email").value;
+      const item = document.getElementById("inquiry-item").value;
+      const quantity = document.getElementById("inquiry-quantity").value;
+      if (!name || !phone) {
+        document.getElementById("status-msg").innerText = "Please fill in name and phone.";
+        return;
+      }
+      const payload = {
+        inquirer_name: name,
+        inquirer_phone: phone,
+        inquirer_email: email || null,
+        item: item || null,
+        order_scale: selectedTier || null,
+        quantity: quantity || null,
+        distributor_id: selectedContactType === "distributor" ? selectedContactId : null,
+        buyer_id: selectedContactType === "buyer" ? selectedContactId : null,
+        contact_type: selectedContactType,
+      };
+      if (!navigator.onLine) {
+        queueInquiry(payload, selectedContactName, selectedContactType);
+        document.getElementById("status-msg").innerText = "No connection — saved, will send automatically.";
+        clearForm();
+        setTimeout(closeModal, 2000);
+        return;
+      }
+      sb.from("inquiries").insert(payload).then(({ error }) => {
+        if (error) {
+          queueInquiry(payload, selectedContactName, selectedContactType);
+          document.getElementById("status-msg").innerText = "Connection issue — saved, will send automatically.";
+          clearForm();
+          setTimeout(closeModal, 2000);
+          return;
+        }
+        saveInquiryToHistory(selectedContactName, selectedContactType);
+        fetch(BACKEND + "/notify-inquiry", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            secret: SECRET,
+            name, phone, email, item,
+            orderScale: selectedTier,
+            quantity,
+            contactedName: selectedContactName,
+            contactType: selectedContactType,
+          }),
+        }).catch(() => {});
+        document.getElementById("status-msg").innerText = "Sent! We'll be in touch.";
+        clearForm();
+        setTimeout(closeModal, 1500);
+      });
+    }
+
+    function clearForm() {
+      document.getElementById("inquiry-name").value = "";
+      document.getElementById("inquiry-phone").value = "";
+      document.getElementById("inquiry-email").value = "";
+      document.getElementById("inquiry-item").value = "";
+      document.getElementById("inquiry-quantity").value = "";
+      document.querySelectorAll(".tier-opt").forEach(o => o.classList.remove("sel"));
+      selectedTier = "";
+    }
 
     // ---------- Offline queue ----------
-    function queueInquiry(payload, name, type) { /* unchanged */ }
-    function processQueue() { /* unchanged */ }
-    function updateQueueBadge() { /* unchanged */ }
-    window.addEventListener("online", processQueue);
-    window.addEventListener("load", () => { updateQueueBadge(); if (navigator.onLine) processQueue(); });
+    function queueInquiry(payload, name, type) {
+      try {
+        const q = JSON.parse(localStorage.getItem("shelfmatch_queue") || "[]");
+        q.push({ payload, contactName: name, contactType: type });
+        localStorage.setItem("shelfmatch_queue", JSON.stringify(q));
+        updateQueueBadge();
+      } catch (e) { console.error(e); }
+    }
 
-    // ---------- History ----------
-    function saveInquiryToHistory(name, type) { /* unchanged */ }
-    function renderHistory() { /* unchanged */ }
-    if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/sw.js"); }
+    function processQueue() {
+      let q = [];
+      try { q = JSON.parse(localStorage.getItem("shelfmatch_queue") || "[]"); } catch (e) { q = []; }
+      if (q.length === 0) return;
+      const remaining = [];
+      q.forEach(item => {
+        sb.from("inquiries").insert(item.payload).then(({ error }) => {
+          if (error) {
+            remaining.push(item);
+          } else {
+            saveInquiryToHistory(item.contactName, item.contactType);
+            fetch(BACKEND + "/notify-inquiry", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                secret: SECRET,
+                name: item.payload.inquirer_name,
+                phone: item.payload.inquirer_phone,
+                email: item.payload.inquirer_email,
+                item: item.payload.item,
+                orderScale: item.payload.order_scale,
+                quantity: item.payload.quantity,
+                contactedName: item.contactName,
+                contactType: item.contactType,
+              }),
+            }).catch(() => {});
+          }
+          localStorage.setItem("shelfmatch_queue", JSON.stringify(remaining));
+          updateQueueBadge();
+        });
+      });
+    }
+
+    function updateQueueBadge() {
+      let q = [];
+      try { q = JSON.parse(localStorage.getItem("shelfmatch_queue") || "[]"); } catch (e) { q = []; }
+      const badge = document.getElementById("queue-badge");
+      if (q.length > 0) {
+        badge.style.display = "block";
+        badge.innerText = q.length + " inquiry" + (q.length > 1 ? "ies" : "") + " waiting to send";
+      } else {
+        badge.style.display = "none";
+      }
+    }
+
+    window.addEventListener("online", processQueue);
+    window.addEventListener("load", () => {
+      updateQueueBadge();
+      if (navigator.onLine) processQueue();
+    });
+
+    // ---------- History (Inquiries tab) ----------
+    function saveInquiryToHistory(name, type) {
+      try {
+        const h = JSON.parse(localStorage.getItem("shelfmatch_history") || "[]");
+        h.unshift({ name, type, date: new Date().toLocaleString() });
+        localStorage.setItem("shelfmatch_history", JSON.stringify(h.slice(0, 50)));
+      } catch (e) { console.error(e); }
+    }
+
+    function renderHistory() {
+      const list = document.getElementById("history-list");
+      let h = [];
+      try { h = JSON.parse(localStorage.getItem("shelfmatch_history") || "[]"); } catch (e) { h = []; }
+      if (h.length === 0) {
+        list.innerHTML = '<div class="loading-text">No inquiries sent yet on this device.</div>';
+        return;
+      }
+      list.innerHTML = h.map(item => `
+        <div class="manifest">
+          <div class="inq-item">
+            <div><div class="inq-name">${item.name}</div><div class="inq-sub">${item.type === 'distributor' ? 'Contacted distributor' : 'Contacted buyer'} · ${item.date}</div></div>
+            <div class="stamp-badge">SENT</div>
+          </div>
+        </div>`).join("");
+    }
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js");
+    }
   </script>
 </body>
 </html>
