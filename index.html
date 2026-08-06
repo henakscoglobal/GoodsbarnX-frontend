@@ -9,28 +9,28 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@600;700&family=Roboto+Slab:wght@700&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --ink: #0d0f13;
-      --ink-2: #1a1d24;
-      --paper: #f7f5f0;
-      --paper-dim: #e8e4dc;
-      --brass: #c78c3a;
-      --brass-bright: #e2a84e;
-      --stamp: #b3422d;
-      --stamp-bright: #d35443;
-      --ok: #3b7a4e;
-      --line: rgba(247, 245, 240, 0.08);
-      --line-dark: rgba(13, 15, 19, 0.08);
-      --radius-sm: 10px;
-      --radius-md: 14px;
-      --radius-lg: 20px;
-      --shadow-xs: 0 2px 6px rgba(0,0,0,0.08);
-      --shadow-sm: 0 4px 12px rgba(0,0,0,0.12);
-      --transition: 0.2s cubic-bezier(0.2, 0, 0, 1);
+      --ink: #12151C;
+      --ink-2: #1B1F29;
+      --paper: #EFE9DE;
+      --paper-dim: #E2DBCC;
+      --brass: #C88A34;
+      --brass-bright: #E3A94F;
+      --stamp: #A63D2F;
+      --stamp-bright: #C24632;
+      --ok: #3F7A4E;
+      --line: rgba(239, 233, 222, 0.14);
+      --line-dark: rgba(18, 21, 28, 0.12);
+      --brass-dark: #9A6A22;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-    html, body {
+    html,
+    body {
       background: var(--ink);
       color: var(--paper);
       min-height: 100vh;
@@ -39,11 +39,21 @@
       overflow-x: hidden;
     }
 
-    ::selection { background: var(--brass); color: var(--ink); }
+    ::selection {
+      background: var(--brass);
+      color: var(--ink);
+    }
 
-    h1, h2, h3 { font-family: 'Roboto Slab', Georgia, serif; font-weight: 700; letter-spacing: -0.02em; }
+    h1, h2, h3, .display {
+      font-family: 'Roboto Slab', Georgia, serif;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
 
-    .mono { font-family: 'JetBrains Mono', monospace; letter-spacing: 0.02em; }
+    .mono {
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      letter-spacing: 0.02em;
+    }
 
     #app {
       max-width: 480px;
@@ -53,9 +63,13 @@
       background: var(--ink);
     }
 
-    /* Header */
+    .status-bar {
+      height: env(safe-area-inset-top, 0px);
+      background: var(--ink);
+    }
+
     header.top {
-      padding: 16px 20px 12px;
+      padding: 22px 20px 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -63,234 +77,866 @@
       position: sticky;
       top: 0;
       z-index: 40;
-      background: rgba(13, 15, 19, 0.92);
-      backdrop-filter: blur(12px);
+      background: linear-gradient(180deg, var(--ink) 80%, rgba(18, 21, 28, 0.96));
+      backdrop-filter: blur(6px);
     }
 
-    .brand { display: flex; align-items: center; gap: 8px; }
-    .brand-name { font-family: 'Roboto Slab', serif; font-size: 17px; font-weight: 700; }
-    .brand-sub { font-size: 9px; color: var(--brass-bright); text-transform: uppercase; letter-spacing: 0.12em; }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-name {
+      font-family: 'Roboto Slab', serif;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-sub {
+      font-size: 10px;
+      color: var(--brass-bright);
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      margin-top: 1px;
+    }
+
+    .locale-pill {
+      font-size: 10.5px;
+      padding: 6px 10px;
+      border-radius: 20px;
+      background: rgba(239, 233, 222, 0.08);
+      border: 1px solid var(--line);
+      color: var(--paper);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .locale-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--ok);
+      box-shadow: 0 0 0 3px rgba(63, 122, 78, 0.25);
+    }
 
     .logout-btn {
-      font-size: 10px; color: rgba(247,245,240,0.45); text-decoration: underline; padding: 4px 6px;
+      font-size: 10.5px;
+      color: rgba(239, 233, 222, 0.45);
+      text-decoration: underline;
+      padding: 6px 4px;
     }
 
-    main { padding: 16px 16px 90px; }
+    main {
+      padding: 20px 20px 100px;
+    }
 
-    /* Hero – compact welcome */
+    .coming-soon-tag {
+      display: inline-block;
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: rgba(200, 138, 52, 0.15);
+      color: var(--brass-bright);
+      padding: 3px 9px;
+      border-radius: 20px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+
+    /* ---------- Hero ---------- */
     .hero {
-      background: radial-gradient(120% 120% at 0% 0%, #1e2330, #0d0f13);
-      border-radius: var(--radius-lg);
-      padding: 18px 16px;
-      margin-bottom: 18px;
+      position: relative;
       border: 1px solid var(--line);
-    }
-    .hero-eyebrow { font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--brass-bright); margin-bottom: 6px; }
-    .hero-headline { font-size: 20px; line-height: 1.2; }
-    .hero-headline em { color: var(--brass-bright); font-style: normal; }
-
-    /* Quick stats row */
-    .stats-row {
-      display: flex; gap: 8px; margin-bottom: 20px;
-    }
-    .stat-bubble {
-      flex: 1; background: rgba(247,245,240,0.05); border: 1px solid var(--line);
-      border-radius: var(--radius-sm); padding: 8px; text-align: center;
-    }
-    .stat-bubble .num { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; color: var(--brass-bright); }
-    .stat-bubble .label { font-size: 9px; color: rgba(247,245,240,0.4); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
-
-    /* Search bar */
-    .search-bar-wrap {
-      display: flex; align-items: center; gap: 8px;
-      background: var(--ink-2); border: 1px solid var(--line);
-      border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 10px;
-    }
-    .search-bar-wrap input {
-      background: none; border: none; outline: none; color: var(--paper);
-      font-size: 13px; flex: 1; font-family: 'Inter', sans-serif;
-    }
-    .search-bar-wrap input::placeholder { color: rgba(247,245,240,0.3); }
-
-    /* Advanced filters toggle */
-    .filter-toggle {
-      display: flex; align-items: center; justify-content: flex-end; margin-bottom: 6px;
-    }
-    .filter-toggle button {
-      background: none; border: 1px solid var(--line); color: rgba(247,245,240,0.5);
-      border-radius: 20px; padding: 4px 12px; font-size: 11px; font-weight: 600;
-      cursor: pointer; transition: var(--transition);
-    }
-    .filter-toggle button.active { background: var(--brass); color: var(--ink); border-color: var(--brass); }
-
-    .adv-filters {
-      display: none; gap: 8px; margin-bottom: 12px;
-    }
-    .adv-filters.show { display: flex; }
-
-    .adv-filter-select {
-      flex: 1; background: var(--ink-2); border: 1px solid var(--line);
-      border-radius: 20px; color: var(--paper); font-size: 11px; font-weight: 600;
-      padding: 6px 10px; appearance: none; -webkit-appearance: none;
-      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f7f5f0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-      background-repeat: no-repeat; background-position: right 8px center; background-size: 12px;
-      cursor: pointer;
+      border-radius: 18px;
+      background: radial-gradient(120% 140% at 0% 0%, #232838 0%, #171B24 55%, #12151C 100%);
+      padding: 24px 20px 22px;
+      overflow: hidden;
+      margin-bottom: 22px;
     }
 
-    /* Horizontal category scroll */
-    .category-scroll {
-      display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px;
-      margin-bottom: 14px; -webkit-overflow-scrolling: touch;
+    .hero-eyebrow {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--brass-bright);
+      font-weight: 600;
+      margin-bottom: 10px;
     }
-    .category-scroll::-webkit-scrollbar { display: none; }
 
-    .category-chip {
-      flex-shrink: 0; background: var(--ink-2); border: 1px solid var(--line);
-      border-radius: 20px; padding: 6px 12px; font-size: 11px; font-weight: 600;
-      color: rgba(247,245,240,0.6); cursor: pointer; transition: var(--transition);
-      white-space: nowrap; display: flex; align-items: center; gap: 4px;
+    .hero-headline {
+      font-size: 24px;
+      line-height: 1.18;
+      margin-bottom: 14px;
     }
-    .category-chip.active {
-      background: var(--brass); color: var(--ink); border-color: var(--brass);
-    }
-    .category-chip .emoji { font-size: 14px; }
 
-    /* Section labels */
+    .hero-headline em {
+      color: var(--brass-bright);
+      font-style: normal;
+    }
+
+    .clock-seal {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: rgba(239, 233, 222, 0.05);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
+    }
+
+    .seal-ring {
+      position: relative;
+      width: 56px;
+      height: 56px;
+      flex-shrink: 0;
+    }
+
+    .seal-ring svg {
+      transform: rotate(-90deg);
+    }
+
+    .seal-ring .bg {
+      stroke: rgba(239, 233, 222, 0.1);
+    }
+
+    .seal-ring .fg {
+      stroke: var(--brass-bright);
+      stroke-linecap: round;
+    }
+
+    .seal-ring .num {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--paper);
+    }
+
+    .clock-copy .clock-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--paper);
+      margin-bottom: 2px;
+    }
+
+    .clock-copy .clock-sub {
+      font-size: 12px;
+      color: rgba(239, 233, 222, 0.55);
+    }
+
+    .trust-strip {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .trust-item {
+      flex: 1;
+      text-align: center;
+      background: rgba(239, 233, 222, 0.04);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 6px;
+    }
+
+    .trust-item .n {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--brass-bright);
+    }
+
+    .trust-item .t {
+      font-size: 9.5px;
+      color: rgba(239, 233, 222, 0.45);
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ---------- Section labels ---------- */
     .section-label {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
-      color: rgba(247,245,240,0.35); font-weight: 600; margin: 12px 0 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: rgba(239, 233, 222, 0.45);
+      font-weight: 600;
+      margin: 26px 0 12px;
     }
-    .section-label::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
-    /* Listing cards */
+    .section-label::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+    }
+
+    /* ---------- Category grid ---------- */
+    .category-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin: 18px 0 24px;
+    }
+
+    .category-card {
+      background: var(--ink-2);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: 0.25s;
+      font-size: 28px;
+    }
+
+    .category-card:hover {
+      border-color: var(--brass);
+    }
+
+    .category-card.active {
+      border: 2px solid var(--brass);
+      background: #27211A;
+    }
+
+    .category-card span {
+      display: block;
+      margin-top: 10px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    /* ---------- Manifest cards ---------- */
     .manifest {
-      background: var(--paper); color: var(--ink); border-radius: var(--radius-md);
-      padding: 14px 14px 12px; margin-bottom: 10px;
-      box-shadow: var(--shadow-xs); transition: transform var(--transition), box-shadow var(--transition);
+      background: var(--paper);
+      color: var(--ink);
+      border-radius: 16px;
+      padding: 16px 16px 14px;
+      margin-bottom: 12px;
+      position: relative;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
     }
-    .manifest:active { transform: scale(0.985); }
 
-    .manifest-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
-    .m-name { font-family: 'Roboto Slab', serif; font-weight: 700; font-size: 14px; line-height: 1.2; }
-    .m-loc { font-size: 10px; color: rgba(13,15,19,0.5); margin-top: 2px; }
-    .m-verified {
-      display: inline-flex; align-items: center; gap: 3px; font-size: 8px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 0.04em; color: #fff; background: var(--ok);
-      padding: 2px 6px; border-radius: 4px; margin-top: 4px;
+    .manifest-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
     }
-    .m-verified.market-board { background: #2E6B8C; }
+
+    .m-name {
+      font-family: 'Roboto Slab', serif;
+      font-weight: 700;
+      font-size: 15.5px;
+    }
+
+    .m-loc {
+      font-size: 11.5px;
+      color: rgba(18, 21, 28, 0.55);
+      margin-top: 2px;
+    }
+
+    .m-verified {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #fff;
+      background: var(--ok);
+      padding: 3px 7px;
+      border-radius: 6px;
+      margin-top: 6px;
+    }
+
+    .m-verified.market-board {
+      background: #2E6B8C;
+    }
+
     .m-verified.self-attested {
-      background: none; border: 1px solid #9A6A22; color: #9A6A22;
+      background: none;
+      border: 1.3px solid var(--brass-dark);
+      color: var(--brass-dark);
     }
 
     .stamp-badge {
-      font-family: 'JetBrains Mono', monospace; font-size: 8px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 0.04em; border: 1.5px solid var(--stamp);
-      color: var(--stamp); padding: 3px 6px; border-radius: 4px; transform: rotate(-3deg);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border: 2px solid var(--stamp);
+      color: var(--stamp);
+      padding: 4px 8px;
+      border-radius: 6px;
+      transform: rotate(-4deg);
+      white-space: nowrap;
     }
 
     .m-meta {
-      display: flex; justify-content: flex-end; align-items: center; gap: 6px;
-      border-top: 1px dashed var(--line-dark); padding-top: 8px; margin-top: 2px;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
+      border-top: 1px dashed var(--line-dark);
+      padding-top: 11px;
+      margin-top: 2px;
     }
 
     .btn-inquire {
-      background: var(--stamp); color: #fff; border: none; border-radius: var(--radius-sm);
-      padding: 7px 14px; font-size: 11px; font-weight: 700;
-      box-shadow: 0 2px 6px rgba(179,66,45,0.25); cursor: pointer;
+      background: var(--stamp);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 9px 16px;
+      font-size: 12.5px;
+      font-weight: 700;
+      box-shadow: 0 3px 8px rgba(166, 61, 47, 0.35);
+      cursor: pointer;
     }
+
+    .btn-inquire:active {
+      transform: scale(0.96);
+    }
+
     .btn-whatsapp {
-      background: #25D366; color: #fff; border: none; border-radius: var(--radius-sm);
-      padding: 7px 12px; font-size: 11px; font-weight: 700; cursor: pointer;
+      background: #25D366;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 9px 14px;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
     }
 
-    .dispute-row { margin-top: 6px; display: flex; justify-content: flex-end; }
-    .dispute-link { font-size: 9px; color: rgba(13,15,19,0.35); text-decoration: underline; cursor: pointer; }
-
-    .fav-btn {
-      background: none; border: none; font-size: 18px; cursor: pointer; padding: 0;
-      line-height: 1; transition: transform 0.15s;
+    .btn-whatsapp:active {
+      transform: scale(0.96);
     }
-    .fav-btn:active { transform: scale(1.15); }
 
-    /* Bottom nav */
-    nav.bottom {
-      position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; width: 100%;
-      max-width: 480px; background: rgba(13,15,19,0.94); backdrop-filter: blur(10px);
-      border-top: 1px solid var(--line); display: flex;
-      padding: 8px 6px calc(8px + env(safe-area-inset-bottom,0px)); z-index: 50;
+    .dispute-row {
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
-    .nav-item {
-      flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
-      color: rgba(247,245,240,0.35); font-size: 9px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer;
+
+    .dispute-link {
+      font-size: 11px;
+      color: rgba(18, 21, 28, 0.4);
+      text-decoration: underline;
+      cursor: pointer;
     }
-    .nav-item .ic { font-size: 18px; }
-    .nav-item.active { color: var(--brass-bright); }
 
-    .screen { display: none; }
-    .screen.active { display: block; animation: fadein 0.2s ease; }
-    @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .dispute-count {
+      font-size: 10.5px;
+      color: var(--stamp);
+      font-weight: 600;
+    }
 
-    /* Modals & auth */
+    .lock-banner {
+      background: rgba(63, 122, 78, 0.12);
+      border: 1px solid rgba(63, 122, 78, 0.3);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+    }
+
+    .lock-banner .lb-title {
+      font-family: 'Roboto Slab', serif;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--paper);
+      margin-bottom: 4px;
+    }
+
+    .lock-banner .lb-sub {
+      font-size: 12px;
+      color: rgba(239, 233, 222, 0.6);
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+
+    .lock-banner button {
+      background: none;
+      border: 1.3px solid var(--brass);
+      color: var(--brass-bright);
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .distributor-tools {
+      background: var(--ink-2);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+    }
+
+    .distributor-tools .dt-title {
+      font-family: 'Roboto Slab', serif;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--paper);
+      margin-bottom: 4px;
+    }
+
+    .distributor-tools .dt-sub {
+      font-size: 12px;
+      color: rgba(239, 233, 222, 0.5);
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+
+    .distributor-tools button {
+      background: var(--brass);
+      color: var(--ink);
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .loading-text {
+      color: rgba(239, 233, 222, 0.5);
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 8px 0;
+    }
+
+    /* ---------- Inquiries screen ---------- */
+    .inq-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .inq-name {
+      font-family: 'Roboto Slab', serif;
+      font-weight: 700;
+      font-size: 15.5px;
+    }
+
+    .inq-sub {
+      font-size: 11.5px;
+      color: rgba(18, 21, 28, 0.55);
+      margin-top: 2px;
+    }
+
+    /* ---------- Coming soon shell ---------- */
+    .coming-soon-shell {
+      text-align: center;
+      padding: 60px 20px;
+      color: rgba(239, 233, 222, 0.5);
+    }
+
+    .coming-soon-shell .cs-icon {
+      font-size: 34px;
+      margin-bottom: 14px;
+    }
+
+    .coming-soon-shell h3 {
+      color: var(--paper);
+      font-size: 17px;
+      margin-bottom: 8px;
+    }
+
+    .coming-soon-shell p {
+      font-size: 13px;
+      line-height: 1.6;
+      max-width: 280px;
+      margin: 0 auto;
+    }
+
+    /* ---------- Modal ---------- */
     .sheet-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100;
-      display: none; align-items: flex-end; justify-content: center;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: 100;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
     }
-    .sheet-overlay.active { display: flex; }
+
+    .sheet-overlay.active {
+      display: flex;
+    }
+
     .sheet {
-      background: var(--paper); color: var(--ink); width: 100%; max-width: 480px;
-      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-      padding: 18px 16px calc(18px + env(safe-area-inset-bottom,0px));
-      max-height: 85vh; overflow-y: auto;
+      background: var(--paper);
+      color: var(--ink);
+      width: 100%;
+      max-width: 480px;
+      border-radius: 22px 22px 0 0;
+      padding: 22px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+      max-height: 88vh;
+      overflow-y: auto;
     }
-    .sheet-handle { width: 32px; height: 3px; background: var(--line-dark); border-radius: 2px; margin: 0 auto 14px; }
-    .sheet h3 { font-size: 16px; margin-bottom: 4px; }
-    .sheet .sub { font-size: 11px; color: rgba(13,15,19,0.5); margin-bottom: 14px; }
-    .field { margin-bottom: 10px; }
-    .field label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(13,15,19,0.5); display: block; margin-bottom: 4px; }
+
+    .sheet-handle {
+      width: 36px;
+      height: 4px;
+      background: var(--line-dark);
+      border-radius: 3px;
+      margin: 0 auto 16px;
+    }
+
+    .sheet h3 {
+      font-size: 18px;
+      margin-bottom: 4px;
+    }
+
+    .sheet .sub {
+      font-size: 12.5px;
+      color: rgba(18, 21, 28, 0.55);
+      margin-bottom: 18px;
+    }
+
+    .field {
+      margin-bottom: 14px;
+    }
+
+    .field label {
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(18, 21, 28, 0.6);
+      display: block;
+      margin-bottom: 6px;
+    }
+
     .field input {
-      width: 100%; border: 1.5px solid var(--line-dark); border-radius: var(--radius-sm);
-      padding: 9px 10px; font-size: 13px; font-family: 'Inter', sans-serif; background: #fff; color: var(--ink);
+      width: 100%;
+      border: 1.5px solid var(--line-dark);
+      border-radius: 10px;
+      padding: 11px 12px;
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      background: #fff;
+      color: var(--ink);
+      box-sizing: border-box;
     }
-    .tier-row { display: flex; gap: 6px; }
+
+    .tier-row {
+      display: flex;
+      gap: 8px;
+    }
+
     .tier-opt {
-      flex: 1; text-align: center; border: 1.5px solid var(--line-dark); border-radius: var(--radius-sm);
-      padding: 8px 4px; font-size: 10px; font-weight: 600; color: rgba(13,15,19,0.5); cursor: pointer;
+      flex: 1;
+      text-align: center;
+      border: 1.5px solid var(--line-dark);
+      border-radius: 10px;
+      padding: 10px 4px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: rgba(18, 21, 28, 0.6);
+      cursor: pointer;
     }
-    .tier-opt.sel { border-color: var(--stamp); background: rgba(179,66,45,0.05); color: var(--stamp); }
-    .submit-btn { width: 100%; background: var(--stamp); color: #fff; border: none; border-radius: var(--radius-sm); padding: 12px; font-size: 13px; font-weight: 700; margin-top: 6px; cursor: pointer; }
-    .cancel-btn { width: 100%; background: none; border: 1.5px solid var(--line-dark); color: rgba(13,15,19,0.5); border-radius: var(--radius-sm); padding: 10px; font-size: 12px; font-weight: 600; margin-top: 6px; cursor: pointer; }
 
-    .lock-banner { background: rgba(59,122,78,0.08); border: 1px solid rgba(59,122,78,0.25); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 12px; font-size: 12px; }
-    .distributor-tools { background: var(--ink-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 12px; }
-    .distributor-tools button { background: var(--brass); color: var(--ink); border: none; border-radius: var(--radius-sm); padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer; margin-top: 6px; }
+    .tier-opt.sel {
+      border-color: var(--stamp);
+      background: rgba(166, 61, 47, 0.06);
+      color: var(--stamp);
+    }
 
-    .loading-text { color: rgba(247,245,240,0.35); font-size: 12px; text-align: center; padding: 20px; }
-    .queue-badge { display: none; margin-bottom: 10px; font-size: 10px; color: var(--brass-bright); background: rgba(199,140,58,0.1); border: 1px solid rgba(199,140,58,0.2); padding: 6px 10px; border-radius: 20px; text-align: center; }
+    .submit-btn {
+      width: 100%;
+      background: var(--stamp);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 15px;
+      font-size: 14.5px;
+      font-weight: 700;
+      margin-top: 6px;
+      cursor: pointer;
+    }
 
-    /* Auth screens unchanged but restyled */
-    .auth-shell { max-width: 480px; margin: 0 auto; min-height: 100vh; background: var(--ink); display: flex; flex-direction: column; justify-content: center; padding: 32px 24px; }
-    .auth-shell.hidden { display: none; }
-    .auth-brand { text-align: center; margin-bottom: 32px; }
-    .auth-brand h1 { font-size: 22px; }
-    .auth-brand p { font-size: 11px; color: rgba(247,245,240,0.4); margin-top: 4px; }
-    .auth-box { background: var(--ink-2); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 20px; }
-    .role-picker { display: flex; gap: 6px; margin-bottom: 14px; }
-    .role-pick { flex: 1; text-align: center; padding: 8px 4px; border-radius: var(--radius-sm); border: 1.5px solid var(--line); font-size: 10px; font-weight: 600; color: rgba(247,245,240,0.5); cursor: pointer; }
-    .role-pick.sel { border-color: var(--brass); background: rgba(199,140,58,0.1); color: var(--brass-bright); }
-    .auth-box input { width: 100%; padding: 10px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--ink); color: var(--paper); font-size: 13px; }
-    .auth-submit { width: 100%; background: var(--stamp); color: #fff; border: none; border-radius: var(--radius-sm); padding: 11px; font-size: 13px; font-weight: 700; margin-top: 4px; cursor: pointer; }
-    .auth-switch { text-align: center; margin-top: 14px; font-size: 11px; color: rgba(247,245,240,0.4); }
-    .auth-switch span { color: var(--brass-bright); font-weight: 600; cursor: pointer; }
-    .auth-guest { text-align: center; margin-top: 16px; font-size: 11px; color: rgba(247,245,240,0.3); text-decoration: underline; cursor: pointer; }
-    .auth-error { font-size: 11px; color: var(--stamp-bright); text-align: center; margin-top: 8px; }
+    .cancel-btn {
+      width: 100%;
+      background: none;
+      border: 1.5px solid var(--line-dark);
+      color: rgba(18, 21, 28, 0.55);
+      border-radius: 12px;
+      padding: 13px;
+      font-size: 13.5px;
+      font-weight: 600;
+      margin-top: 8px;
+      cursor: pointer;
+    }
+
+    .status-msg {
+      margin-top: 11px;
+      font-size: 12.5px;
+      color: var(--stamp);
+      text-align: center;
+    }
+
+    .queue-badge {
+      display: none;
+      margin: 0 0 12px;
+      font-size: 11px;
+      color: var(--brass-bright);
+      background: rgba(200, 138, 52, 0.12);
+      border: 1px solid rgba(200, 138, 52, 0.3);
+      padding: 8px 12px;
+      border-radius: 100px;
+      text-align: center;
+    }
+
+    /* ---------- Bottom nav ---------- */
+    nav.bottom {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 0;
+      width: 100%;
+      max-width: 480px;
+      background: rgba(18, 21, 28, 0.94);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid var(--line);
+      display: flex;
+      padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0px));
+      z-index: 50;
+    }
+
+    .nav-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      color: rgba(239, 233, 222, 0.4);
+      font-size: 9.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+    }
+
+    .nav-item .ic {
+      font-size: 19px;
+    }
+
+    .nav-item.active {
+      color: var(--brass-bright);
+    }
+
+    .screen {
+      display: none;
+    }
+
+    .screen.active {
+      display: block;
+      animation: fadein 0.25s ease;
+    }
+
+    @keyframes fadein {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ---------- Auth screen ---------- */
+    .auth-shell {
+      max-width: 480px;
+      margin: 0 auto;
+      min-height: 100vh;
+      background: var(--ink);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 32px 24px;
+    }
+
+    .auth-shell.hidden {
+      display: none;
+    }
+
+    .auth-brand {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    .auth-brand svg {
+      margin-bottom: 14px;
+    }
+
+    .auth-brand h1 {
+      font-size: 24px;
+      color: var(--paper);
+    }
+
+    .auth-brand p {
+      font-size: 12.5px;
+      color: rgba(239, 233, 222, 0.5);
+      margin-top: 6px;
+    }
+
+    .auth-box {
+      background: var(--ink-2);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 22px;
+    }
+
+    .role-picker {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .role-pick {
+      flex: 1;
+      text-align: center;
+      padding: 10px 4px;
+      border-radius: 10px;
+      border: 1.5px solid var(--line);
+      font-size: 11.5px;
+      font-weight: 600;
+      color: rgba(239, 233, 222, 0.6);
+      cursor: pointer;
+    }
+
+    .role-pick.sel {
+      border-color: var(--brass);
+      background: rgba(200, 138, 52, 0.1);
+      color: var(--brass-bright);
+    }
+
+    .auth-box input {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--ink);
+      color: var(--paper);
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      box-sizing: border-box;
+    }
+
+    .auth-box input::placeholder {
+      color: rgba(239, 233, 222, 0.35);
+    }
+
+    .auth-submit {
+      width: 100%;
+      background: var(--stamp);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 13px;
+      font-size: 14px;
+      font-weight: 700;
+      margin-top: 6px;
+      cursor: pointer;
+    }
+
+    .auth-switch {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 12.5px;
+      color: rgba(239, 233, 222, 0.5);
+    }
+
+    .auth-switch span {
+      color: var(--brass-bright);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .auth-guest {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 12px;
+      color: rgba(239, 233, 222, 0.35);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    .auth-error {
+      font-size: 12.5px;
+      color: var(--stamp-bright);
+      text-align: center;
+      margin-top: 10px;
+    }
+
+    /* ---------- Favourites ---------- */
+    .fav-btn {
+      background: none;
+      border: none;
+      font-size: 22px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+      transition: transform 0.2s;
+    }
+
+    .fav-btn:active {
+      transform: scale(1.2);
+    }
+
+    /* ---------- Advanced filters ---------- */
+    .adv-filters {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .adv-filter-select {
+      flex: 1 1 auto;
+      min-width: 0;
+      background: var(--ink-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--paper);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 10px;
+      font-family: 'Inter', sans-serif;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23EFE9DE' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      background-size: 14px;
+      padding-right: 28px;
+      cursor: pointer;
+    }
+
+    .adv-filter-select option {
+      background: var(--ink-2);
+      color: var(--paper);
+    }
   </style>
 </head>
 <body>
 
-  <!-- AUTH SCREENS -->
+  <!-- ========== AUTH: SIGN UP ========== -->
   <div class="auth-shell" id="auth-shell">
     <div class="auth-brand">
       <h1>GoodsbarnX</h1>
@@ -304,16 +950,21 @@
       </div>
       <input type="text" id="auth-name" placeholder="Full name" />
       <input type="tel" id="auth-phone" placeholder="Phone number" />
-      <div id="auth-company" style="display:none;"><input type="text" id="auth-company-input" placeholder="Company name" /></div>
+      <div id="auth-company" style="display:none;">
+        <input type="text" id="auth-company-input" placeholder="Company name" />
+      </div>
       <input type="email" id="auth-email" placeholder="Email address" />
       <input type="password" id="auth-password" placeholder="Password" />
       <button class="auth-submit" onclick="handleSignup()">Create account</button>
       <div class="auth-error" id="auth-error"></div>
     </div>
-    <div class="auth-switch">Already have an account? <span onclick="showLogin()">Log in</span></div>
+    <div class="auth-switch">
+      Already have an account? <span onclick="showLogin()">Log in</span>
+    </div>
     <div class="auth-guest" onclick="continueAsGuest()">Continue browsing without an account</div>
   </div>
 
+  <!-- ========== AUTH: LOG IN ========== -->
   <div class="auth-shell hidden" id="login-shell">
     <div class="auth-brand">
       <h1>Welcome back</h1>
@@ -325,50 +976,82 @@
       <button class="auth-submit" onclick="handleLogin()">Log in</button>
       <div class="auth-error" id="login-error"></div>
     </div>
-    <div class="auth-switch">New here? <span onclick="showSignup()">Create an account</span></div>
+    <div class="auth-switch">
+      New here? <span onclick="showSignup()">Create an account</span>
+    </div>
     <div class="auth-guest" onclick="continueAsGuest()">Continue browsing without an account</div>
   </div>
 
-  <!-- MAIN APP -->
+  <!-- ========== MAIN APP ========== -->
   <div id="app" style="display: none;">
+    <div class="status-bar"></div>
     <header class="top">
       <div class="brand">
         <div class="brand-name">GoodsbarnX</div>
         <div class="brand-sub">Stock meets buyer</div>
       </div>
-      <span id="logout-btn-holder"></span>
+      <div class="locale-pill">
+        <span class="locale-dot"></span> 4 markets
+        <span id="logout-btn-holder"></span>
+      </div>
     </header>
 
-    <!-- MARKET SCREEN -->
+    <!-- ---------- MARKET SCREEN ---------- -->
     <main class="screen active" id="screen-market">
       <div class="hero">
         <div class="hero-eyebrow">GoodsbarnX Network</div>
         <div class="hero-headline">Real inquiries.<br><em>Real distributors and buyers.</em></div>
-      </div>
-
-      <div class="stats-row">
-        <div class="stat-bubble"><div class="num" id="stat-distributors">–</div><div class="label">Distributors</div></div>
-        <div class="stat-bubble"><div class="num" id="stat-buyers">–</div><div class="label">Buyers</div></div>
-        <div class="stat-bubble"><div class="num">4</div><div class="label">Markets</div></div>
+        <div class="clock-seal">
+          <div class="seal-ring">
+            <svg width="56" height="56" viewBox="0 0 56 56">
+              <circle class="bg" cx="28" cy="28" r="24" fill="none" stroke-width="4"/>
+              <circle class="fg" cx="28" cy="28" r="24" fill="none" stroke-width="4" stroke-dasharray="150" stroke-dashoffset="30"/>
+            </svg>
+            <div class="num" id="inquiry-count-ring">–</div>
+          </div>
+          <div class="clock-copy">
+            <div class="clock-title">Total inquiries sent</div>
+            <div class="clock-sub">Real connections made through ShelfMatch so far</div>
+          </div>
+        </div>
+        <div class="trust-strip">
+          <div class="trust-item">
+            <div class="n" id="stat-distributors">–</div>
+            <div class="t">Distributors</div>
+          </div>
+          <div class="trust-item">
+            <div class="n" id="stat-buyers">–</div>
+            <div class="t">Buyers</div>
+          </div>
+          <div class="trust-item">
+            <div class="n">4</div>
+            <div class="t">Markets live</div>
+          </div>
+        </div>
       </div>
 
       <div id="lock-banner-holder"></div>
       <div id="distributor-tools-holder"></div>
 
+      <!-- ========== SEARCH & ADVANCED FILTERS ========== -->
       <div class="search-bar-wrap">
         <span>🔍</span>
         <input type="text" id="search-input" placeholder="Search by name, location, category…" oninput="applyFilters()" />
       </div>
 
-      <div class="filter-toggle">
-        <button id="filter-toggle-btn" onclick="toggleFilters()">⚙️ Filters</button>
-      </div>
-      <div class="adv-filters" id="adv-filters">
+      <div class="adv-filters">
         <select id="filter-location" class="adv-filter-select" onchange="applyFilters()">
           <option value="">📍 All Locations</option>
-          <option value="Onitsha">Onitsha</option><option value="Nnewi">Nnewi</option><option value="Awka">Awka</option>
-          <option value="Asaba">Asaba</option><option value="Enugu">Enugu</option><option value="Owerri">Owerri</option>
-          <option value="Abakiliki">Abakiliki</option><option value="Agbor">Agbor</option><option value="Warri">Warri</option><option value="Aba">Aba</option>
+          <option value="Onitsha">Onitsha</option>
+          <option value="Nnewi">Nnewi</option>
+          <option value="Awka">Awka</option>
+          <option value="Asaba">Asaba</option>
+          <option value="Enugu">Enugu</option>
+          <option value="Owerri">Owerri</option>
+          <option value="Abakiliki">Abakiliki</option>
+          <option value="Agbor">Agbor</option>
+          <option value="Warri">Warri</option>
+          <option value="Aba">Aba</option>
         </select>
         <select id="filter-tier" class="adv-filter-select" onchange="applyFilters()">
           <option value="">⭐ All Trust Tiers</option>
@@ -378,33 +1061,34 @@
         </select>
       </div>
 
-      <!-- Horizontal category chips -->
-      <div class="category-scroll" id="category-scroll">
-        <div class="category-chip active" onclick="selectCategory('All',this)"><span class="emoji">🏪</span>All</div>
-        <div class="category-chip" onclick="selectCategory('Auto Parts',this)"><span class="emoji">⚙️</span>Auto Parts</div>
-        <div class="category-chip" onclick="selectCategory('Motorcycle',this)"><span class="emoji">🏍</span>Motorcycle</div>
-        <div class="category-chip" onclick="selectCategory('Tyres',this)"><span class="emoji">🚗</span>Tyres</div>
-        <div class="category-chip" onclick="selectCategory('Batteries',this)"><span class="emoji">🔋</span>Batteries</div>
-        <div class="category-chip" onclick="selectCategory('Lubricants',this)"><span class="emoji">🛢</span>Lubricants</div>
-        <div class="category-chip" onclick="selectCategory('Electronics',this)"><span class="emoji">📱</span>Electronics</div>
-        <div class="category-chip" onclick="selectCategory('Pharma',this)"><span class="emoji">💊</span>Pharma</div>
-        <div class="category-chip" onclick="selectCategory('Textiles',this)"><span class="emoji">🧵</span>Textiles</div>
-        <div class="category-chip" onclick="selectCategory('Building Materials',this)"><span class="emoji">🧱</span>Building</div>
-        <div class="category-chip" onclick="selectCategory('General Goods',this)"><span class="emoji">🛒</span>General</div>
-        <div class="category-chip" onclick="selectCategory('Raw Materials',this)"><span class="emoji">🏭</span>Raw Material</div>
-        <div class="category-chip" onclick="selectCategory('Food & Beverages',this)"><span class="emoji">🥫</span>Food & Bev</div>
-        <div class="category-chip" onclick="selectCategory('Agriculture',this)"><span class="emoji">🌾</span>Agriculture</div>
-        <div class="category-chip" onclick="selectCategory('Cosmetics',this)"><span class="emoji">🧴</span>Cosmetics</div>
-        <div class="category-chip" onclick="selectCategory('Baby Products',this)"><span class="emoji">👶</span>Baby</div>
-        <div class="category-chip" onclick="selectCategory('Frozen Foods',this)"><span class="emoji">🐟</span>Frozen</div>
-        <div class="category-chip" onclick="selectCategory('Poultry',this)"><span class="emoji">🐓</span>Poultry</div>
-        <div class="category-chip" onclick="selectCategory('Computers',this)"><span class="emoji">💻</span>Computers</div>
-        <div class="category-chip" onclick="selectCategory('Electrical',this)"><span class="emoji">🔌</span>Electrical</div>
-        <div class="category-chip" onclick="selectCategory('Plumbing',this)"><span class="emoji">🚿</span>Plumbing</div>
-        <div class="category-chip" onclick="selectCategory('Furniture',this)"><span class="emoji">🪑</span>Furniture</div>
-        <div class="category-chip" onclick="selectCategory('Home Appliances',this)"><span class="emoji">🏠</span>Appliances</div>
-        <div class="category-chip" onclick="selectCategory('Packaging',this)"><span class="emoji">📦</span>Packaging</div>
-        <div class="category-chip" onclick="selectCategory('Logistics',this)"><span class="emoji">🚚</span>Logistics</div>
+      <!-- ========== CATEGORY GRID ========== -->
+      <div class="section-label">Browse Market Verticals</div>
+      <div class="category-grid">
+        <div class="category-card active" onclick="selectCategory('All',this)">🏪<span>All</span></div>
+        <div class="category-card" onclick="selectCategory('Auto Parts',this)">⚙️<span>Auto Parts</span></div>
+        <div class="category-card" onclick="selectCategory('Motorcycle',this)">🏍<span>Motorcycle</span></div>
+        <div class="category-card" onclick="selectCategory('Tyres',this)">🚗<span>Tyres</span></div>
+        <div class="category-card" onclick="selectCategory('Batteries',this)">🔋<span>Batteries</span></div>
+        <div class="category-card" onclick="selectCategory('Lubricants',this)">🛢<span>Lubricants</span></div>
+        <div class="category-card" onclick="selectCategory('Electronics',this)">📱<span>Electronics</span></div>
+        <div class="category-card" onclick="selectCategory('Pharma',this)">💊<span>Pharma</span></div>
+        <div class="category-card" onclick="selectCategory('Textiles',this)">🧵<span>Textiles</span></div>
+        <div class="category-card" onclick="selectCategory('Building Materials',this)">🧱<span>Building</span></div>
+        <div class="category-card" onclick="selectCategory('General Goods',this)">🛒<span>General</span></div>
+        <div class="category-card" onclick="selectCategory('Raw Materials',this)">🏭<span>Raw Material</span></div>
+        <div class="category-card" onclick="selectCategory('Food & Beverages',this)">🥫<span>Food & Bev</span></div>
+        <div class="category-card" onclick="selectCategory('Agriculture',this)">🌾<span>Agriculture</span></div>
+        <div class="category-card" onclick="selectCategory('Cosmetics',this)">🧴<span>Cosmetics</span></div>
+        <div class="category-card" onclick="selectCategory('Baby Products',this)">👶<span>Baby</span></div>
+        <div class="category-card" onclick="selectCategory('Frozen Foods',this)">🐟<span>Frozen</span></div>
+        <div class="category-card" onclick="selectCategory('Poultry',this)">🐓<span>Poultry</span></div>
+        <div class="category-card" onclick="selectCategory('Computers',this)">💻<span>Computers</span></div>
+        <div class="category-card" onclick="selectCategory('Electrical',this)">🔌<span>Electrical</span></div>
+        <div class="category-card" onclick="selectCategory('Plumbing',this)">🚿<span>Plumbing</span></div>
+        <div class="category-card" onclick="selectCategory('Furniture',this)">🪑<span>Furniture</span></div>
+        <div class="category-card" onclick="selectCategory('Home Appliances',this)">🏠<span>Appliances</span></div>
+        <div class="category-card" onclick="selectCategory('Packaging',this)">📦<span>Packaging</span></div>
+        <div class="category-card" onclick="selectCategory('Logistics',this)">🚚<span>Logistics</span></div>
       </div>
 
       <div class="section-label">Distributors <span class="mono" id="distributor-count"></span></div>
@@ -414,30 +1098,58 @@
       <div id="buyer-list"><div class="loading-text">Loading buyers…</div></div>
     </main>
 
-    <!-- INQUIRIES SCREEN -->
+    <!-- ---------- INQUIRIES SCREEN ---------- -->
     <div class="screen" id="screen-inquiries">
       <div class="section-label">Your inquiries</div>
       <div id="history-list"></div>
     </div>
 
-    <!-- SETTINGS SCREEN (placeholder) -->
-    <div class="screen" id="screen-settings">
-      <div class="section-label">Settings</div>
-      <div class="coming-soon-shell" style="text-align:center; padding:60px 20px; color:rgba(247,245,240,0.35);">
-        <div style="font-size:28px; margin-bottom:10px;">⚙️</div>
-        <h3 style="color:var(--paper); font-size:16px;">Settings coming soon</h3>
+    <!-- ---------- TRUST SCREEN ---------- -->
+    <div class="screen" id="screen-trust">
+      <div class="section-label">Trust &amp; verification <span class="coming-soon-tag">Coming soon</span></div>
+      <div class="coming-soon-shell">
+        <div class="cs-icon">🛡️</div>
+        <h3>Verification is on the way</h3>
+        <p>We're building trade association checks, physical shop verification, and public dispute history. For now, reach out directly — we personally vet every listing before it goes live.</p>
       </div>
     </div>
 
-    <!-- Bottom nav -->
+    <!-- ---------- ONBOARD SCREEN ---------- -->
+    <div class="screen" id="screen-onboard">
+      <div class="section-label">Join GoodsbarnX</div>
+      <div class="manifest">
+        <div class="m-name" style="margin-bottom:6px;">Create your account</div>
+        <div style="font-size:12.5px; color:rgba(18,21,28,0.65); line-height:1.55; margin-bottom:14px;">
+          Distributors and buyers now join GoodsbarnX with a real account, right from the start screen — your listing appears on the Market tab as soon as you sign up.
+        </div>
+        <button class="btn-inquire" style="width:100%; box-sizing:border-box;" onclick="location.reload()">Go to sign up</button>
+      </div>
+      <div class="section-label">Guided onboarding <span class="coming-soon-tag">Coming soon</span></div>
+      <div class="coming-soon-shell" style="padding:30px 20px;">
+        <div class="cs-icon">🧭</div>
+        <h3 style="font-size:15px;">Supplier agent &amp; handshake flows</h3>
+        <p style="font-size:12.5px;">Multi-party verification between agents, companies, and distributors is in development.</p>
+      </div>
+    </div>
+
+    <!-- ---------- Bottom Navigation ---------- -->
     <nav class="bottom">
-      <div class="nav-item active" id="nav-market" onclick="showScreen('market')"><span class="ic">🏬</span> Market</div>
-      <div class="nav-item" id="nav-inquiries" onclick="showScreen('inquiries')"><span class="ic">📋</span> Inquiries</div>
-      <div class="nav-item" id="nav-settings" onclick="showScreen('settings')"><span class="ic">⚙️</span> Settings</div>
+      <div class="nav-item active" id="nav-market" onclick="showScreen('market')">
+        <span class="ic">🏬</span> Market
+      </div>
+      <div class="nav-item" id="nav-inquiries" onclick="showScreen('inquiries')">
+        <span class="ic">📋</span> Inquiries
+      </div>
+      <div class="nav-item" id="nav-trust" onclick="showScreen('trust')">
+        <span class="ic">🛡️</span> Trust
+      </div>
+      <div class="nav-item" id="nav-onboard" onclick="showScreen('onboard')">
+        <span class="ic">➕</span> Onboard
+      </div>
     </nav>
   </div>
 
-  <!-- MODALS -->
+  <!-- ========== INQUIRY MODAL ========== -->
   <div class="sheet-overlay" id="inquiry-modal">
     <div class="sheet">
       <div class="sheet-handle"></div>
@@ -462,6 +1174,7 @@
     </div>
   </div>
 
+  <!-- ========== DISPUTE MODAL ========== -->
   <div class="sheet-overlay" id="dispute-modal">
     <div class="sheet">
       <div class="sheet-handle"></div>
@@ -476,6 +1189,7 @@
     </div>
   </div>
 
+  <!-- ========== ADD BUYER MODAL ========== -->
   <div class="sheet-overlay" id="add-buyer-modal">
     <div class="sheet">
       <div class="sheet-handle"></div>
@@ -488,6 +1202,7 @@
     </div>
   </div>
 
+  <!-- ========== BUYER CONSENT MODAL ========== -->
   <div class="sheet-overlay" id="consent-modal">
     <div class="sheet">
       <div class="sheet-handle"></div>
@@ -498,6 +1213,7 @@
     </div>
   </div>
 
+  <!-- ========== ATTACH DISTRIBUTOR MODAL ========== -->
   <div class="sheet-overlay" id="attach-modal">
     <div class="sheet">
       <div class="sheet-handle"></div>
@@ -510,7 +1226,7 @@
     </div>
   </div>
 
-  <!-- SUPABASE & FULL SCRIPTS -->
+  <!-- ========== SUPABASE & MAIN SCRIPT ========== -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     const SUPABASE_URL = "https://zcxecnxirfdfvywnvcjp.supabase.co";
@@ -799,8 +1515,11 @@
     }
 
     // ---------- Market data ----------
-    let allDistributors = [], allBuyers = [], activeCategory = "All";
-    let selectedContactName = "", selectedContactType = "";
+    let allDistributors = [];
+    let allBuyers = [];
+    let activeCategory = "All";
+    let selectedContactName = "";
+    let selectedContactType = "";
     const BACKEND = "https://shelfmatch-backend-5mjl.vercel.app/api";
     const SECRET = "shelfmatch-2026-secure";
 
@@ -822,7 +1541,7 @@
         let verifiedBadge = "";
         if (tier.toLowerCase() === "association") verifiedBadge = '<div class="m-verified">✓ Association Verified</div>';
         else if (tier.toLowerCase() === "market board") verifiedBadge = '<div class="m-verified market-board">✓ Market Board Verified</div>';
-        else if (tier.toLowerCase() === "self-attested") verifiedBadge = '<div class="m-verified self-attested">Self-Attested</div>';
+        else if (tier.toLowerCase() === "self-attested") verifiedBadge = '<div class="m-verified self-attested">Self-Attested (Pending)</div>';
         const phone = d.profiles ? d.profiles.phone : "";
         const card = document.createElement("div");
         card.className = "manifest";
@@ -833,7 +1552,7 @@
               <div class="m-loc">${d.location || ""}</div>
               ${verifiedBadge}
             </div>
-            <div style="display:flex; align-items:flex-start; gap:6px;">
+            <div style="display:flex; align-items:flex-start; gap:8px;">
               <button class="fav-btn" onclick="toggleFavourite(event, '${d.id}')"><span class="fav-icon" id="fav-${d.id}">🤍</span></button>
               <div class="stamp-badge">${d.category ? d.category.toUpperCase() : "LISTED"}</div>
             </div>
@@ -842,7 +1561,9 @@
             ${phone ? `<button class="btn-whatsapp" onclick="openWhatsApp('${phone}','${d.business_name}')">WhatsApp</button>` : ''}
             <button class="btn-inquire" onclick="openModal('${d.id}','${d.business_name}','distributor')">Inquire</button>
           </div>
-          <div class="dispute-row"><span class="dispute-link" onclick="openDisputeModal('${d.id}','${d.business_name}')">Report an issue</span></div>`;
+          <div class="dispute-row" id="dispute-count-${d.id}">
+            <span class="dispute-link" onclick="openDisputeModal('${d.id}','${d.business_name}')">Report an issue</span>
+          </div>`;
         c.appendChild(card);
       });
     }
@@ -874,20 +1595,16 @@
 
     function selectCategory(cat, el) {
       activeCategory = cat;
-      document.querySelectorAll(".category-chip").forEach(c => c.classList.remove("active"));
+      document.querySelectorAll(".category-card").forEach(c => c.classList.remove("active"));
       el.classList.add("active");
       applyFilters();
-    }
-
-    function toggleFilters() {
-      document.getElementById("adv-filters").classList.toggle("show");
-      document.getElementById("filter-toggle-btn").classList.toggle("active");
     }
 
     function applyFilters() {
       const q = document.getElementById("search-input").value.trim().toLowerCase();
       const locFilter = document.getElementById("filter-location").value;
       const tierFilter = document.getElementById("filter-tier").value;
+
       const fd = allDistributors.filter(d => {
         const mc = activeCategory === "All" || (d.category && d.category.trim() === activeCategory);
         const ms = !q || (d.business_name||"").toLowerCase().includes(q) || (d.location||"").toLowerCase().includes(q) || (d.category||"").toLowerCase().includes(q);
@@ -895,6 +1612,7 @@
         const mt = !tierFilter || (d.verification_tier||"").toLowerCase() === tierFilter.toLowerCase();
         return mc && ms && ml && mt;
       });
+
       const fb = allBuyers.filter(b => {
         const bName = b.profiles ? b.profiles.full_name : "";
         const mc = activeCategory === "All" || (b.looking_for && b.looking_for.trim() === activeCategory);
@@ -902,6 +1620,7 @@
         const ml = !locFilter || (b.location||"").toLowerCase() === locFilter.toLowerCase();
         return mc && ms && ml;
       });
+
       renderDistributors(fd);
       renderBuyers(fb);
       document.getElementById("distributor-count").innerText = fd.length;
@@ -910,14 +1629,18 @@
 
     async function loadDistributorsAndBuyers() {
       const { data: distributors } = await sb.from("distributor_profiles").select("id, business_name, location, category, verification_tier, profiles(phone)");
-      if (distributors) {
+      if (!distributors) {
+        document.getElementById("distributor-list").innerHTML = '<div class="loading-text">Could not load distributors.</div>';
+      } else {
         allDistributors = distributors;
         document.getElementById("distributor-count").innerText = allDistributors.length;
         document.getElementById("stat-distributors").innerText = allDistributors.length;
         renderDistributors(allDistributors);
       }
       const { data: buyers } = await sb.from("buyer_profiles").select("id, location, looking_for, profiles(full_name, phone)");
-      if (buyers) {
+      if (!buyers) {
+        document.getElementById("buyer-list").innerHTML = '<div class="loading-text">Could not load buyers.</div>';
+      } else {
         allBuyers = buyers;
         document.getElementById("buyer-count").innerText = allBuyers.length;
         document.getElementById("stat-buyers").innerText = allBuyers.length;
@@ -927,7 +1650,7 @@
     loadDistributorsAndBuyers();
 
     sb.from("inquiries").select("*", { count: "exact", head: true }).then(({ count }) => {
-      document.getElementById("inquiry-count-ring")?.innerText = count != null ? count : "–";
+      document.getElementById("inquiry-count-ring").innerText = count != null ? count : "–";
     });
 
     // ---------- Contact modal ----------
