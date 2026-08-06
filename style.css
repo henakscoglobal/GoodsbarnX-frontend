@@ -1,0 +1,28 @@
+.search-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.search-bar-wrap span {
+  flex-shrink: 0;
+}
+
+.search-bar-wrap input {
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--paper);
+  font-size: 14px;
+  flex: 1;
+  font-family: 'Inter', sans-serif;
+}
+
+.search-bar-wrap input::placeholder {
+  color: rgba(239, 233, 222, 0.35);
+}
