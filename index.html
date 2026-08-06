@@ -1132,6 +1132,16 @@
       </div>
     </div>
 
+    <!-- ========== UPGRADE SCREEN (placeholder) ========== -->
+    <div class="screen" id="screen-upgrade">
+      <div class="section-label">Upgrade Plan</div>
+      <div class="coming-soon-shell" style="text-align:center; padding:60px 20px; color:rgba(239,233,222,0.5);">
+        <div style="font-size:28px; margin-bottom:10px;">🚀</div>
+        <h3 style="color:var(--paper); font-size:16px;">Subscription Plans Coming Soon</h3>
+        <p style="margin-top:8px;">Upgrade to Pro for unlimited attachments and connections.</p>
+      </div>
+    </div>
+
     <!-- ---------- Bottom Navigation ---------- -->
     <nav class="bottom">
       <div class="nav-item active" id="nav-market" onclick="showScreen('market')">
@@ -1145,6 +1155,9 @@
       </div>
       <div class="nav-item" id="nav-onboard" onclick="showScreen('onboard')">
         <span class="ic">➕</span> Onboard
+      </div>
+      <div class="nav-item" id="nav-upgrade" onclick="showScreen('upgrade')">
+        <span class="ic">⭐</span> Upgrade
       </div>
     </nav>
   </div>
@@ -1351,16 +1364,36 @@
       const { data: agentProfile } = await sb.from("agent_profiles").select("employment_confirmed, companies(name)").eq("id", currentUser.id).single();
       const confirmed = agentProfile && agentProfile.employment_confirmed;
       const companyName = agentProfile && agentProfile.companies ? agentProfile.companies.name : "your company";
+
       if (confirmed) {
+        // Get current counts for display
+        const { count: attachmentsCount } = await sb
+          .from('agent_distributor_attachments')
+          .select('*', { count: 'exact', head: true })
+          .eq('agent_id', currentUser.id)
+          .eq('status', 'accepted');
+
+        const { count: buyersCount } = await sb
+          .from('buyer_locks')
+          .select('*', { count: 'exact', head: true })
+          .eq('agent_id', currentUser.id)
+          .eq('status', 'active');
+
+        let limitText = '';
+        const { data: sub } = await sb.from('subscriptions').select('plan_id').eq('user_id', currentUser.id).eq('status', 'active').maybeSingle();
+        const isFree = !sub || sub.plan_id === 'free';
+        if (isFree) {
+          limitText = `<div class="dt-sub" style="margin-bottom:8px;">Free plan: ${attachmentsCount}/1 distributor, ${buyersCount}/1 buyer connection. <a onclick="showScreen('upgrade')" style="color:var(--brass-bright); text-decoration:underline;">Upgrade</a></div>`;
+        }
+
         holder.innerHTML = `
           <div class="distributor-tools">
             <div class="dt-title">Attach to a distributor</div>
-            <div class="dt-sub">Propose a relationship. The distributor must accept before it's active.</div>
+            ${limitText}
             <button onclick="openAttachModal()">Attach to a distributor</button>
           </div>
           <div class="distributor-tools" style="margin-top:12px;">
             <div class="dt-title">Add a buyer to your distributor</div>
-            <div class="dt-sub">Bring a buyer you're working with. They'll be connected directly to your attached distributor.</div>
             <button onclick="openAddBuyerModal('agent')">Add a buyer</button>
           </div>`;
       } else {
@@ -1383,10 +1416,34 @@
       const distName = document.getElementById("attach-distributor-name").value;
       const statusEl = document.getElementById("attach-status-msg");
       if (!distName) { statusEl.innerText = "Please enter the distributor's business name."; return; }
+
+      // Check existing accepted attachments count for free agents
+      if (currentUser && currentUser.role === 'agent') {
+        const { data: currentSub } = await sb
+          .from('subscriptions')
+          .select('plan_id')
+          .eq('user_id', currentUser.id)
+          .eq('status', 'active')
+          .maybeSingle();
+
+        if (!currentSub || currentSub.plan_id === 'free') {
+          const { count } = await sb
+            .from('agent_distributor_attachments')
+            .select('*', { count: 'exact', head: true })
+            .eq('agent_id', currentUser.id)
+            .eq('status', 'accepted');
+
+          if (count >= 1) {
+            statusEl.innerText = "Free plan limit: only one distributor attachment allowed. Upgrade to Pro for unlimited.";
+            return;
+          }
+        }
+      }
+
       const { data: match } = await sb.from("distributor_profiles").select("id").ilike("business_name", distName).maybeSingle();
       if (!match) { statusEl.innerText = "No distributor found with that exact name."; return; }
       const { error } = await sb.from("agent_distributor_attachments").insert({ agent_id: currentUser.id, distributor_id: match.id, status: "pending" });
-      if (error) { statusEl.innerText = "Could not send request. You may already be attached."; return; }
+      if (error) { statusEl.innerText = error.message.includes("Free agents") ? error.message : "Could not send request. You may already be attached."; return; }
       statusEl.innerText = "Sent! Waiting on the distributor to accept.";
       setTimeout(closeAttachModal, 1800);
     }
@@ -1432,13 +1489,37 @@
       const phone = document.getElementById("add-buyer-phone").value;
       const statusEl = document.getElementById("add-buyer-status-msg");
       if (!phone) { statusEl.innerText = "Please enter a phone number."; return; }
+
+      // Check existing active buyer connections for free agents
+      if (currentUser && currentUser.role === 'agent') {
+        const { data: currentSub } = await sb
+          .from('subscriptions')
+          .select('plan_id')
+          .eq('user_id', currentUser.id)
+          .eq('status', 'active')
+          .maybeSingle();
+
+        if (!currentSub || currentSub.plan_id === 'free') {
+          const { count } = await sb
+            .from('buyer_locks')
+            .select('*', { count: 'exact', head: true })
+            .eq('agent_id', currentUser.id)
+            .eq('status', 'active');
+
+          if (count >= 1) {
+            statusEl.innerText = "Free plan limit: only one buyer connection allowed. Upgrade to Pro for unlimited.";
+            return;
+          }
+        }
+      }
+
       const { data: attachment } = await sb.from("agent_distributor_attachments").select("distributor_id").eq("agent_id", currentUser.id).eq("status", "accepted").order("created_at", { ascending: false }).limit(1).maybeSingle();
       if (!attachment) { statusEl.innerText = "You don't have an accepted distributor attachment yet. Please attach to a distributor first."; return; }
       const distributorId = attachment.distributor_id;
       const { data: matchingProfile } = await sb.from("profiles").select("id, role").eq("phone", phone).eq("role", "buyer").single();
       if (!matchingProfile) { statusEl.innerText = "No buyer account found with that phone number yet. They'll need to sign up first."; return; }
       const { error } = await sb.from("buyer_locks").insert({ buyer_id: matchingProfile.id, distributor_id: distributorId, agent_id: currentUser.id, status: "pending_consent" });
-      if (error) { statusEl.innerText = "Could not send request. They may already be connected elsewhere."; return; }
+      if (error) { statusEl.innerText = error.message.includes("Free agents") ? error.message : "Could not send request. They may already be connected elsewhere."; return; }
       statusEl.innerText = "Sent! They'll see this request next time they open ShelfMatch.";
       setTimeout(closeAddBuyerModal, 1800);
     }
@@ -1527,7 +1608,8 @@
       document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
       document.getElementById("screen-" + name).classList.add("active");
       document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
-      document.getElementById("nav-" + name).classList.add("active");
+      const navItem = document.getElementById("nav-" + name);
+      if (navItem) navItem.classList.add("active");
       if (name === "inquiries") renderHistory();
       window.scrollTo(0, 0);
     }
