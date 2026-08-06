@@ -283,6 +283,69 @@
       background: var(--line);
     }
 
+    /* ---------- Search & Advanced Filters ---------- */
+    .search-bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--ink-2);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+
+    .search-bar-wrap span {
+      flex-shrink: 0;
+    }
+
+    .search-bar-wrap input {
+      background: none;
+      border: none;
+      outline: none;
+      color: var(--paper);
+      font-size: 14px;
+      flex: 1;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .search-bar-wrap input::placeholder {
+      color: rgba(239, 233, 222, 0.35);
+    }
+
+    .adv-filters {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .adv-filter-select {
+      flex: 1 1 auto;
+      min-width: 0;
+      background: var(--ink-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--paper);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 10px;
+      font-family: 'Inter', sans-serif;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23EFE9DE' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      background-size: 14px;
+      padding-right: 28px;
+      cursor: pointer;
+    }
+
+    .adv-filter-select option {
+      background: var(--ink-2);
+      color: var(--paper);
+    }
+
     /* ---------- Category grid ---------- */
     .category-grid {
       display: grid;
@@ -998,9 +1061,33 @@
 
       <div id="lock-banner-holder"></div>
       <div id="distributor-tools-holder"></div>
+
+      <!-- ========== SEARCH & ADVANCED FILTERS ========== -->
       <div class="search-bar-wrap">
         <span>🔍</span>
         <input type="text" id="search-input" placeholder="Search by name, location, category…" oninput="applyFilters()" />
+      </div>
+
+      <div class="adv-filters">
+        <select id="filter-location" class="adv-filter-select" onchange="applyFilters()">
+          <option value="">📍 All Locations</option>
+          <option value="Onitsha">Onitsha</option>
+          <option value="Nnewi">Nnewi</option>
+          <option value="Awka">Awka</option>
+          <option value="Asaba">Asaba</option>
+          <option value="Enugu">Enugu</option>
+          <option value="Owerri">Owerri</option>
+          <option value="Abakiliki">Abakiliki</option>
+          <option value="Agbor">Agbor</option>
+          <option value="Warri">Warri</option>
+          <option value="Aba">Aba</option>
+        </select>
+        <select id="filter-tier" class="adv-filter-select" onchange="applyFilters()">
+          <option value="">⭐ All Trust Tiers</option>
+          <option value="association">Association Verified</option>
+          <option value="market board">Market Board</option>
+          <option value="self-attested">Self-Attested</option>
+        </select>
       </div>
 
       <!-- ========== CATEGORY GRID ========== -->
@@ -1213,7 +1300,7 @@
         checkPendingAttachments();
       } else if (currentUser.role === "buyer") {
         checkBuyerLock();
-        loadFavourites(); // load favourites for buyers
+        loadFavourites();
       } else if (currentUser.role === "agent") {
         showAgentTools();
       }
@@ -1563,14 +1650,20 @@
 
     function applyFilters() {
       const q = document.getElementById("search-input").value.trim().toLowerCase();
+      const locFilter = document.getElementById("filter-location").value;
+      const tierFilter = document.getElementById("filter-tier").value;
+
       const fd = allDistributors.filter(d => {
         const mc = activeCategory === "All" || (d.category && d.category.trim() === activeCategory);
         const ms = !q ||
           (d.business_name || "").toLowerCase().includes(q) ||
           (d.location || "").toLowerCase().includes(q) ||
           (d.category || "").toLowerCase().includes(q);
-        return mc && ms;
+        const ml = !locFilter || (d.location || "").toLowerCase() === locFilter.toLowerCase();
+        const mt = !tierFilter || (d.verification_tier || "").toLowerCase() === tierFilter.toLowerCase();
+        return mc && ms && ml && mt;
       });
+
       const fb = allBuyers.filter(b => {
         const bName = b.profiles ? b.profiles.full_name : "";
         const mc = activeCategory === "All" || (b.looking_for && b.looking_for.trim() === activeCategory);
@@ -1578,8 +1671,11 @@
           (bName || "").toLowerCase().includes(q) ||
           (b.location || "").toLowerCase().includes(q) ||
           (b.looking_for || "").toLowerCase().includes(q);
-        return mc && ms;
+        const ml = !locFilter || (b.location || "").toLowerCase() === locFilter.toLowerCase();
+        // buyers don't have verification_tier, so ignore mt for buyers
+        return mc && ms && ml;
       });
+
       renderDistributors(fd);
       renderBuyers(fb);
       document.getElementById("distributor-count").innerText = fd.length;
