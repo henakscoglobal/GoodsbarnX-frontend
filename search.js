@@ -1,4 +1,4 @@
-// ShelfMatch MVP - Smart Search
+// GoodsbarnX MVP - Smart Search
 
 function smartSearch(query) {
 
