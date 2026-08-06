@@ -1142,6 +1142,14 @@
       </div>
     </div>
 
+    <!-- ========== STAFF MANAGEMENT SCREEN ========== -->
+    <div class="screen" id="screen-staff">
+      <div class="section-label">Team Management</div>
+      <div id="staff-list"></div>
+      <button class="btn-inquire" style="width:100%; margin-bottom:8px;" onclick="openInviteStaffModal()">+ Invite Staff Member</button>
+      <div id="staff-error" class="status-msg"></div>
+    </div>
+
     <!-- ---------- Bottom Navigation ---------- -->
     <nav class="bottom">
       <div class="nav-item active" id="nav-market" onclick="showScreen('market')">
@@ -1155,6 +1163,9 @@
       </div>
       <div class="nav-item" id="nav-onboard" onclick="showScreen('onboard')">
         <span class="ic">➕</span> Onboard
+      </div>
+      <div class="nav-item" id="nav-staff" onclick="showScreen('staff')">
+        <span class="ic">👥</span> Team
       </div>
       <div class="nav-item" id="nav-upgrade" onclick="showScreen('upgrade')">
         <span class="ic">⭐</span> Upgrade
@@ -1239,6 +1250,29 @@
     </div>
   </div>
 
+  <!-- ========== INVITE STAFF MODAL ========== -->
+  <div class="sheet-overlay" id="invite-staff-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Invite a team member</h3>
+      <div class="sub">They'll receive an email to set up their account.</div>
+      <div class="field">
+        <label>Staff email</label>
+        <input type="email" id="staff-email" />
+      </div>
+      <div class="field">
+        <label>Role</label>
+        <select id="staff-role" style="width:100%; border:1.5px solid var(--line-dark); border-radius:10px; padding:11px 12px; font-family:'Inter',sans-serif; background:#fff; color:var(--ink);">
+          <option value="responder">Responder (can reply to inquiries)</option>
+          <option value="manager">Manager (full access)</option>
+        </select>
+      </div>
+      <button class="submit-btn" onclick="sendStaffInvite()">Send invitation</button>
+      <button class="cancel-btn" onclick="closeInviteStaffModal()">Cancel</button>
+      <div class="status-msg" id="invite-staff-status"></div>
+    </div>
+  </div>
+
   <!-- ========== SUPABASE & MAIN SCRIPT ========== -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
@@ -1282,11 +1316,18 @@
       if (currentUser.role === "distributor") {
         showDistributorTools();
         checkPendingAttachments();
+        loadStaffList(); // load staff if Business tier
       } else if (currentUser.role === "buyer") {
         checkBuyerLock();
         loadFavourites();
       } else if (currentUser.role === "agent") {
         showAgentTools();
+      }
+      // check if user is a staff member
+      const { data: staffProfile } = await sb.from('staff_profiles').select('*').eq('user_id', currentUser.id).maybeSingle();
+      if (staffProfile) {
+        // show staff dashboard
+        showScreen('staff');
       }
     }
 
@@ -1366,7 +1407,6 @@
       const companyName = agentProfile && agentProfile.companies ? agentProfile.companies.name : "your company";
 
       if (confirmed) {
-        // Get current counts for display
         const { count: attachmentsCount } = await sb
           .from('agent_distributor_attachments')
           .select('*', { count: 'exact', head: true })
@@ -1417,7 +1457,6 @@
       const statusEl = document.getElementById("attach-status-msg");
       if (!distName) { statusEl.innerText = "Please enter the distributor's business name."; return; }
 
-      // Check existing accepted attachments count for free agents
       if (currentUser && currentUser.role === 'agent') {
         const { data: currentSub } = await sb
           .from('subscriptions')
@@ -1490,7 +1529,6 @@
       const statusEl = document.getElementById("add-buyer-status-msg");
       if (!phone) { statusEl.innerText = "Please enter a phone number."; return; }
 
-      // Check existing active buyer connections for free agents
       if (currentUser && currentUser.role === 'agent') {
         const { data: currentSub } = await sb
           .from('subscriptions')
@@ -1595,6 +1633,63 @@
       });
     }
 
+    // ---------- Staff Management ----------
+    async function loadStaffList() {
+      if (!currentUser || currentUser.role !== 'distributor') return;
+      const { data: invitations, error } = await sb
+        .from('staff_invitations')
+        .select('*')
+        .eq('distributor_id', currentUser.id);
+      if (error) return;
+      const list = document.getElementById('staff-list');
+      list.innerHTML = invitations.length === 0 ? '<div class="loading-text">No staff members yet. Invite your first team member.</div>' : invitations.map(inv => `
+        <div class="manifest">
+          <div class="manifest-top">
+            <div>
+              <div class="m-name">${inv.email}</div>
+              <div class="m-loc">${inv.role} · ${inv.status}</div>
+            </div>
+            ${inv.status === 'accepted' ? '<span style="color:var(--ok); font-weight:700;">Active</span>' : '<span style="color:var(--brass-dark);">Pending</span>'}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function openInviteStaffModal() {
+      document.getElementById("staff-email").value = "";
+      document.getElementById("invite-staff-status").innerText = "";
+      document.getElementById("invite-staff-modal").classList.add("active");
+    }
+    function closeInviteStaffModal() { document.getElementById("invite-staff-modal").classList.remove("active"); }
+
+    async function sendStaffInvite() {
+      const email = document.getElementById("staff-email").value;
+      const role = document.getElementById("staff-role").value;
+      const statusEl = document.getElementById("invite-staff-status");
+      if (!email) { statusEl.innerText = "Please enter an email address."; return; }
+      // Check subscription plan (must be business or enterprise)
+      const { data: sub } = await sb.from('subscriptions').select('plan_id').eq('user_id', currentUser.id).eq('status', 'active').maybeSingle();
+      if (!sub || (sub.plan_id !== 'business' && sub.plan_id !== 'enterprise')) {
+        statusEl.innerText = "Staff management requires a Business or Enterprise plan. Upgrade now.";
+        return;
+      }
+      const { error } = await sb.from('staff_invitations').insert({
+        distributor_id: currentUser.id,
+        email: email,
+        role: role,
+        status: 'pending'
+      });
+      if (error) {
+        if (error.message.includes('duplicate')) statusEl.innerText = "An invitation has already been sent to this email.";
+        else if (error.message.includes('Business plan allows up to 5')) statusEl.innerText = "You've reached the maximum of 5 staff members for your Business plan.";
+        else statusEl.innerText = error.message;
+        return;
+      }
+      statusEl.innerText = "Invitation sent! The team member will need to sign up with this email and then you can approve them.";
+      setTimeout(closeInviteStaffModal, 2000);
+      loadStaffList();
+    }
+
     // ---------- Market data ----------
     let allDistributors = [];
     let allBuyers = [];
@@ -1611,6 +1706,7 @@
       const navItem = document.getElementById("nav-" + name);
       if (navItem) navItem.classList.add("active");
       if (name === "inquiries") renderHistory();
+      if (name === "staff") loadStaffList();
       window.scrollTo(0, 0);
     }
 
