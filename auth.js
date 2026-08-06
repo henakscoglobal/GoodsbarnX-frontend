@@ -44,6 +44,20 @@ async function loadCurrentUser() {
   }
 }
 
+async function loadCurrentUser() {
+  // ... existing code ...
+  if (currentUser.role === "distributor") {
+    showDistributorTools();
+    checkPendingAttachments();
+  } else if (currentUser.role === "buyer") {
+    checkBuyerLock();
+  } else if (currentUser.role === "agent") {
+    showAgentTools();
+  }
+  // New line – load favourites
+  loadFavourites();
+}
+
 async function handleLogout() { await sb.auth.signOut(); location.reload(); }
 
 // Sign up
