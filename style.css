@@ -26,3 +26,21 @@
 .search-bar-wrap input::placeholder {
   color: rgba(239, 233, 222, 0.35);
 }
+
+.fav-btn {
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+
+.fav-btn:active {
+  transform: scale(1.2);
+}
+
+.fav-icon.filled {
+  /* no change needed, we'll just replace the emoji with ❤️ */
+}
