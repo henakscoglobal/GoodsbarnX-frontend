@@ -1316,17 +1316,15 @@
       if (currentUser.role === "distributor") {
         showDistributorTools();
         checkPendingAttachments();
-        loadStaffList(); // load staff if Business tier
+        loadStaffList();
       } else if (currentUser.role === "buyer") {
         checkBuyerLock();
         loadFavourites();
       } else if (currentUser.role === "agent") {
         showAgentTools();
       }
-      // check if user is a staff member
       const { data: staffProfile } = await sb.from('staff_profiles').select('*').eq('user_id', currentUser.id).maybeSingle();
       if (staffProfile) {
-        // show staff dashboard
         showScreen('staff');
       }
     }
