@@ -883,6 +883,21 @@
       text-align: center;
       margin-top: 10px;
     }
+
+    /* ---------- Favourites ---------- */
+    .fav-btn {
+      background: none;
+      border: none;
+      font-size: 22px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+      transition: transform 0.2s;
+    }
+
+    .fav-btn:active {
+      transform: scale(1.2);
+    }
   </style>
 </head>
 <body>
@@ -984,9 +999,9 @@
       <div id="lock-banner-holder"></div>
       <div id="distributor-tools-holder"></div>
       <div class="search-bar-wrap">
-  <span>🔍</span>
-  <input type="text" id="search-input" placeholder="Search by name, location, category…" oninput="applyFilters()" />
-</div>
+        <span>🔍</span>
+        <input type="text" id="search-input" placeholder="Search by name, location, category…" oninput="applyFilters()" />
+      </div>
 
       <!-- ========== CATEGORY GRID ========== -->
       <div class="section-label">Browse Market Verticals</div>
@@ -1198,6 +1213,7 @@
         checkPendingAttachments();
       } else if (currentUser.role === "buyer") {
         checkBuyerLock();
+        loadFavourites(); // load favourites for buyers
       } else if (currentUser.role === "agent") {
         showAgentTools();
       }
@@ -1395,6 +1411,62 @@
     async function acceptLock() { await sb.from("buyer_locks").update({ status: "active" }).eq("id", pendingLockId); document.getElementById("consent-modal").classList.remove("active"); checkBuyerLock(); }
     async function declineLock() { await sb.from("buyer_locks").delete().eq("id", pendingLockId); document.getElementById("consent-modal").classList.remove("active"); }
 
+    // ---------- Favourites ----------
+    let userFavourites = new Set();
+
+    async function loadFavourites() {
+      if (!currentUser) return;
+      const { data } = await sb
+        .from('favourites')
+        .select('distributor_id')
+        .eq('user_id', currentUser.id);
+      if (data) {
+        userFavourites = new Set(data.map(f => f.distributor_id));
+        updateAllHeartIcons();
+      }
+    }
+
+    async function toggleFavourite(event, distributorId) {
+      event.stopPropagation();
+      if (!currentUser) {
+        alert('Please log in to save favourites.');
+        return;
+      }
+      if (userFavourites.has(distributorId)) {
+        const { error } = await sb
+          .from('favourites')
+          .delete()
+          .eq('user_id', currentUser.id)
+          .eq('distributor_id', distributorId);
+        if (!error) {
+          userFavourites.delete(distributorId);
+          updateHeartIcon(distributorId);
+        }
+      } else {
+        const { error } = await sb
+          .from('favourites')
+          .insert({ user_id: currentUser.id, distributor_id: distributorId });
+        if (!error) {
+          userFavourites.add(distributorId);
+          updateHeartIcon(distributorId);
+        }
+      }
+    }
+
+    function updateHeartIcon(distributorId) {
+      const icon = document.getElementById(`fav-${distributorId}`);
+      if (icon) {
+        icon.textContent = userFavourites.has(distributorId) ? '❤️' : '🤍';
+      }
+    }
+
+    function updateAllHeartIcons() {
+      document.querySelectorAll('.fav-icon').forEach(icon => {
+        const id = icon.id.replace('fav-', '');
+        icon.textContent = userFavourites.has(id) ? '❤️' : '🤍';
+      });
+    }
+
     // ---------- Market data ----------
     let allDistributors = [];
     let allBuyers = [];
@@ -1436,7 +1508,12 @@
               <div class="m-loc">${d.location || ""}</div>
               ${verifiedBadge}
             </div>
-            <div class="stamp-badge">${d.category ? d.category.toUpperCase() : "LISTED"}</div>
+            <div style="display:flex; align-items:flex-start; gap:8px;">
+              <button class="fav-btn" onclick="toggleFavourite(event, '${d.id}')">
+                <span class="fav-icon" id="fav-${d.id}">🤍</span>
+              </button>
+              <div class="stamp-badge">${d.category ? d.category.toUpperCase() : "LISTED"}</div>
+            </div>
           </div>
           <div class="m-meta">
             ${phone ? `<button class="btn-whatsapp" onclick="openWhatsApp('${phone}','${d.business_name}')">WhatsApp</button>` : ''}
@@ -1485,13 +1562,23 @@
     }
 
     function applyFilters() {
+      const q = document.getElementById("search-input").value.trim().toLowerCase();
       const fd = allDistributors.filter(d => {
         const mc = activeCategory === "All" || (d.category && d.category.trim() === activeCategory);
-        return mc;
+        const ms = !q ||
+          (d.business_name || "").toLowerCase().includes(q) ||
+          (d.location || "").toLowerCase().includes(q) ||
+          (d.category || "").toLowerCase().includes(q);
+        return mc && ms;
       });
       const fb = allBuyers.filter(b => {
+        const bName = b.profiles ? b.profiles.full_name : "";
         const mc = activeCategory === "All" || (b.looking_for && b.looking_for.trim() === activeCategory);
-        return mc;
+        const ms = !q ||
+          (bName || "").toLowerCase().includes(q) ||
+          (b.location || "").toLowerCase().includes(q) ||
+          (b.looking_for || "").toLowerCase().includes(q);
+        return mc && ms;
       });
       renderDistributors(fd);
       renderBuyers(fb);
