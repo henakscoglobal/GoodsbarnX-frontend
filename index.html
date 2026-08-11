@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>GoodsbarnX — Onitsha • Nnewi • Awka • Asaba • Enugu • Owerri • Abakiliki • Agbor • Warri • Aba</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@600;700&family=Roboto+Slab:wght@700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- ========== AUTH: SIGN UP ========== -->
+  <div id="auth-shell" class="auth-shell">
+    <div class="auth-brand">
+      <h1>GoodsbarnX</h1>
+      <p>Onitsha • Nnewi • Awka • Asaba • Enugu • Owerri • Abakiliki • Agbor • Warri • Aba</p>
+    </div>
+    <div class="auth-box">
+      <div class="role-picker" id="signup-role-picker">
+        <div class="role-pick sel" data-role="buyer" onclick="selectRole(this)">Buyer</div>
+        <div class="role-pick" data-role="distributor" onclick="selectRole(this)">Distributor</div>
+        <div class="role-pick" data-role="agent" onclick="selectRole(this)">Supplier Agent</div>
+      </div>
+      <input type="text" id="auth-name" placeholder="Full name" />
+      <input type="tel" id="auth-phone" placeholder="Phone number" />
+      <div id="auth-company" style="display:none;">
+        <input type="text" id="auth-company-input" placeholder="Company name" />
+      </div>
+      <input type="email" id="auth-email" placeholder="Email address" />
+      <input type="password" id="auth-password" placeholder="Password" />
+      <input type="password" id="auth-password-confirm" placeholder="Confirm password" />
+      <button class="auth-submit" onclick="handleSignup()">Create account</button>
+      <div class="auth-error" id="auth-error"></div>
+    </div>
+    <div class="auth-switch">
+      Already have an account? <span onclick="showLogin()">Log in</span>
+    </div>
+    <div class="auth-guest" onclick="continueAsGuest()">Continue browsing without an account</div>
+  </div>
+
+  <!-- ========== AUTH: LOG IN ========== -->
+  <div id="login-shell" class="auth-shell hidden">
+    <div class="auth-brand">
+      <h1>Welcome back</h1>
+      <p>Log in to GoodsbarnX</p>
+    </div>
+    <div class="auth-box">
+      <input type="email" id="login-email" placeholder="Email address" />
+      <div style="position:relative;">
+        <input type="password" id="login-password" placeholder="Password" />
+        <span class="password-toggle" onclick="toggleLoginPassword()" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:var(--ink-2); padding:4px 8px; border-radius:6px;">Show</span>
+      </div>
+      <button class="auth-submit" onclick="handleLogin()">Log in</button>
+      <div class="auth-error" id="login-error"></div>
+    </div>
+    <div class="auth-switch">
+      New here? <span onclick="showSignup()">Create an account</span>
+    </div>
+    <div class="auth-guest" onclick="continueAsGuest()">Continue browsing without an account</div>
+  </div>
+
+  <!-- ========== MAIN APP ========== -->
+  <div id="app" style="display: none;">
+    <div class="status-bar"></div>
+    <header class="top">
+      <div class="brand">
+        <div class="brand-name">GoodsbarnX</div>
+        <div class="brand-sub">Stock meets buyer</div>
+      </div>
+      <span id="logout-btn-holder"></span>
+    </header>
+
+    <!-- ---------- MARKET SCREEN ---------- -->
+    <main class="screen active" id="screen-market">
+      <div id="onboarding-banner"></div>
+      <div class="hero">
+        <div class="hero-eyebrow">GoodsbarnX Network</div>
+        <div class="hero-headline">Real inquiries.<br><em>Real distributors and buyers.</em></div>
+        <div class="clock-seal">
+          <div class="seal-ring">
+            <svg width="56" height="56" viewBox="0 0 56 56">
+              <circle class="bg" cx="28" cy="28" r="24" fill="none" stroke-width="4"/>
+              <circle class="fg" cx="28" cy="28" r="24" fill="none" stroke-width="4" stroke-dasharray="150" stroke-dashoffset="30"/>
+            </svg>
+            <div class="num" id="inquiry-count-ring">–</div>
+          </div>
+          <div class="clock-copy">
+            <div class="clock-title">Total inquiries sent</div>
+            <div class="clock-sub">Real connections made through GoodsbarnX so far</div>
+          </div>
+        </div>
+        <div class="trust-strip">
+          <div class="trust-item"><div class="n" id="stat-distributors">–</div><div class="t">Distributors</div></div>
+          <div class="trust-item"><div class="n" id="stat-buyers">–</div><div class="t">Buyers</div></div>
+          <div class="trust-item"><div class="n">4</div><div class="t">Markets live</div></div>
+        </div>
+      </div>
+
+      <div id="lock-banner-holder"></div>
+      <div id="distributor-tools-holder"></div>
+
+      <div class="search-bar-wrap">
+        <span>🔍</span>
+        <input type="text" id="search-input" placeholder="Search by name, location, category…" oninput="applyFilters(); toggleSearchClear();" />
+        <span class="search-clear" id="search-clear" onclick="clearSearch()">✕</span>
+      </div>
+
+      <div class="adv-filters">
+        <select id="filter-location" class="adv-filter-select" onchange="applyFilters()">
+          <option value="">📍 All Locations</option>
+          <option value="Onitsha">Onitsha</option><option value="Nnewi">Nnewi</option><option value="Awka">Awka</option>
+          <option value="Asaba">Asaba</option><option value="Enugu">Enugu</option><option value="Owerri">Owerri</option>
+          <option value="Abakiliki">Abakiliki</option><option value="Agbor">Agbor</option><option value="Warri">Warri</option><option value="Aba">Aba</option>
+        </select>
+        <select id="filter-tier" class="adv-filter-select" onchange="applyFilters()">
+          <option value="">⭐ All Trust Tiers</option>
+          <option value="association">Association Verified</option>
+          <option value="market board">Market Board</option>
+          <option value="self-attested">Self-Attested</option>
+        </select>
+      </div>
+
+      <div class="section-label">Browse Market Verticals</div>
+      <div class="category-grid">
+        <div class="category-card active" onclick="selectCategory('All',this)">🏪<span>All</span></div>
+        <div class="category-card" onclick="selectCategory('Auto Parts',this)">⚙️<span>Auto Parts</span></div>
+        <div class="category-card" onclick="selectCategory('Motorcycle',this)">🏍<span>Motorcycle</span></div>
+        <div class="category-card" onclick="selectCategory('Tyres',this)">🚗<span>Tyres</span></div>
+        <div class="category-card" onclick="selectCategory('Batteries',this)">🔋<span>Batteries</span></div>
+        <div class="category-card" onclick="selectCategory('Lubricants',this)">🛢<span>Lubricants</span></div>
+        <div class="category-card" onclick="selectCategory('Electronics',this)">📱<span>Electronics</span></div>
+        <div class="category-card" onclick="selectCategory('Pharma',this)">💊<span>Pharma</span></div>
+        <div class="category-card" onclick="selectCategory('Textiles',this)">🧵<span>Textiles</span></div>
+        <div class="category-card" onclick="selectCategory('Building Materials',this)">🧱<span>Building</span></div>
+        <div class="category-card" onclick="selectCategory('General Goods',this)">🛒<span>General</span></div>
+        <div class="category-card" onclick="selectCategory('Raw Materials',this)">🏭<span>Raw Material</span></div>
+        <div class="category-card" onclick="selectCategory('Food & Beverages',this)">🥫<span>Food & Bev</span></div>
+        <div class="category-card" onclick="selectCategory('Agriculture',this)">🌾<span>Agriculture</span></div>
+        <div class="category-card" onclick="selectCategory('Cosmetics',this)">🧴<span>Cosmetics</span></div>
+        <div class="category-card" onclick="selectCategory('Baby Products',this)">👶<span>Baby</span></div>
+        <div class="category-card" onclick="selectCategory('Frozen Foods',this)">🐟<span>Frozen</span></div>
+        <div class="category-card" onclick="selectCategory('Poultry',this)">🐓<span>Poultry</span></div>
+        <div class="category-card" onclick="selectCategory('Computers',this)">💻<span>Computers</span></div>
+        <div class="category-card" onclick="selectCategory('Electrical',this)">🔌<span>Electrical</span></div>
+        <div class="category-card" onclick="selectCategory('Plumbing',this)">🚿<span>Plumbing</span></div>
+        <div class="category-card" onclick="selectCategory('Furniture',this)">🪑<span>Furniture</span></div>
+        <div class="category-card" onclick="selectCategory('Home Appliances',this)">🏠<span>Appliances</span></div>
+        <div class="category-card" onclick="selectCategory('Packaging',this)">📦<span>Packaging</span></div>
+        <div class="category-card" onclick="selectCategory('Logistics',this)">🚚<span>Logistics</span></div>
+      </div>
+
+      <div class="section-label">Distributors <span class="mono" id="distributor-count">0</span></div>
+      <div id="distributor-list"><div class="loading-text">Select a category or search to view distributors.</div></div>
+
+      <div class="section-label">Buyers <span class="mono" id="buyer-count">0</span></div>
+      <div id="buyer-list"><div class="loading-text">Select a category or search to view buyers.</div></div>
+    </main>
+
+    <!-- INQUIRIES SCREEN -->
+    <div class="screen" id="screen-inquiries">
+      <div class="section-label">Your inquiries</div>
+      <div id="history-list"></div>
+    </div>
+
+    <!-- TRUST SCREEN -->
+    <div class="screen" id="screen-trust">
+      <div class="section-label">Trust &amp; Transparency</div>
+      <div id="trust-summary" class="trust-strip" style="margin-bottom:16px;"></div>
+      <div class="section-label">Verified Distributors</div>
+      <div id="verified-distributors-list"></div>
+      <div class="section-label">Recent Approved Disputes</div>
+      <div id="disputes-list"></div>
+    </div>
+
+    <!-- PROFILE SCREEN -->
+    <div class="screen" id="screen-profile">
+      <div class="section-label">Your Profile</div>
+      <div id="profile-saved-banner" style="display:none; background:var(--ok); color:white; padding:8px; border-radius:8px; text-align:center; margin-bottom:12px;">Profile saved successfully!</div>
+      <div id="profile-form">
+        <div class="field" id="profile-business-name-field"><label>Business Name</label><input type="text" id="profile-business-name" placeholder="Your business name" /></div>
+        <div class="field" id="profile-name-field" style="display:none;"><label>Your Name</label><input type="text" id="profile-name" placeholder="Your full name" /></div>
+        <div class="field" id="profile-category-field"><label>Category</label>
+          <select id="profile-category">
+            <option value="">Select category</option>
+            <option value="Auto Parts">Auto Parts</option><option value="Motorcycle">Motorcycle</option><option value="Tyres">Tyres</option><option value="Batteries">Batteries</option><option value="Lubricants">Lubricants</option><option value="Electronics">Electronics</option><option value="Pharma">Pharma</option><option value="Textiles">Textiles</option><option value="Building Materials">Building Materials</option><option value="General Goods">General Goods</option><option value="Raw Materials">Raw Materials</option><option value="Food & Beverages">Food & Beverages</option><option value="Agriculture">Agriculture</option><option value="Cosmetics">Cosmetics</option><option value="Baby Products">Baby Products</option><option value="Frozen Foods">Frozen Foods</option><option value="Poultry">Poultry</option><option value="Computers">Computers</option><option value="Electrical">Electrical</option><option value="Plumbing">Plumbing</option><option value="Furniture">Furniture</option><option value="Home Appliances">Home Appliances</option><option value="Packaging">Packaging</option><option value="Logistics">Logistics</option>
+          </select>
+        </div>
+        <div class="field"><label>Location</label>
+          <select id="profile-location">
+            <option value="">Select location</option>
+            <option value="Onitsha">Onitsha</option><option value="Nnewi">Nnewi</option><option value="Awka">Awka</option><option value="Asaba">Asaba</option><option value="Enugu">Enugu</option><option value="Owerri">Owerri</option><option value="Abakiliki">Abakiliki</option><option value="Agbor">Agbor</option><option value="Warri">Warri</option><option value="Aba">Aba</option>
+          </select>
+        </div>
+        <div class="field"><label>Market (e.g., Main Market Onitsha)</label><input type="text" id="profile-market" placeholder="Which market are you located in?" /></div>
+        <div class="field"><label>Shop Address</label><input type="text" id="profile-shop-address" placeholder="Street address or landmark" /></div>
+        <div class="field"><label>Description</label><textarea id="profile-description" rows="3" placeholder="Brief description of your business"></textarea></div>
+        <div class="field" id="profile-looking-for-field" style="display:none;">
+          <label>I'm looking for</label>
+          <select id="profile-looking-for">
+            <option value="">Select interest</option>
+            <option value="Auto Parts">Auto Parts</option><option value="Motorcycle">Motorcycle</option><option value="Tyres">Tyres</option><option value="Batteries">Batteries</option><option value="Lubricants">Lubricants</option><option value="Electronics">Electronics</option><option value="Pharma">Pharma</option><option value="Textiles">Textiles</option><option value="Building Materials">Building Materials</option><option value="General Goods">General Goods</option><option value="Raw Materials">Raw Materials</option><option value="Food & Beverages">Food & Beverages</option><option value="Agriculture">Agriculture</option><option value="Cosmetics">Cosmetics</option><option value="Baby Products">Baby Products</option><option value="Frozen Foods">Frozen Foods</option><option value="Poultry">Poultry</option><option value="Computers">Computers</option><option value="Electrical">Electrical</option><option value="Plumbing">Plumbing</option><option value="Furniture">Furniture</option><option value="Home Appliances">Home Appliances</option><option value="Packaging">Packaging</option><option value="Logistics">Logistics</option>
+          </select>
+        </div>
+        <button class="submit-btn" onclick="saveProfile()">Save Profile</button>
+        <div class="status-msg" id="profile-status"></div>
+      </div>
+    </div>
+
+    <!-- UPGRADE SCREEN -->
+    <div class="screen" id="screen-upgrade">
+      <div class="section-label">Choose Your Plan</div>
+      <div id="plan-cards" style="display:flex; flex-direction:column; gap:16px; margin-bottom:16px;"></div>
+      <div class="section-label">Current Plan</div>
+      <div id="current-plan-info" class="manifest" style="padding:14px;"></div>
+      <div id="upgrade-status" class="status-msg"></div>
+    </div>
+
+    <!-- STAFF MANAGEMENT SCREEN -->
+    <div class="screen" id="screen-staff">
+      <div class="section-label">Team Management</div>
+      <div id="staff-list"></div>
+      <button class="btn-inquire" style="width:100%; margin-bottom:8px;" onclick="openInviteStaffModal()">+ Invite Staff Member</button>
+      <div id="staff-error" class="status-msg"></div>
+    </div>
+
+    <!-- PRODUCTS SCREEN -->
+    <div class="screen" id="screen-products">
+      <div class="section-label">Your Products</div>
+      <div id="products-management-list"></div>
+      <button class="submit-btn" style="margin-top:16px;" onclick="openAddProductModal()">+ Add New Product</button>
+      <div id="products-management-status" class="status-msg"></div>
+    </div>
+
+    <!-- CART SCREEN -->
+    <div class="screen" id="screen-cart">
+      <div class="section-label">Your Cart</div>
+      <div id="cart-content"></div>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom">
+      <div class="nav-item active" id="nav-market" onclick="showScreen('market')"><span class="ic">🏬</span> Market</div>
+      <div class="nav-item" id="nav-inquiries" onclick="showScreen('inquiries')"><span class="ic">📋</span> Inquiries</div>
+      <div class="nav-item" id="nav-cart" onclick="showScreen('cart')"><span class="ic">🛒</span><span class="nav-badge" id="cart-badge">0</span>Cart</div>
+      <div class="nav-item" id="nav-trust" onclick="showScreen('trust')"><span class="ic">🛡️</span> Trust</div>
+      <div class="nav-item" id="nav-profile" onclick="showScreen('profile')"><span class="ic">👤</span> Profile</div>
+      <div class="nav-item" id="nav-products" onclick="showScreen('products')" style="display:none;"><span class="ic">📦</span> Products</div>
+      <div class="nav-item" id="nav-upgrade" onclick="showScreen('upgrade')"><span class="ic">⭐</span> Upgrade</div>
+    </nav>
+  </div>
+
+  <!-- MODALS -->
+  <div class="sheet-overlay" id="inquiry-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3 id="modal-title">Contact</h3>
+      <div class="sub">Send your details — they'll be in touch directly.</div>
+      <div class="field"><label>Your name</label><input type="text" id="inquiry-name" /></div>
+      <div class="field"><label>Your phone</label><input type="tel" id="inquiry-phone" /></div>
+      <div class="field"><label>Your email (for confirmation)</label><input type="email" id="inquiry-email" /></div>
+      <div class="field"><label>What are you looking for</label><input type="text" id="inquiry-item" /></div>
+      <div class="field">
+        <label>Order scale</label>
+        <div class="tier-row">
+          <div class="tier-opt" data-tier="single" onclick="selectTier(this)">Single piece</div>
+          <div class="tier-opt" data-tier="carton" onclick="selectTier(this)">Carton</div>
+          <div class="tier-opt" data-tier="container" onclick="selectTier(this)">Container</div>
+        </div>
+      </div>
+      <div class="field"><label>Quantity</label><input type="text" id="inquiry-quantity" /></div>
+      <button class="submit-btn" onclick="submitInquiry()">Send inquiry now</button>
+      <button class="cancel-btn" onclick="closeModal()">Cancel</button>
+      <div class="status-msg" id="status-msg"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="dispute-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Report an issue</h3>
+      <div class="sub">About <span id="dispute-target-name"></span>. Reviewed before it's made public.</div>
+      <div class="field"><label>Your name</label><input type="text" id="dispute-submitted-by" /></div>
+      <div class="field"><label>Your phone</label><input type="tel" id="dispute-phone" /></div>
+      <div class="field"><label>What happened</label><input type="text" id="dispute-description" /></div>
+      <button class="submit-btn" onclick="submitDispute()">Submit for review</button>
+      <button class="cancel-btn" onclick="closeDisputeModal()">Cancel</button>
+      <div class="status-msg" id="dispute-status-msg"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="add-buyer-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Add your buyer</h3>
+      <div class="sub">They'll see a consent screen before anything is connected.</div>
+      <div class="field"><label>Buyer's phone number</label><input type="tel" id="add-buyer-phone" /></div>
+      <button class="submit-btn" id="add-buyer-submit-btn">Send connection request</button>
+      <button class="cancel-btn" onclick="closeAddBuyerModal()">Cancel</button>
+      <div class="status-msg" id="add-buyer-status-msg"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="consent-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Connection request</h3>
+      <div class="sub" id="consent-sub"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="attach-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Attach to a distributor</h3>
+      <div class="sub">They must accept before this becomes active.</div>
+      <div class="field"><label>Distributor's exact business name</label><input type="text" id="attach-distributor-name" /></div>
+      <button class="submit-btn" onclick="submitAttach()">Send request</button>
+      <button class="cancel-btn" onclick="closeAttachModal()">Cancel</button>
+      <div class="status-msg" id="attach-status-msg"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="invite-staff-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Invite a team member</h3>
+      <div class="sub">They'll receive an email to set up their account.</div>
+      <div class="field"><label>Staff email</label><input type="email" id="staff-email" /></div>
+      <div class="field"><label>Role</label>
+        <select id="staff-role" style="width:100%; border:1.5px solid var(--line-dark); border-radius:10px; padding:11px 12px; font-family:'Inter',sans-serif; background:#fff; color:var(--ink);">
+          <option value="responder">Responder</option>
+          <option value="manager">Manager</option>
+        </select>
+      </div>
+      <button class="submit-btn" onclick="sendStaffInvite()">Send invitation</button>
+      <button class="cancel-btn" onclick="closeInviteStaffModal()">Cancel</button>
+      <div class="status-msg" id="invite-staff-status"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="storefront-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <div id="storefront-content"></div>
+      <button class="cancel-btn" onclick="closeStorefrontModal()">Close</button>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="add-product-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Add Product</h3>
+      <div class="sub">Fill in the details of your product.</div>
+      <div class="field"><label>Product Image</label><input type="file" id="prod-image-input" accept="image/*" onchange="previewProductImage()" style="padding:8px;" /><div class="image-preview" id="prod-image-preview"></div></div>
+      <div class="field"><label>Product Name *</label><input type="text" id="prod-name" /></div>
+      <div class="field"><label>SKU</label><input type="text" id="prod-sku" /></div>
+      <div class="field"><label>Brand</label><input type="text" id="prod-brand" /></div>
+      <div class="field"><label>Category</label><input type="text" id="prod-category" /></div>
+      <div class="field"><label>Subcategory</label><input type="text" id="prod-subcategory" /></div>
+      <div class="field"><label>Unit</label><input type="text" id="prod-unit" /></div>
+      <div class="field"><label>MOQ</label><input type="number" id="prod-moq" value="1" /></div>
+      <div class="field"><label>Stock</label><input type="number" id="prod-stock" value="0" /></div>
+      <div class="field"><label>Price (₦)</label><input type="number" step="0.01" id="prod-price" /></div>
+      <div class="field"><label>Negotiable</label><select id="prod-negotiable"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field"><label>Bulk Discount</label><select id="prod-bulk-discount"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field"><label>Lead Time</label><input type="text" id="prod-lead-time" placeholder="e.g., 2-3 days" /></div>
+      <div class="field"><label>Trade Terms</label><input type="text" id="prod-trade-terms" /></div>
+      <div class="field"><label>Delivery</label><select id="prod-delivery"><option value="true">Yes</option><option value="false">No</option></select></div>
+      <div class="field"><label>Pickup</label><select id="prod-pickup"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field"><label>Description</label><textarea id="prod-desc" rows="2"></textarea></div>
+      <button class="submit-btn" onclick="addProduct()">Save Product</button>
+      <button class="cancel-btn" onclick="closeAddProductModal()">Cancel</button>
+      <div class="status-msg" id="add-product-status"></div>
+    </div>
+  </div>
+
+  <!-- SCRIPTS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://js.paystack.co/v2/inline.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/router.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/profile.js"></script>
+  <script src="js/favourites.js"></script>
+  <script src="js/requests.js"></script>
+  <script src="js/market.js"></script>
+  <script src="js/storefront.js"></script>
+  <script src="js/products.js"></script>
+  <script src="js/cart.js"></script>
+  <script src="js/trust.js"></script>
+  <script src="js/upgrade.js"></script>
+  <script src="js/staff.js"></script>
+  <script src="js/offline.js"></script>
+</body>
+</html>
