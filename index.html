@@ -8,105 +8,2291 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@600;700&family=Roboto+Slab:wght@700&display=swap" rel="stylesheet" />
   <style>
-    /* Include all CSS here */
     :root {
-      --ink: #12151C; --ink-2: #1B1F29; --paper: #EFE9DE; --paper-dim: #E2DBCC;
-      --brass: #C88A34; --brass-bright: #E3A94F; --stamp: #A63D2F; --stamp-bright: #C24632;
-      --ok: #3F7A4E; --line: rgba(239, 233, 222, 0.14); --line-dark: rgba(18, 21, 28, 0.12);
+      --ink: #12151C;
+      --ink-2: #1B1F29;
+      --paper: #EFE9DE;
+      --paper-dim: #E2DBCC;
+      --brass: #C88A34;
+      --brass-bright: #E3A94F;
+      --stamp: #A63D2F;
+      --stamp-bright: #C24632;
+      --ok: #3F7A4E;
+      --line: rgba(239, 233, 222, 0.14);
+      --line-dark: rgba(18, 21, 28, 0.12);
       --brass-dark: #9A6A22;
+      --shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { background: var(--ink); color: var(--paper); min-height: 100vh; font-family: 'Inter', -apple-system, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
-    ::selection { background: var(--brass); color: var(--ink); }
-    h1, h2, h3, .display { font-family: 'Roboto Slab', Georgia, serif; font-weight: 700; letter-spacing: -0.01em; }
-    .mono { font-family: 'JetBrains Mono', 'Courier New', monospace; letter-spacing: 0.02em; }
-    #app { max-width: 480px; margin: 0 auto; min-height: 100vh; position: relative; background: var(--ink); }
-    .status-bar { height: env(safe-area-inset-top, 0px); background: var(--ink); }
-    header.top { padding: 22px 20px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 40; background: linear-gradient(180deg, var(--ink) 80%, rgba(18, 21, 28, 0.96)); backdrop-filter: blur(6px); }
-    .brand { display: flex; align-items: center; gap: 10px; }
-    .brand-name { font-family: 'Roboto Slab', serif; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
-    .brand-sub { font-size: 10px; color: var(--brass-bright); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 1px; }
-    /* ... rest of CSS ... */
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      background: var(--ink);
+      color: var(--paper);
+      min-height: 100vh;
+      font-family: 'Inter', -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    ::selection {
+      background: var(--brass);
+      color: var(--ink);
+    }
+
+    h1, h2, h3, .display {
+      font-family: 'Roboto Slab', Georgia, serif;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .mono {
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      letter-spacing: 0.02em;
+    }
+
+    #app {
+      max-width: 480px;
+      margin: 0 auto;
+      min-height: 100vh;
+      position: relative;
+      background: var(--ink);
+    }
+
+    .status-bar {
+      height: env(safe-area-inset-top, 0px);
+      background: var(--ink);
+    }
+
+    header.top {
+      padding: 22px 20px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      background: linear-gradient(180deg, var(--ink) 80%, rgba(18, 21, 28, 0.96));
+      backdrop-filter: blur(6px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-name {
+      font-family: 'Roboto Slab', serif;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-sub {
+      font-size: 10px;
+      color: var(--brass-bright);
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      margin-top: 1px;
+    }
+
+    .logout-btn {
+      font-size: 10.5px;
+      color: rgba(239, 233, 222, 0.45);
+      text-decoration: underline;
+      padding: 6px 4px;
+      cursor: pointer;
+    }
+
+    main {
+      padding: 20px 20px 100px;
+    }
+
+    .screen {
+      display: none;
+    }
+
+    .screen.active {
+      display: block;
+      animation: fadein 0.25s ease;
+    }
+
+    @keyframes fadein {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .loading-text {
+      color: rgba(239, 233, 222, 0.5);
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 8px 0;
+      text-align: center;
+    }
+
+    .hero {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: radial-gradient(120% 140% at 0% 0%, #232838 0%, #171B24 55%, #12151C 100%);
+      padding: 24px 20px 22px;
+      overflow: hidden;
+      margin-bottom: 22px;
+    }
+
+    .hero-eyebrow {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--brass-bright);
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .hero-headline {
+      font-size: 24px;
+      line-height: 1.18;
+      margin-bottom: 14px;
+    }
+
+    .hero-headline em {
+      color: var(--brass-bright);
+      font-style: normal;
+    }
+
+    .clock-seal {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: rgba(239, 233, 222, 0.05);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
+    }
+
+    .seal-ring {
+      position: relative;
+      width: 56px;
+      height: 56px;
+      flex-shrink: 0;
+    }
+
+    .seal-ring svg {
+      transform: rotate(-90deg);
+    }
+
+    .seal-ring .bg {
+      stroke: rgba(239, 233, 222, 0.1);
+    }
+
+    .seal-ring .fg {
+      stroke: var(--brass-bright);
+      stroke-linecap: round;
+    }
+
+    .seal-ring .num {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--paper);
+    }
+
+    .clock-copy .clock-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--paper);
+      margin-bottom: 2px;
+    }
+
+    .clock-copy .clock-sub {
+      font-size: 12px;
+      color: rgba(239, 233, 222, 0.55);
+    }
+
+    .trust-strip {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .trust-item {
+      flex: 1;
+      text-align: center;
+      background: rgba(239, 233, 222, 0.04);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 6px;
+    }
+
+    .trust-item .n {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--brass-bright);
+    }
+
+    .trust-item .t {
+      font-size: 9.5px;
+      color: rgba(239, 233, 222, 0.45);
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .section-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: rgba(239, 233, 222, 0.45);
+      font-weight: 600;
+      margin: 26px 0 12px;
+    }
+
+    .section-label::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+    }
+
+    .category-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin: 18px 0 24px;
+    }
+
+    .category-card {
+      background: var(--ink-2);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: 0.25s;
+      font-size: 28px;
+    }
+
+    .category-card:hover {
+      border-color: var(--brass);
+    }
+
+    .category-card.active {
+      border: 2px solid var(--brass);
+      background: #27211A;
+    }
+
+    .category-card span {
+      display: block;
+      margin-top: 10px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .manifest {
+      background: var(--paper);
+      color: var(--ink);
+      border-radius: 16px;
+      padding: 16px 16px 14px;
+      margin-bottom: 12px;
+      position: relative;
+      box-shadow: var(--shadow);
+    }
+
+    .manifest-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+
+    .m-name {
+      font-family: 'Roboto Slab', serif;
+      font-weight: 700;
+      font-size: 15.5px;
+    }
+
+    .m-loc {
+      font-size: 11.5px;
+      color: rgba(18, 21, 28, 0.55);
+      margin-top: 2px;
+    }
+
+    .m-verified {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #fff;
+      background: var(--ok);
+      padding: 3px 7px;
+      border-radius: 6px;
+      margin-top: 6px;
+    }
+
+    .m-verified.market-board {
+      background: #2E6B8C;
+    }
+
+    .m-verified.self-attested {
+      background: none;
+      border: 1.3px solid var(--brass-dark);
+      color: var(--brass-dark);
+    }
+
+    .stamp-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border: 2px solid var(--stamp);
+      color: var(--stamp);
+      padding: 4px 8px;
+      border-radius: 6px;
+      transform: rotate(-4deg);
+      white-space: nowrap;
+    }
+
+    .m-meta {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
+      border-top: 1px dashed var(--line-dark);
+      padding-top: 11px;
+      margin-top: 2px;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 10px;
+      padding: 9px 16px;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn:active {
+      transform: scale(0.96);
+    }
+
+    .btn-primary {
+      background: var(--stamp);
+      color: #fff;
+      box-shadow: 0 3px 8px rgba(166, 61, 47, 0.35);
+    }
+
+    .btn-whatsapp {
+      background: #25D366;
+      color: #fff;
+    }
+
+    .btn-outline {
+      background: var(--ink-2);
+      color: var(--brass-bright);
+      border: 1px solid var(--brass);
+    }
+
+    .btn-success {
+      background: var(--ok);
+      color: #fff;
+    }
+
+    .btn-danger {
+      background: var(--stamp);
+      color: #fff;
+    }
+
+    .btn-block {
+      width: 100%;
+    }
+
+    .dispute-row {
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .dispute-link {
+      font-size: 11px;
+      color: rgba(18, 21, 28, 0.4);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    .dispute-count {
+      font-size: 10.5px;
+      color: var(--stamp);
+      font-weight: 600;
+    }
+
+    .search-bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--ink-2);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+
+    .search-bar-wrap input {
+      background: none;
+      border: none;
+      outline: none;
+      color: var(--paper);
+      font-size: 13px;
+      flex: 1;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .search-bar-wrap input::placeholder {
+      color: rgba(239, 233, 222, 0.3);
+    }
+
+    .search-clear {
+      display: none;
+      cursor: pointer;
+      font-size: 16px;
+      color: rgba(239, 233, 222, 0.5);
+      padding: 0 4px;
+    }
+
+    .adv-filters {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .adv-filter-select {
+      flex: 1 1 auto;
+      min-width: 0;
+      background: var(--ink-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--paper);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 10px;
+      font-family: 'Inter', sans-serif;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23EFE9DE' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      background-size: 14px;
+      padding-right: 28px;
+      cursor: pointer;
+    }
+
+    .adv-filter-select option {
+      background: var(--ink-2);
+      color: var(--paper);
+    }
+
+    .lock-banner {
+      background: rgba(63, 122, 78, 0.12);
+      border: 1px solid rgba(63, 122, 78, 0.3);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+    }
+
+    .lock-banner .lb-title {
+      font-family: 'Roboto Slab', serif;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--paper);
+      margin-bottom: 4px;
+    }
+
+    .lock-banner .lb-sub {
+      font-size: 12px;
+      color: rgba(239, 233, 222, 0.6);
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+
+    .lock-banner button {
+      background: none;
+      border: 1.3px solid var(--brass);
+      color: var(--brass-bright);
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .distributor-tools {
+      background: var(--ink-2);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+    }
+
+    .distributor-tools .dt-title {
+      font-family: 'Roboto Slab', serif;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--paper);
+      margin-bottom: 4px;
+    }
+
+    .distributor-tools .dt-sub {
+      font-size: 12px;
+      color: rgba(239, 233, 222, 0.5);
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+
+    .distributor-tools button {
+      background: var(--brass);
+      color: var(--ink);
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .sheet-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: 100;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .sheet-overlay.active {
+      display: flex;
+    }
+
+    .sheet {
+      background: var(--paper);
+      color: var(--ink);
+      width: 100%;
+      max-width: 480px;
+      border-radius: 22px 22px 0 0;
+      padding: 22px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+      max-height: 88vh;
+      overflow-y: auto;
+    }
+
+    .sheet-handle {
+      width: 36px;
+      height: 4px;
+      background: var(--line-dark);
+      border-radius: 3px;
+      margin: 0 auto 16px;
+    }
+
+    .sheet h3 {
+      font-size: 18px;
+      margin-bottom: 4px;
+    }
+
+    .sheet .sub {
+      font-size: 12.5px;
+      color: rgba(18, 21, 28, 0.55);
+      margin-bottom: 18px;
+    }
+
+    .field {
+      margin-bottom: 14px;
+    }
+
+    .field label {
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(18, 21, 28, 0.6);
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .field input,
+    .field select,
+    .field textarea {
+      width: 100%;
+      border: 2px solid #C5BFB6;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      background: #FFFFFF;
+      color: #12151C;
+      box-sizing: border-box;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    .field select {
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2312151C' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      background-size: 16px;
+      padding-right: 40px;
+    }
+
+    .field input:focus,
+    .field select:focus,
+    .field textarea:focus {
+      border-color: var(--brass-bright);
+      box-shadow: 0 0 0 3px rgba(200, 138, 52, 0.2);
+      outline: none;
+    }
+
+    .field input::placeholder,
+    .field textarea::placeholder {
+      color: rgba(18, 21, 28, 0.4);
+      font-style: italic;
+    }
+
+    .field select option {
+      background: #FFFFFF;
+      color: #12151C;
+    }
+
+    .tier-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .tier-opt {
+      flex: 1;
+      text-align: center;
+      border: 1.5px solid var(--line-dark);
+      border-radius: 10px;
+      padding: 10px 4px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: rgba(18, 21, 28, 0.6);
+      cursor: pointer;
+    }
+
+    .tier-opt.sel {
+      border-color: var(--stamp);
+      background: rgba(166, 61, 47, 0.06);
+      color: var(--stamp);
+    }
+
+    .submit-btn {
+      width: 100%;
+      background: var(--stamp);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 15px;
+      font-size: 14.5px;
+      font-weight: 700;
+      margin-top: 6px;
+      cursor: pointer;
+    }
+
+    .cancel-btn {
+      width: 100%;
+      background: none;
+      border: 1.5px solid var(--line-dark);
+      color: rgba(18, 21, 28, 0.55);
+      border-radius: 12px;
+      padding: 13px;
+      font-size: 13.5px;
+      font-weight: 600;
+      margin-top: 8px;
+      cursor: pointer;
+    }
+
+    .status-msg {
+      margin-top: 11px;
+      font-size: 12.5px;
+      color: var(--stamp);
+      text-align: center;
+    }
+
+    nav.bottom {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 0;
+      width: 100%;
+      max-width: 480px;
+      background: rgba(18, 21, 28, 0.94);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid var(--line);
+      display: flex;
+      padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0px));
+      z-index: 50;
+    }
+
+    .nav-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      color: rgba(239, 233, 222, 0.4);
+      font-size: 9.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .nav-item .ic {
+      font-size: 19px;
+    }
+
+    .nav-item.active {
+      color: var(--brass-bright);
+    }
+
+    .nav-badge {
+      position: absolute;
+      top: -4px;
+      right: 10px;
+      background: var(--stamp);
+      color: white;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 10px;
+      display: none;
+    }
+
+    .auth-shell {
+      max-width: 480px;
+      margin: 0 auto;
+      min-height: 100vh;
+      background: var(--ink);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 32px 24px;
+    }
+
+    .auth-shell.hidden {
+      display: none;
+    }
+
+    .auth-brand {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    .auth-brand h1 {
+      font-size: 24px;
+      color: var(--paper);
+    }
+
+    .auth-brand p {
+      font-size: 12.5px;
+      color: rgba(239, 233, 222, 0.5);
+      margin-top: 6px;
+    }
+
+    .auth-box {
+      background: var(--ink-2);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 22px;
+    }
+
+    .role-picker {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .role-pick {
+      flex: 1;
+      text-align: center;
+      padding: 10px 4px;
+      border-radius: 10px;
+      border: 1.5px solid var(--line);
+      font-size: 11.5px;
+      font-weight: 600;
+      color: rgba(239, 233, 222, 0.6);
+      cursor: pointer;
+    }
+
+    .role-pick.sel {
+      border-color: var(--brass);
+      background: rgba(200, 138, 52, 0.1);
+      color: var(--brass-bright);
+    }
+
+    .auth-box input {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--ink);
+      color: var(--paper);
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      box-sizing: border-box;
+    }
+
+    .auth-box input::placeholder {
+      color: rgba(239, 233, 222, 0.35);
+    }
+
+    .auth-submit {
+      width: 100%;
+      background: var(--stamp);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 13px;
+      font-size: 14px;
+      font-weight: 700;
+      margin-top: 6px;
+      cursor: pointer;
+    }
+
+    .auth-switch {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 12.5px;
+      color: rgba(239, 233, 222, 0.5);
+    }
+
+    .auth-switch span {
+      color: var(--brass-bright);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .auth-guest {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 12px;
+      color: rgba(239, 233, 222, 0.35);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    .auth-error {
+      font-size: 12.5px;
+      color: var(--stamp-bright);
+      text-align: center;
+      margin-top: 10px;
+    }
+
+    .fav-btn {
+      background: none;
+      border: none;
+      font-size: 22px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+      transition: transform 0.2s;
+    }
+
+    .fav-btn:active {
+      transform: scale(1.2);
+    }
+
+    .onboarding-banner {
+      background: rgba(200, 138, 52, 0.1);
+      border: 1px solid var(--brass);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+
+    .storefront-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+
+    .storefront-badge {
+      display: inline-block;
+      background: var(--ok);
+      color: white;
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-right: 4px;
+    }
+
+    .storefront-score {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--brass-bright);
+    }
+
+    .storefront-section {
+      margin-bottom: 20px;
+    }
+
+    .supply-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+      overflow-x: auto;
+    }
+
+    .supply-tab {
+      flex-shrink: 0;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--ink-2);
+      color: rgba(239,233,222,0.6);
+      border: 1px solid var(--line);
+      cursor: pointer;
+    }
+
+    .supply-tab.active {
+      background: var(--brass);
+      color: var(--ink);
+      border-color: var(--brass);
+    }
+
+    .product-item {
+      border-bottom: 1px dashed var(--line-dark);
+      padding: 14px 0;
+    }
+
+    .product-item:last-child {
+      border-bottom: none;
+    }
+
+    .product-image {
+      width: 60px;
+      height: 60px;
+      background: var(--ink-2);
+      border-radius: 8px;
+      display: inline-block;
+      vertical-align: top;
+      margin-right: 10px;
+      background-size: cover;
+      background-position: center;
+    }
+
+    .cert-badge {
+      display: inline-block;
+      background: var(--ok);
+      color: white;
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-right: 4px;
+    }
+
+    .star-rating {
+      color: var(--brass-bright);
+      font-size: 18px;
+      letter-spacing: 2px;
+    }
+
+    .cart-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line-dark);
+    }
+
+    .cart-item:last-child {
+      border-bottom: none;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .image-preview {
+      width: 80px;
+      height: 80px;
+      border-radius: 8px;
+      background-size: cover;
+      background-position: center;
+      display: none;
+      margin-top: 8px;
+      border: 2px dashed var(--line);
+    }
+
+    .image-preview.has-image {
+      display: block;
+      border-color: var(--brass);
+    }
+
+    .category-fields {
+      display: none;
+    }
+
+    .category-fields.active {
+      display: block;
+    }
+
+    .password-toggle {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--ink-2);
+      padding: 4px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--brass-bright);
+    }
   </style>
 </head>
 <body>
-  <div id="app">
+
+  <!-- AUTH: SIGN UP -->
+  <div id="auth-shell" class="auth-shell">
+    <div class="auth-brand">
+      <h1>GoodsbarnX</h1>
+      <p>Onitsha • Nnewi • Awka • Asaba • Enugu • Owerri • Abakiliki • Agbor • Warri • Aba</p>
+    </div>
+    <div class="auth-box">
+      <div class="role-picker" id="signup-role-picker">
+        <div class="role-pick sel" data-role="buyer" onclick="selectRole(this)">Buyer</div>
+        <div class="role-pick" data-role="distributor" onclick="selectRole(this)">Distributor</div>
+        <div class="role-pick" data-role="agent" onclick="selectRole(this)">Supplier Agent</div>
+      </div>
+      <input type="text" id="auth-name" placeholder="Full name" />
+      <input type="tel" id="auth-phone" placeholder="Phone number" />
+      <div id="auth-company" style="display:none;">
+        <input type="text" id="auth-company-input" placeholder="Company name" />
+      </div>
+      <input type="email" id="auth-email" placeholder="Email address" />
+      <input type="password" id="auth-password" placeholder="Password" />
+      <input type="password" id="auth-password-confirm" placeholder="Confirm password" />
+      <button class="auth-submit" onclick="handleSignup()">Create account</button>
+      <div class="auth-error" id="auth-error"></div>
+    </div>
+    <div class="auth-switch">Already have an account? <span onclick="showLogin()">Log in</span></div>
+    <div class="auth-guest" onclick="continueAsGuest()">Continue browsing without an account</div>
+  </div>
+
+  <!-- AUTH: LOG IN -->
+  <div id="login-shell" class="auth-shell hidden">
+    <div class="auth-brand">
+      <h1>Welcome back</h1>
+      <p>Log in to GoodsbarnX</p>
+    </div>
+    <div class="auth-box">
+      <input type="email" id="login-email" placeholder="Email address" />
+      <div style="position:relative;">
+        <input type="password" id="login-password" placeholder="Password" />
+        <span class="password-toggle" onclick="toggleLoginPassword()">Show</span>
+      </div>
+      <button class="auth-submit" onclick="handleLogin()">Log in</button>
+      <div class="auth-error" id="login-error"></div>
+    </div>
+    <div class="auth-switch">New here? <span onclick="showSignup()">Create an account</span></div>
+    <div class="auth-guest" onclick="continueAsGuest()">Continue browsing without an account</div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="app" style="display: none;">
     <div class="status-bar"></div>
     <header class="top">
       <div class="brand">
         <div class="brand-name">GoodsbarnX</div>
         <div class="brand-sub">Stock meets buyer</div>
       </div>
+      <span id="logout-btn-holder"></span>
     </header>
-    <main style="padding: 20px;">
-      <div style="text-align: center; padding: 40px 20px;">
-        <h1 style="margin-bottom: 10px;">GoodsbarnX</h1>
-        <p style="color: rgba(239, 233, 222, 0.6);">Loading application...</p>
-        <div id="debug-info" style="margin-top: 20px; padding: 20px; background: var(--ink-2); border-radius: 12px; text-align: left; font-size: 12px;"></div>
+
+    <!-- MARKET SCREEN -->
+    <main class="screen active" id="screen-market">
+      <div id="onboarding-banner"></div>
+      <div class="hero">
+        <div class="hero-eyebrow">GoodsbarnX Network</div>
+        <div class="hero-headline">Real inquiries.<br><em>Real distributors and buyers.</em></div>
+        <div class="clock-seal">
+          <div class="seal-ring">
+            <svg width="56" height="56" viewBox="0 0 56 56">
+              <circle class="bg" cx="28" cy="28" r="24" fill="none" stroke-width="4"/>
+              <circle class="fg" cx="28" cy="28" r="24" fill="none" stroke-width="4" stroke-dasharray="150" stroke-dashoffset="30"/>
+            </svg>
+            <div class="num" id="inquiry-count-ring">–</div>
+          </div>
+          <div class="clock-copy">
+            <div class="clock-title">Total inquiries sent</div>
+            <div class="clock-sub">Real connections made through GoodsbarnX so far</div>
+          </div>
+        </div>
+        <div class="trust-strip">
+          <div class="trust-item"><div class="n" id="stat-distributors">–</div><div class="t">Distributors</div></div>
+          <div class="trust-item"><div class="n" id="stat-buyers">–</div><div class="t">Buyers</div></div>
+          <div class="trust-item"><div class="n">4</div><div class="t">Markets live</div></div>
+        </div>
       </div>
+
+      <div id="lock-banner-holder"></div>
+      <div id="distributor-tools-holder"></div>
+
+      <div class="search-bar-wrap">
+        <span>🔍</span>
+        <input type="text" id="search-input" placeholder="Search by name, location, category…" oninput="applyFilters(); toggleSearchClear();" />
+        <span class="search-clear" id="search-clear" onclick="clearSearch()">✕</span>
+      </div>
+
+      <div class="adv-filters">
+        <select id="filter-location" class="adv-filter-select" onchange="applyFilters()">
+          <option value="">📍 All Locations</option>
+          <option value="Onitsha">Onitsha</option>
+          <option value="Nnewi">Nnewi</option>
+          <option value="Awka">Awka</option>
+          <option value="Asaba">Asaba</option>
+          <option value="Enugu">Enugu</option>
+          <option value="Owerri">Owerri</option>
+          <option value="Abakiliki">Abakiliki</option>
+          <option value="Agbor">Agbor</option>
+          <option value="Warri">Warri</option>
+          <option value="Aba">Aba</option>
+        </select>
+        <select id="filter-tier" class="adv-filter-select" onchange="applyFilters()">
+          <option value="">⭐ All Trust Tiers</option>
+          <option value="association">Association Verified</option>
+          <option value="market board">Market Board</option>
+          <option value="self-attested">Self-Attested</option>
+        </select>
+      </div>
+
+      <div class="section-label">Browse Market Verticals</div>
+      <div class="category-grid">
+        <div class="category-card active" onclick="selectCategory('All',this)">🏪<span>All</span></div>
+        <div class="category-card" onclick="selectCategory('Auto Parts',this)">⚙️<span>Auto Parts</span></div>
+        <div class="category-card" onclick="selectCategory('Motorcycle',this)">🏍<span>Motorcycle</span></div>
+        <div class="category-card" onclick="selectCategory('Tyres',this)">🚗<span>Tyres</span></div>
+        <div class="category-card" onclick="selectCategory('Batteries',this)">🔋<span>Batteries</span></div>
+        <div class="category-card" onclick="selectCategory('Lubricants',this)">🛢<span>Lubricants</span></div>
+        <div class="category-card" onclick="selectCategory('Electronics',this)">📱<span>Electronics</span></div>
+        <div class="category-card" onclick="selectCategory('Pharma',this)">💊<span>Pharma</span></div>
+        <div class="category-card" onclick="selectCategory('Textiles',this)">🧵<span>Textiles</span></div>
+        <div class="category-card" onclick="selectCategory('Building Materials',this)">🧱<span>Building</span></div>
+        <div class="category-card" onclick="selectCategory('General Goods',this)">🛒<span>General</span></div>
+        <div class="category-card" onclick="selectCategory('Raw Materials',this)">🏭<span>Raw Material</span></div>
+        <div class="category-card" onclick="selectCategory('Food & Beverages',this)">🥫<span>Food & Bev</span></div>
+        <div class="category-card" onclick="selectCategory('Agriculture',this)">🌾<span>Agriculture</span></div>
+        <div class="category-card" onclick="selectCategory('Cosmetics',this)">🧴<span>Cosmetics</span></div>
+        <div class="category-card" onclick="selectCategory('Baby Products',this)">👶<span>Baby</span></div>
+        <div class="category-card" onclick="selectCategory('Frozen Foods',this)">🐟<span>Frozen</span></div>
+        <div class="category-card" onclick="selectCategory('Poultry',this)">🐓<span>Poultry</span></div>
+        <div class="category-card" onclick="selectCategory('Computers',this)">💻<span>Computers</span></div>
+        <div class="category-card" onclick="selectCategory('Electrical',this)">🔌<span>Electrical</span></div>
+        <div class="category-card" onclick="selectCategory('Plumbing',this)">🚿<span>Plumbing</span></div>
+        <div class="category-card" onclick="selectCategory('Furniture',this)">🪑<span>Furniture</span></div>
+        <div class="category-card" onclick="selectCategory('Home Appliances',this)">🏠<span>Appliances</span></div>
+        <div class="category-card" onclick="selectCategory('Packaging',this)">📦<span>Packaging</span></div>
+        <div class="category-card" onclick="selectCategory('Logistics',this)">🚚<span>Logistics</span></div>
+      </div>
+
+      <div class="section-label">Distributors <span class="mono" id="distributor-count">0</span></div>
+      <div id="distributor-list"><div class="loading-text">Loading distributors...</div></div>
+      
+      <div class="section-label">Buyers <span class="mono" id="buyer-count">0</span></div>
+      <div id="buyer-list"><div class="loading-text">Loading buyers...</div></div>
     </main>
+
+    <!-- INQUIRIES SCREEN -->
+    <div class="screen" id="screen-inquiries">
+      <div class="section-label">Your inquiries</div>
+      <div id="history-list"></div>
+    </div>
+
+    <!-- TRUST SCREEN -->
+    <div class="screen" id="screen-trust">
+      <div class="section-label">Trust &amp; Transparency</div>
+      <div id="trust-summary" class="trust-strip" style="margin-bottom:16px;"></div>
+      <div class="section-label">Verified Distributors</div>
+      <div id="verified-distributors-list"></div>
+      <div class="section-label">Recent Approved Disputes</div>
+      <div id="disputes-list"></div>
+    </div>
+
+    <!-- PROFILE SCREEN -->
+    <div class="screen" id="screen-profile">
+      <div class="section-label">Your Profile</div>
+      <div id="profile-saved-banner" style="display:none; background:var(--ok); color:white; padding:8px; border-radius:8px; text-align:center; margin-bottom:12px;">Profile saved successfully!</div>
+      <div id="profile-form">
+        <div class="field" id="profile-business-name-field">
+          <label>Business Name</label>
+          <input type="text" id="profile-business-name" placeholder="Your business name" />
+        </div>
+        <div class="field" id="profile-name-field" style="display:none;">
+          <label>Your Name</label>
+          <input type="text" id="profile-name" placeholder="Your full name" />
+        </div>
+        <div class="field" id="profile-category-field">
+          <label>Category</label>
+          <select id="profile-category">
+            <option value="">Select category</option>
+            <option value="Auto Parts">Auto Parts</option>
+            <option value="Motorcycle">Motorcycle</option>
+            <option value="Tyres">Tyres</option>
+            <option value="Batteries">Batteries</option>
+            <option value="Lubricants">Lubricants</option>
+            <option value="Electronics">Electronics</option>
+            <option value="Pharma">Pharma</option>
+            <option value="Textiles">Textiles</option>
+            <option value="Building Materials">Building Materials</option>
+            <option value="General Goods">General Goods</option>
+            <option value="Raw Materials">Raw Materials</option>
+            <option value="Food & Beverages">Food & Beverages</option>
+            <option value="Agriculture">Agriculture</option>
+            <option value="Cosmetics">Cosmetics</option>
+            <option value="Baby Products">Baby Products</option>
+            <option value="Frozen Foods">Frozen Foods</option>
+            <option value="Poultry">Poultry</option>
+            <option value="Computers">Computers</option>
+            <option value="Electrical">Electrical</option>
+            <option value="Plumbing">Plumbing</option>
+            <option value="Furniture">Furniture</option>
+            <option value="Home Appliances">Home Appliances</option>
+            <option value="Packaging">Packaging</option>
+            <option value="Logistics">Logistics</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Location</label>
+          <select id="profile-location">
+            <option value="">Select location</option>
+            <option value="Onitsha">Onitsha</option>
+            <option value="Nnewi">Nnewi</option>
+            <option value="Awka">Awka</option>
+            <option value="Asaba">Asaba</option>
+            <option value="Enugu">Enugu</option>
+            <option value="Owerri">Owerri</option>
+            <option value="Abakiliki">Abakiliki</option>
+            <option value="Agbor">Agbor</option>
+            <option value="Warri">Warri</option>
+            <option value="Aba">Aba</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Market</label>
+          <input type="text" id="profile-market" placeholder="Which market?" />
+        </div>
+        <div class="field">
+          <label>Shop Address</label>
+          <input type="text" id="profile-shop-address" placeholder="Street address or landmark" />
+        </div>
+        <div class="field">
+          <label>Description</label>
+          <textarea id="profile-description" rows="3" placeholder="Brief description"></textarea>
+        </div>
+        <div class="field" id="profile-looking-for-field" style="display:none;">
+          <label>I'm looking for</label>
+          <select id="profile-looking-for">
+            <option value="">Select interest</option>
+            <option value="Auto Parts">Auto Parts</option>
+            <option value="Motorcycle">Motorcycle</option>
+            <option value="Tyres">Tyres</option>
+            <option value="Batteries">Batteries</option>
+            <option value="Lubricants">Lubricants</option>
+            <option value="Electronics">Electronics</option>
+            <option value="Pharma">Pharma</option>
+            <option value="Textiles">Textiles</option>
+            <option value="Building Materials">Building Materials</option>
+            <option value="General Goods">General Goods</option>
+            <option value="Raw Materials">Raw Materials</option>
+            <option value="Food & Beverages">Food & Beverages</option>
+            <option value="Agriculture">Agriculture</option>
+            <option value="Cosmetics">Cosmetics</option>
+            <option value="Baby Products">Baby Products</option>
+            <option value="Frozen Foods">Frozen Foods</option>
+            <option value="Poultry">Poultry</option>
+            <option value="Computers">Computers</option>
+            <option value="Electrical">Electrical</option>
+            <option value="Plumbing">Plumbing</option>
+            <option value="Furniture">Furniture</option>
+            <option value="Home Appliances">Home Appliances</option>
+            <option value="Packaging">Packaging</option>
+            <option value="Logistics">Logistics</option>
+          </select>
+        </div>
+        <button class="submit-btn" onclick="saveProfile()">Save Profile</button>
+        <div class="status-msg" id="profile-status"></div>
+      </div>
+    </div>
+
+    <!-- UPGRADE SCREEN -->
+    <div class="screen" id="screen-upgrade">
+      <div class="section-label">Choose Your Plan</div>
+      <div id="plan-cards" style="display:flex; flex-direction:column; gap:16px; margin-bottom:16px;"></div>
+      <div class="section-label">Current Plan</div>
+      <div id="current-plan-info" class="manifest" style="padding:14px;"></div>
+      <div id="upgrade-status" class="status-msg"></div>
+    </div>
+
+    <!-- PRODUCTS SCREEN -->
+    <div class="screen" id="screen-products">
+      <div class="section-label">Your Products</div>
+      <div id="products-management-list"></div>
+      <button class="submit-btn" style="margin-top:16px;" onclick="openAddProductModal()">+ Add New Product</button>
+      <div id="products-management-status" class="status-msg"></div>
+    </div>
+
+    <!-- CART SCREEN -->
+    <div class="screen" id="screen-cart">
+      <div class="section-label">Your Cart</div>
+      <div id="cart-content"></div>
+    </div>
+
+    <!-- BOTTOM NAV -->
+    <nav class="bottom">
+      <div class="nav-item active" id="nav-market" onclick="showScreen('market')"><span class="ic">🏬</span>Market</div>
+      <div class="nav-item" id="nav-cart" onclick="showScreen('cart')"><span class="ic">🛒</span><span class="nav-badge" id="cart-badge">0</span>Cart</div>
+      <div class="nav-item" id="nav-trust" onclick="showScreen('trust')"><span class="ic">🛡️</span>Trust</div>
+      <div class="nav-item" id="nav-profile" onclick="showScreen('profile')"><span class="ic">👤</span>Profile</div>
+      <div class="nav-item" id="nav-products" onclick="showScreen('products')" style="display:none;"><span class="ic">📦</span>Products</div>
+      <div class="nav-item" id="nav-upgrade" onclick="showScreen('upgrade')"><span class="ic">⭐</span>Upgrade</div>
+    </nav>
+  </div>
+
+  <!-- MODALS -->
+  <div class="sheet-overlay" id="inquiry-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3 id="modal-title">Contact</h3>
+      <div class="sub">Send your details — they'll be in touch directly.</div>
+      <div class="field"><label>Your name</label><input type="text" id="inquiry-name" /></div>
+      <div class="field"><label>Your phone</label><input type="tel" id="inquiry-phone" /></div>
+      <div class="field"><label>Your email</label><input type="email" id="inquiry-email" /></div>
+      <div class="field"><label>What are you looking for</label><input type="text" id="inquiry-item" /></div>
+      <div class="field">
+        <label>Order scale</label>
+        <div class="tier-row">
+          <div class="tier-opt" data-tier="single" onclick="selectTier(this)">Single piece</div>
+          <div class="tier-opt" data-tier="carton" onclick="selectTier(this)">Carton</div>
+          <div class="tier-opt" data-tier="container" onclick="selectTier(this)">Container</div>
+        </div>
+      </div>
+      <div class="field"><label>Quantity</label><input type="text" id="inquiry-quantity" /></div>
+      <button class="submit-btn" onclick="submitInquiry()">Send inquiry now</button>
+      <button class="cancel-btn" onclick="closeModal()">Cancel</button>
+      <div class="status-msg" id="status-msg"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="dispute-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Report an issue</h3>
+      <div class="sub">About <span id="dispute-target-name"></span>.</div>
+      <div class="field"><label>Your name</label><input type="text" id="dispute-submitted-by" /></div>
+      <div class="field"><label>Your phone</label><input type="tel" id="dispute-phone" /></div>
+      <div class="field"><label>What happened</label><input type="text" id="dispute-description" /></div>
+      <button class="submit-btn" onclick="submitDispute()">Submit for review</button>
+      <button class="cancel-btn" onclick="closeDisputeModal()">Cancel</button>
+      <div class="status-msg" id="dispute-status-msg"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="storefront-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <div id="storefront-content"></div>
+      <button class="cancel-btn" onclick="closeStorefrontModal()">Close</button>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="add-product-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Add Product</h3>
+      <div class="sub">Fill in the details. Category-specific fields will appear.</div>
+      <div class="field"><label>Product Image</label><input type="file" id="prod-image-input" accept="image/*" onchange="previewProductImage()" style="padding:8px;" /><div class="image-preview" id="prod-image-preview"></div></div>
+      <div class="field"><label>Product Name *</label><input type="text" id="prod-name" /></div>
+      <div class="field">
+        <label>Category *</label>
+        <select id="prod-category" onchange="showCategoryFields()">
+          <option value="">Select category</option>
+          <option value="Auto Parts">Auto Parts</option>
+          <option value="Motorcycle">Motorcycle</option>
+          <option value="Tyres">Tyres</option>
+          <option value="Batteries">Batteries</option>
+          <option value="Lubricants">Lubricants</option>
+          <option value="Electronics">Electronics</option>
+          <option value="Pharma">Pharma</option>
+          <option value="Textiles">Textiles</option>
+          <option value="Building Materials">Building Materials</option>
+          <option value="General Goods">General Goods</option>
+          <option value="Raw Materials">Raw Materials</option>
+          <option value="Food & Beverages">Food & Beverages</option>
+          <option value="Agriculture">Agriculture</option>
+          <option value="Cosmetics">Cosmetics</option>
+          <option value="Baby Products">Baby Products</option>
+          <option value="Frozen Foods">Frozen Foods</option>
+          <option value="Poultry">Poultry</option>
+          <option value="Computers">Computers</option>
+          <option value="Electrical">Electrical</option>
+          <option value="Plumbing">Plumbing</option>
+          <option value="Furniture">Furniture</option>
+          <option value="Home Appliances">Home Appliances</option>
+          <option value="Packaging">Packaging</option>
+          <option value="Logistics">Logistics</option>
+        </select>
+      </div>
+      <div id="category-specific-fields"></div>
+      <div class="field"><label>SKU</label><input type="text" id="prod-sku" /></div>
+      <div class="field"><label>Brand</label><input type="text" id="prod-brand" /></div>
+      <div class="field"><label>MOQ</label><input type="number" id="prod-moq" value="1" /></div>
+      <div class="field"><label>Stock</label><input type="number" id="prod-stock" value="0" /></div>
+      <div class="field"><label>Price (₦)</label><input type="number" step="0.01" id="prod-price" /></div>
+      <div class="field"><label>Negotiable</label><select id="prod-negotiable"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field"><label>Bulk Discount</label><select id="prod-bulk-discount"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field"><label>Lead Time</label><input type="text" id="prod-lead-time" placeholder="e.g., 2-3 days" /></div>
+      <div class="field"><label>Trade Terms</label><input type="text" id="prod-trade-terms" /></div>
+      <div class="field"><label>Delivery</label><select id="prod-delivery"><option value="true">Yes</option><option value="false">No</option></select></div>
+      <div class="field"><label>Pickup</label><select id="prod-pickup"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field"><label>Description</label><textarea id="prod-desc" rows="2"></textarea></div>
+      <button class="submit-btn" onclick="addProduct()">Save Product</button>
+      <button class="cancel-btn" onclick="closeAddProductModal()">Cancel</button>
+      <div class="status-msg" id="add-product-status"></div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://js.paystack.co/v2/inline.js"></script>
   <script>
-    // Debug information
-    const debugInfo = document.getElementById('debug-info');
+    // Configuration
+    const SUPABASE_URL = "https://zcxecnxirfdfvywnvcjp.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjeGVjbnhpcmZkZnZ5d252Y2pwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxMDIyMTMsImV4cCI6MjEwMDY3ODIxM30.ooKObFp6Mj_gKlVLZXnVyeDAdfdjzDJwqx2buimmBtI";
+    const BACKEND = "https://shelfmatch-backend-5mjl.vercel.app/api";
+    const SECRET = "shelfmatch-2026-secure";
     
-    function log(message, success = true) {
-      const line = document.createElement('div');
-      line.style.margin = '5px 0';
-      line.style.color = success ? 'var(--ok)' : 'var(--stamp)';
-      line.textContent = message;
-      debugInfo.appendChild(line);
-      console.log(message);
-    }
-    
-    log('✓ HTML loaded successfully');
-    log('✓ CSS styles applied');
-    
-    // Check if Supabase loaded
-    if (typeof supabase !== 'undefined') {
-      log('✓ Supabase library loaded');
-      
-      try {
-        const sb = supabase.createClient(
-          "https://zcxecnxirfdfvywnvcjp.supabase.co",
-          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjeGVjbnhpcmZkZnZ5d252Y2pwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxMDIyMTMsImV4cCI6MjEwMDY3ODIxM30.ooKObFp6Mj_gKlVLZXnVyeDAdfdjzDJwqx2buimmBtI"
-        );
-        log('✓ Supabase client created');
-        
-        // Test database connection
-        sb.from("profiles").select("*", { count: "exact", head: true })
-          .then(({ count, error }) => {
-            if (error) {
-              log('✗ Database connection failed: ' + error.message, false);
-            } else {
-              log('✓ Database connected successfully');
-              log('✓ Found ' + count + ' profiles in database');
-              
-              // Now load the full app
-              loadFullApp();
-            }
-          })
-          .catch(error => {
-            log('✗ Database error: ' + error.message, false);
-          });
-        
-      } catch (error) {
-        log('✗ Supabase initialization failed: ' + error.message, false);
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Global state
+    let selectedSignupRole = "buyer";
+    let currentUser = null;
+    let productImageFile = null;
+    let allDistributors = [];
+    let allBuyers = [];
+    let activeCategory = "All";
+    let selectedContactName = "";
+    let selectedContactType = "";
+    let selectedContactId = "";
+    let selectedTier = "";
+    let userFavourites = new Set();
+    let disputeTargetId = "";
+    let disputeTargetName = "";
+    let cart = JSON.parse(localStorage.getItem("goodsbarnx_cart") || "[]");
+
+    // Initialize
+    (async () => {
+      console.log("GoodsbarnX initializing...");
+      const { data: { session } } = await sb.auth.getSession();
+      if (session) {
+        await loadCurrentUser();
+        document.getElementById("auth-shell").classList.add("hidden");
+        document.getElementById("app").style.display = "block";
       }
-    } else {
-      log('✗ Supabase library failed to load', false);
+      await loadDistributorsAndBuyers();
+      updateCartBadge();
+      console.log("GoodsbarnX initialized successfully");
+    })();
+
+    // Auth functions
+    function selectRole(el) {
+      document.querySelectorAll("#signup-role-picker .role-pick").forEach(r => r.classList.remove("sel"));
+      el.classList.add("sel");
+      selectedSignupRole = el.dataset.role;
+      document.getElementById("auth-company").style.display = selectedSignupRole === "agent" ? "block" : "none";
     }
-    
-    function loadFullApp() {
-      log('✓ Loading full application...');
-      // Here you would load the actual app
-      // For now, just show success
-      setTimeout(() => {
-        log('✓ App ready! Replace this with full app code');
-      }, 1000);
+
+    function showLogin() {
+      document.getElementById("auth-shell").classList.add("hidden");
+      document.getElementById("login-shell").classList.remove("hidden");
     }
+
+    function showSignup() {
+      document.getElementById("login-shell").classList.add("hidden");
+      document.getElementById("auth-shell").classList.remove("hidden");
+    }
+
+    function continueAsGuest() {
+      document.getElementById("auth-shell").classList.add("hidden");
+      document.getElementById("login-shell").classList.add("hidden");
+      document.getElementById("app").style.display = "block";
+    }
+
+    function toggleLoginPassword() {
+      const pw = document.getElementById("login-password");
+      pw.type = pw.type === "password" ? "text" : "password";
+    }
+
+    async function loadCurrentUser() {
+      const { data: { user } } = await sb.auth.getUser();
+      if (!user) { currentUser = null; return; }
+      
+      const { data: profile } = await sb.from("profiles").select("*").eq("id", user.id).single();
+      currentUser = { id: user.id, ...profile };
+      
+      if (currentUser.role === "distributor") {
+        const { data: dist } = await sb.from("distributor_profiles").select("*").eq("id", currentUser.id).single();
+        if (dist) currentUser = { ...currentUser, ...dist };
+      } else if (currentUser.role === "buyer") {
+        const { data: buyer } = await sb.from("buyer_profiles").select("*").eq("id", currentUser.id).single();
+        if (buyer) currentUser = { ...currentUser, ...buyer };
+      }
+      
+      document.getElementById("logout-btn-holder").innerHTML = '<span class="logout-btn" onclick="handleLogout()">Log out</span>';
+      
+      if (currentUser.role === "distributor") {
+        document.getElementById("nav-products").style.display = "flex";
+      }
+    }
+
+    async function handleLogout() {
+      await sb.auth.signOut();
+      location.reload();
+    }
+
+    async function handleSignup() {
+      const name = document.getElementById("auth-name").value;
+      const phone = document.getElementById("auth-phone").value;
+      const email = document.getElementById("auth-email").value;
+      const password = document.getElementById("auth-password").value;
+      const confirm = document.getElementById("auth-password-confirm").value;
+      const err = document.getElementById("auth-error");
+      
+      err.innerText = "";
+      if (!name || !phone || !email || !password || !confirm) {
+        err.innerText = "Please fill in every field.";
+        return;
+      }
+      if (password !== confirm) {
+        err.innerText = "Passwords do not match.";
+        return;
+      }
+      
+      const { data, error } = await sb.auth.signUp({ email, password });
+      if (error) {
+        err.innerText = error.message;
+        return;
+      }
+      
+      const userId = data.user.id;
+      await sb.from("profiles").insert({ id: userId, full_name: name, phone: phone, role: selectedSignupRole });
+      
+      if (selectedSignupRole === "distributor") {
+        await sb.from("distributor_profiles").insert({ id: userId, business_name: name });
+      } else if (selectedSignupRole === "buyer") {
+        await sb.from("buyer_profiles").insert({ id: userId });
+      }
+      
+      await loadCurrentUser();
+      document.getElementById("auth-shell").classList.add("hidden");
+      document.getElementById("app").style.display = "block";
+    }
+
+    async function handleLogin() {
+      const email = document.getElementById("login-email").value;
+      const password = document.getElementById("login-password").value;
+      const err = document.getElementById("login-error");
+      
+      err.innerText = "";
+      if (!email || !password) {
+        err.innerText = "Please fill in both fields.";
+        return;
+      }
+      
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) {
+        err.innerText = error.message;
+        return;
+      }
+      
+      await loadCurrentUser();
+      document.getElementById("login-shell").classList.add("hidden");
+      document.getElementById("app").style.display = "block";
+    }
+
+    // Navigation
+    function showScreen(name) {
+      document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+      const screenEl = document.getElementById("screen-" + name);
+      if (screenEl) screenEl.classList.add("active");
+      
+      document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+      const navItem = document.getElementById("nav-" + name);
+      if (navItem) navItem.classList.add("active");
+      
+      window.scrollTo(0, 0);
+      
+      if (name === "inquiries") renderHistory();
+      if (name === "trust") loadTrustData();
+      if (name === "profile") loadProfile();
+      if (name === "products") loadProductsManagement();
+      if (name === "upgrade") loadUpgradeScreen();
+      if (name === "cart") renderCart();
+    }
+
+    // Market functions
+    async function loadDistributorsAndBuyers() {
+      console.log("Loading distributors and buyers...");
+      
+      const { data: d } = await sb.from("distributor_profiles")
+        .select("id, business_name, location, market, category, verification_tier, profiles(phone)");
+      if (d) {
+        allDistributors = d;
+        document.getElementById("stat-distributors").innerText = d.length;
+      }
+      
+      const { data: b } = await sb.from("buyer_profiles")
+        .select("id, name, location, market, looking_for, profiles(full_name, phone)");
+      if (b) {
+        allBuyers = b;
+        document.getElementById("stat-buyers").innerText = b.length;
+      }
+      
+      sb.from("inquiries").select("*", { count: "exact", head: true }).then(({ count }) => {
+        document.getElementById("inquiry-count-ring").innerText = count ?? "–";
+      });
+      
+      applyFilters();
+    }
+
+    function selectCategory(cat, el) {
+      activeCategory = cat;
+      document.querySelectorAll(".category-card").forEach(c => c.classList.remove("active"));
+      el.classList.add("active");
+      applyFilters();
+    }
+
+    function toggleSearchClear() {
+      document.getElementById("search-clear").style.display = 
+        document.getElementById("search-input").value.trim() ? "block" : "none";
+    }
+
+    function clearSearch() {
+      document.getElementById("search-input").value = "";
+      toggleSearchClear();
+      applyFilters();
+    }
+
+    function applyFilters() {
+      const q = document.getElementById("search-input").value.trim().toLowerCase();
+      const lf = document.getElementById("filter-location").value;
+      const tf = document.getElementById("filter-tier").value;
+      
+      const fd = allDistributors.filter(d => {
+        const matchCategory = activeCategory === "All" || d.category?.trim() === activeCategory;
+        const matchSearch = !q || (d.business_name || "").toLowerCase().includes(q) ||
+          (d.location || "").toLowerCase().includes(q) ||
+          (d.market || "").toLowerCase().includes(q) ||
+          (d.category || "").toLowerCase().includes(q);
+        const matchLocation = !lf || d.location?.toLowerCase() === lf.toLowerCase();
+        const matchTier = !tf || d.verification_tier?.toLowerCase() === tf.toLowerCase();
+        return matchCategory && matchSearch && matchLocation && matchTier;
+      });
+      
+      const fb = allBuyers.filter(b => {
+        const name = b.name || b.profiles?.full_name || "";
+        const matchCategory = activeCategory === "All" || b.looking_for?.trim() === activeCategory;
+        const matchSearch = !q || name.toLowerCase().includes(q) ||
+          (b.location || "").toLowerCase().includes(q) ||
+          (b.market || "").toLowerCase().includes(q) ||
+          (b.looking_for || "").toLowerCase().includes(q);
+        const matchLocation = !lf || b.location?.toLowerCase() === lf.toLowerCase();
+        return matchCategory && matchSearch && matchLocation;
+      });
+      
+      renderDistributors(fd);
+      renderBuyers(fb);
+      
+      document.getElementById("distributor-count").innerText = fd.length;
+      document.getElementById("buyer-count").innerText = fb.length;
+    }
+
+    function renderDistributors(list) {
+      const container = document.getElementById("distributor-list");
+      
+      if (list.length === 0) {
+        container.innerHTML = '<div class="loading-text">No distributors found.</div>';
+        return;
+      }
+      
+      container.innerHTML = list.map(d => {
+        const tier = d.verification_tier || "";
+        let vb = "";
+        if (tier === "association") vb = '<div class="m-verified">✓ Association Verified</div>';
+        else if (tier === "market board") vb = '<div class="m-verified market-board">✓ Market Board Verified</div>';
+        else if (tier === "self-attested") vb = '<div class="m-verified self-attested">Self-Attested</div>';
+        
+        const phone = d.profiles?.phone || "";
+        
+        return `
+          <div class="manifest">
+            <div class="manifest-top">
+              <div>
+                <div class="m-name">${d.business_name}</div>
+                <div class="m-loc">${d.location || ""}${d.market ? " · " + d.market : ""}</div>
+                ${vb}
+              </div>
+              <div style="display:flex; align-items:flex-start; gap:8px;">
+                <button class="fav-btn" onclick="toggleFavourite(event, '${d.id}')">
+                  <span id="fav-${d.id}">${userFavourites.has(d.id) ? "❤️" : "🤍"}</span>
+                </button>
+                <div class="stamp-badge">${(d.category || "LISTED").toUpperCase()}</div>
+              </div>
+            </div>
+            <div class="m-meta">
+              ${phone ? `<button class="btn btn-whatsapp" onclick="openWhatsApp('${phone}', '${d.business_name}')">WhatsApp</button>` : ""}
+              <button class="btn btn-outline" onclick="openStorefrontModal('${d.id}')">Storefront</button>
+              <button class="btn btn-primary" onclick="openModal('${d.id}', '${d.business_name}', 'distributor')">Inquire</button>
+            </div>
+            <div class="dispute-row">
+              <span class="dispute-link" onclick="openDisputeModal('${d.id}', '${d.business_name}')">Report an issue</span>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderBuyers(list) {
+      const container = document.getElementById("buyer-list");
+      
+      if (list.length === 0) {
+        container.innerHTML = '<div class="loading-text">No buyers found.</div>';
+        return;
+      }
+      
+      container.innerHTML = list.map(b => {
+        const name = b.name || b.profiles?.full_name || "Buyer";
+        const phone = b.profiles?.phone || "";
+        
+        return `
+          <div class="manifest">
+            <div class="manifest-top">
+              <div>
+                <div class="m-name">${name}</div>
+                <div class="m-loc">${b.location || ""}${b.market ? " · " + b.market : ""}</div>
+              </div>
+              <div class="stamp-badge" style="border-color:var(--brass); color:var(--brass);">
+                ${(b.looking_for || "BUYER").toUpperCase()}
+              </div>
+            </div>
+            <div class="m-meta">
+              ${phone ? `<button class="btn btn-whatsapp" onclick="openWhatsApp('${phone}', '${name}')">WhatsApp</button>` : ""}
+              <button class="btn btn-primary" onclick="openModal('${b.id}', '${name}', 'buyer')">Inquire</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    // Inquiry functions
+    function openWhatsApp(phone, name) {
+      window.open("https://wa.me/" + (phone || "").replace(/[^0-9]/g, "") + "?text=" + encodeURIComponent("Hi " + name + ", I found you on GoodsbarnX."), "_blank");
+    }
+
+    function openModal(id, name, type) {
+      selectedContactId = id;
+      selectedContactName = name;
+      selectedContactType = type;
+      document.getElementById("modal-title").innerText = "Contact " + name;
+      document.getElementById("inquiry-modal").classList.add("active");
+    }
+
+    function closeModal() {
+      document.getElementById("inquiry-modal").classList.remove("active");
+    }
+
+    function selectTier(el) {
+      document.querySelectorAll(".tier-opt").forEach(o => o.classList.remove("sel"));
+      el.classList.add("sel");
+      selectedTier = el.dataset.tier;
+    }
+
+    async function submitInquiry() {
+      const name = document.getElementById("inquiry-name").value;
+      const phone = document.getElementById("inquiry-phone").value;
+      
+      if (!name || !phone) {
+        document.getElementById("status-msg").innerText = "Fill name and phone.";
+        return;
+      }
+      
+      const payload = {
+        inquirer_name: name,
+        inquirer_phone: phone,
+        inquirer_email: document.getElementById("inquiry-email").value || null,
+        item: document.getElementById("inquiry-item").value || null,
+        order_scale: selectedTier || null,
+        quantity: document.getElementById("inquiry-quantity").value || null,
+        distributor_id: selectedContactType === "distributor" ? selectedContactId : null,
+        buyer_id: selectedContactType === "buyer" ? selectedContactId : null,
+        contact_type: selectedContactType,
+        inquirer_id: currentUser?.id || null
+      };
+      
+      const { error } = await sb.from("inquiries").insert(payload);
+      
+      if (error) {
+        document.getElementById("status-msg").innerText = "Error: " + error.message;
+        return;
+      }
+      
+      document.getElementById("status-msg").innerText = "Sent!";
+      setTimeout(closeModal, 1500);
+    }
+
+    // Dispute functions
+    function openDisputeModal(id, name) {
+      disputeTargetId = id;
+      disputeTargetName = name;
+      document.getElementById("dispute-target-name").innerText = name;
+      document.getElementById("dispute-modal").classList.add("active");
+    }
+
+    function closeDisputeModal() {
+      document.getElementById("dispute-modal").classList.remove("active");
+    }
+
+    async function submitDispute() {
+      const submittedBy = document.getElementById("dispute-submitted-by").value;
+      const phone = document.getElementById("dispute-phone").value;
+      const description = document.getElementById("dispute-description").value;
+      
+      if (!submittedBy || !phone || !description) {
+        document.getElementById("dispute-status-msg").innerText = "Fill all fields.";
+        return;
+      }
+      
+      await sb.from("disputes").insert({
+        distributor_id: disputeTargetId,
+        submitted_by: submittedBy,
+        submitted_phone: phone,
+        description: description,
+        status: "Pending"
+      });
+      
+      document.getElementById("dispute-status-msg").innerText = "Submitted!";
+      setTimeout(closeDisputeModal, 1800);
+    }
+
+    // Storefront functions
+    async function openStorefrontModal(distId) {
+      document.getElementById("storefront-content").innerHTML = '<div class="loading-text">Loading...</div>';
+      document.getElementById("storefront-modal").classList.add("active");
+      
+      const { data: dist } = await sb.from("distributor_profiles")
+        .select("*, profiles(phone)")
+        .eq("id", distId)
+        .single();
+      
+      const { data: products } = await sb.from("products")
+        .select("*")
+        .eq("distributor_id", distId)
+        .eq("status", "active")
+        .order("created_at", { ascending: false });
+      
+      if (!dist) {
+        document.getElementById("storefront-content").innerHTML = '<div class="loading-text">Not found.</div>';
+        return;
+      }
+      
+      const availableProducts = products?.filter(p => p.stock_quantity > 0) || [];
+      
+      document.getElementById("storefront-content").innerHTML = `
+        <div class="storefront-header">
+          <div>
+            <h3>${dist.business_name}</h3>
+            <div style="font-size:12px; color:rgba(18,21,28,0.6);">${dist.location || "Southeast"} · ${dist.market || "Multiple Markets"}</div>
+          </div>
+          <div>
+            <span class="storefront-badge">✓ Verified</span>
+            <div class="storefront-score">Trust Score: ${dist.verification_tier === "association" ? 80 : dist.verification_tier === "market board" ? 75 : 60}/100</div>
+          </div>
+        </div>
+        
+        <div class="storefront-section">
+          <div class="section-label" style="margin-top:0;">Products (${availableProducts.length})</div>
+          ${availableProducts.length ? availableProducts.map(p => `
+            <div class="product-item">
+              <div class="product-image" style="${p.image_url ? `background-image:url('${p.image_url}')` : 'background-color:var(--ink-2);'}"></div>
+              <div style="display:inline-block; width:calc(100% - 80px);">
+                <div style="font-weight:600; font-size:13px;">${p.name}</div>
+                <div style="font-size:11px; color:rgba(18,21,28,0.55); margin-top:2px;">${p.brand ? p.brand + " · " : ""}${p.sku || "No SKU"}</div>
+                <div style="font-size:12px; margin-top:4px;">${p.price ? "₦" + p.price : "Negotiable"}</div>
+                <div style="margin-top:8px;">
+                  <button class="btn btn-success" onclick="addToCart('${p.id}', '${p.name}', ${p.price || 0}, '${p.distributor_id}', '${dist.business_name}')">Add to Cart</button>
+                </div>
+              </div>
+            </div>
+          `).join("") : '<div class="loading-text">No active products.</div>'}
+        </div>
+        
+        <div class="action-buttons" style="margin-top:20px;">
+          <button class="btn btn-primary" onclick="closeStorefrontModal(); openModal('${dist.id}', '${dist.business_name}', 'distributor')">Contact Distributor</button>
+          ${dist.profiles?.phone ? `<button class="btn btn-whatsapp" onclick="openWhatsApp('${dist.profiles.phone}', '${dist.business_name}')">WhatsApp</button>` : ""}
+        </div>
+      `;
+    }
+
+    function closeStorefrontModal() {
+      document.getElementById("storefront-modal").classList.remove("active");
+    }
+
+    // Cart functions
+    function addToCart(productId, name, price, distributorId, distributorName) {
+      const existing = cart.find(item => item.productId === productId);
+      if (existing) {
+        existing.quantity = (existing.quantity || 1) + 1;
+      } else {
+        cart.push({ productId, name, price, distributorId, distributorName, quantity: 1 });
+      }
+      localStorage.setItem("goodsbarnx_cart", JSON.stringify(cart));
+      updateCartBadge();
+      alert(name + " added to cart!");
+    }
+
+    function updateCartBadge() {
+      const badge = document.getElementById("cart-badge");
+      if (badge) {
+        badge.textContent = cart.length;
+        badge.style.display = cart.length > 0 ? "block" : "none";
+      }
+    }
+
+    function renderCart() {
+      const container = document.getElementById("cart-content");
+      
+      if (cart.length === 0) {
+        container.innerHTML = '<div class="loading-text">Your cart is empty.</div>';
+        return;
+      }
+      
+      container.innerHTML = cart.map((item, index) => `
+        <div class="cart-item">
+          <div>
+            <div style="font-weight:600; font-size:13px;">${item.name}</div>
+            <div style="font-size:11px; color:rgba(239,233,222,0.5);">${item.distributorName}</div>
+            <div style="font-size:12px; margin-top:4px;">${item.price ? "₦" + item.price : "Negotiable"} × ${item.quantity || 1}</div>
+          </div>
+          <button class="btn btn-danger" onclick="removeFromCart('${item.productId}')">✕</button>
+        </div>
+      `).join("");
+    }
+
+    function removeFromCart(productId) {
+      cart = cart.filter(item => item.productId !== productId);
+      localStorage.setItem("goodsbarnx_cart", JSON.stringify(cart));
+      updateCartBadge();
+      renderCart();
+    }
+
+    // Profile functions
+    async function loadProfile() {
+      if (!currentUser) return;
+      
+      const isDist = currentUser.role === "distributor";
+      document.getElementById("profile-business-name-field").style.display = isDist ? "block" : "none";
+      document.getElementById("profile-category-field").style.display = isDist ? "block" : "none";
+      document.getElementById("profile-name-field").style.display = isDist ? "none" : "block";
+      document.getElementById("profile-looking-for-field").style.display = isDist ? "none" : "block";
+      
+      const table = isDist ? "distributor_profiles" : "buyer_profiles";
+      const { data } = await sb.from(table).select("*").eq("id", currentUser.id).single();
+      
+      if (data) {
+        const fields = isDist ? {
+          "profile-business-name": data.business_name,
+          "profile-category": data.category,
+          "profile-location": data.location,
+          "profile-market": data.market,
+          "profile-shop-address": data.shop_address,
+          "profile-description": data.description
+        } : {
+          "profile-name": data.name,
+          "profile-looking-for": data.looking_for,
+          "profile-location": data.location,
+          "profile-market": data.market,
+          "profile-shop-address": data.shop_address,
+          "profile-description": data.description
+        };
+        
+        Object.entries(fields).forEach(([id, value]) => {
+          const el = document.getElementById(id);
+          if (el && value) el.value = value;
+        });
+      }
+    }
+
+    async function saveProfile() {
+      if (!currentUser) return;
+      
+      const isDist = currentUser.role === "distributor";
+      const table = isDist ? "distributor_profiles" : "buyer_profiles";
+      
+      const payload = isDist ? {
+        business_name: document.getElementById("profile-business-name").value,
+        category: document.getElementById("profile-category").value,
+        location: document.getElementById("profile-location").value,
+        market: document.getElementById("profile-market").value,
+        shop_address: document.getElementById("profile-shop-address").value,
+        description: document.getElementById("profile-description").value
+      } : {
+        name: document.getElementById("profile-name").value,
+        looking_for: document.getElementById("profile-looking-for").value,
+        location: document.getElementById("profile-location").value,
+        market: document.getElementById("profile-market").value,
+        shop_address: document.getElementById("profile-shop-address").value,
+        description: document.getElementById("profile-description").value
+      };
+      
+      const { error } = await sb.from(table).update(payload).eq("id", currentUser.id);
+      
+      if (error) {
+        document.getElementById("profile-status").innerText = "Error saving profile.";
+      } else {
+        currentUser = { ...currentUser, ...payload };
+        const banner = document.getElementById("profile-saved-banner");
+        banner.style.display = "block";
+        setTimeout(() => banner.style.display = "none", 3000);
+      }
+    }
+
+    // Trust functions
+    async function loadTrustData() {
+      const { data: d } = await sb.from("distributor_profiles").select("id, business_name, verification_tier");
+      const { data: disp } = await sb.from("disputes").select("id, distributor_id, description, status, created_at").eq("status", "Approved").order("created_at", { ascending: false }).limit(10);
+      
+      const total = d?.length || 0;
+      const verified = d?.filter(x => x.verification_tier === "association" || x.verification_tier === "market board").length || 0;
+      
+      document.getElementById("trust-summary").innerHTML = `
+        <div class="trust-item"><div class="n">${total}</div><div class="t">Total</div></div>
+        <div class="trust-item"><div class="n" style="color:var(--ok);">${verified}</div><div class="t">Verified</div></div>
+        <div class="trust-item"><div class="n" style="color:var(--brass-dark);">${total - verified}</div><div class="t">Self-Attested</div></div>
+      `;
+      
+      const vd = d?.filter(x => x.verification_tier === "association" || x.verification_tier === "market board") || [];
+      document.getElementById("verified-distributors-list").innerHTML = vd.length ? 
+        vd.map(x => `<div class="manifest"><div class="manifest-top"><div><div class="m-name">${x.business_name}</div><div class="m-loc">${x.verification_tier === "association" ? "Association Verified" : "Market Board Verified"}</div></div><span style="color:var(--ok);">✓</span></div></div>`).join("") : 
+        '<div class="loading-text">None yet.</div>';
+      
+      document.getElementById("disputes-list").innerHTML = disp?.length ? 
+        disp.map(x => `<div class="manifest"><div class="manifest-top"><div><div class="m-name">${d?.find(y => y.id === x.distributor_id)?.business_name || "Unknown"}</div><div class="m-loc">${x.description || "No details"}</div></div><span style="color:var(--stamp); font-size:10px;">DISPUTE</span></div></div>`).join("") : 
+        '<div class="loading-text">No approved disputes.</div>';
+    }
+
+    // Products functions
+    async function loadProductsManagement() {
+      if (!currentUser || currentUser.role !== "distributor") {
+        document.getElementById("products-management-list").innerHTML = '<div class="loading-text">Only distributors can manage products.</div>';
+        return;
+      }
+      
+      const { data: products } = await sb.from("products").select("*").eq("distributor_id", currentUser.id).order("created_at", { ascending: false });
+      const container = document.getElementById("products-management-list");
+      
+      if (!products || products.length === 0) {
+        container.innerHTML = '<div class="loading-text">No products yet. Add your first product!</div>';
+        return;
+      }
+      
+      container.innerHTML = products.map(p => `
+        <div class="manifest">
+          <div class="manifest-top">
+            <div>
+              <div class="m-name">${p.name}</div>
+              <div class="m-loc">${p.brand || "No brand"} · SKU: ${p.sku || "N/A"}</div>
+              <div style="font-size:12px; margin-top:4px;">${p.price ? "₦" + p.price : "Negotiable"} · Stock: ${p.stock_quantity}</div>
+            </div>
+            <span class="stamp-badge" style="border-color:${p.status === "active" ? "var(--ok)" : "var(--stamp)"}; color:${p.status === "active" ? "var(--ok)" : "var(--stamp)"};">${p.status.toUpperCase()}</span>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function openAddProductModal() {
+      document.getElementById("add-product-modal").classList.add("active");
+    }
+
+    function closeAddProductModal() {
+      document.getElementById("add-product-modal").classList.remove("active");
+    }
+
+    function previewProductImage() {
+      const input = document.getElementById("prod-image-input");
+      const preview = document.getElementById("prod-image-preview");
+      if (input.files && input.files[0]) {
+        productImageFile = input.files[0];
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          preview.style.backgroundImage = `url('${e.target.result}')`;
+          preview.classList.add("has-image");
+        };
+        reader.readAsDataURL(productImageFile);
+      }
+    }
+
+    function showCategoryFields() {
+      const category = document.getElementById("prod-category").value;
+      const container = document.getElementById("category-specific-fields");
+      
+      const fields = {
+        "Auto Parts": `<div class="field"><label>Vehicle Make</label><input type="text" id="ap-make" /></div><div class="field"><label>Model</label><input type="text" id="ap-model" /></div><div class="field"><label>Year</label><input type="text" id="ap-year" /></div>`,
+        "Building Materials": `<div class="field"><label>Brand</label><input type="text" id="bm-brand" /></div><div class="field"><label>Grade</label><input type="text" id="bm-grade" /></div>`,
+        "Agriculture": `<div class="field"><label>Crop/Product</label><input type="text" id="ag-crop" /></div><div class="field"><label>Grade</label><input type="text" id="ag-grade" /></div>`,
+        "Pharma": `<div class="field"><label>Active Ingredient</label><input type="text" id="ph-ingredient" /></div><div class="field"><label>NAFDAC Number</label><input type="text" id="ph-nafdac" /></div>`,
+        "Electronics": `<div class="field"><label>Brand</label><input type="text" id="el-brand" /></div><div class="field"><label>Model</label><input type="text" id="el-model" /></div>`
+      };
+      
+      container.innerHTML = fields[category] || "";
+    }
+
+    async function addProduct() {
+      const name = document.getElementById("prod-name").value;
+      const category = document.getElementById("prod-category").value;
+      
+      if (!name || !category) {
+        document.getElementById("add-product-status").innerText = "Name and category required.";
+        return;
+      }
+      
+      const product = {
+        distributor_id: currentUser.id,
+        name,
+        category,
+        sku: document.getElementById("prod-sku").value,
+        brand: document.getElementById("prod-brand").value,
+        moq: parseInt(document.getElementById("prod-moq").value) || 1,
+        stock_quantity: parseInt(document.getElementById("prod-stock").value) || 0,
+        price: parseFloat(document.getElementById("prod-price").value) || 0,
+        negotiable: document.getElementById("prod-negotiable").value === "true",
+        bulk_discount: document.getElementById("prod-bulk-discount").value === "true",
+        lead_time: document.getElementById("prod-lead-time").value,
+        trade_terms: document.getElementById("prod-trade-terms").value,
+        delivery_available: document.getElementById("prod-delivery").value === "true",
+        pickup_available: document.getElementById("prod-pickup").value === "true",
+        description: document.getElementById("prod-desc").value,
+        status: "active"
+      };
+      
+      const { error } = await sb.from("products").insert(product);
+      
+      if (error) {
+        document.getElementById("add-product-status").innerText = "Error: " + error.message;
+      } else {
+        document.getElementById("add-product-status").innerText = "Product added!";
+        setTimeout(() => {
+          closeAddProductModal();
+          loadProductsManagement();
+        }, 1500);
+      }
+    }
+
+    // Upgrade functions
+    async function loadUpgradeScreen() {
+      const plans = [
+        { id: "free", name: "Free", price: 0, features: ["Browse distributors", "Send 5 inquiries/day", "Basic profile"] },
+        { id: "buyer_pro", name: "Buyer Pro", price: 2500, features: ["Unlimited inquiries", "Verified badge", "Priority support"] },
+        { id: "distributor_pro", name: "Distributor Pro", price: 5000, features: ["Product listings", "Storefront", "Analytics"] }
+      ];
+      
+      const container = document.getElementById("plan-cards");
+      container.innerHTML = plans.map(plan => `
+        <div style="background:var(--ink-2); border:1px solid ${plan.id === "free" ? "var(--line)" : "var(--brass)"}; border-radius:14px; padding:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <h3 style="font-size:16px;">${plan.name}</h3>
+            <span style="font-size:18px; font-weight:700; color:var(--brass-bright);">${plan.price === 0 ? "Free" : "₦" + plan.price.toLocaleString() + "/mo"}</span>
+          </div>
+          <ul style="list-style:none; padding:0; margin:8px 0;">
+            ${plan.features.map(f => `<li style="padding:4px 0; font-size:12px; color:rgba(239,233,222,0.7);">✓ ${f}</li>`).join("")}
+          </ul>
+          ${plan.id !== "free" ? `<button class="btn btn-primary" style="width:100%;" onclick="alert('Payment integration coming soon!')">Upgrade</button>` : '<div style="text-align:center; padding:8px; font-size:12px; color:rgba(239,233,222,0.5);">Current plan</div>'}
+        </div>
+      `).join("");
+      
+      document.getElementById("current-plan-info").innerHTML = '<div style="font-weight:700; font-size:14px;">Free</div><div style="font-size:12px; color:rgba(239,233,222,0.6); margin-top:4px;">Basic features</div>';
+    }
+
+    // Favourites
+    async function toggleFavourite(event, distributorId) {
+      event.stopPropagation();
+      if (!currentUser) {
+        alert("Please log in.");
+        return;
+      }
+      
+      if (userFavourites.has(distributorId)) {
+        await sb.from("favourites").delete().eq("user_id", currentUser.id).eq("distributor_id", distributorId);
+        userFavourites.delete(distributorId);
+      } else {
+        await sb.from("favourites").insert({ user_id: currentUser.id, distributor_id: distributorId });
+        userFavourites.add(distributorId);
+      }
+      
+      const icon = document.getElementById("fav-" + distributorId);
+      if (icon) icon.textContent = userFavourites.has(distributorId) ? "❤️" : "🤍";
+    }
+
+    // History
+    function renderHistory() {
+      const history = JSON.parse(localStorage.getItem("goodsbarnx_history") || "[]");
+      const container = document.getElementById("history-list");
+      
+      if (!history.length) {
+        container.innerHTML = '<div class="loading-text">No inquiries yet.</div>';
+        return;
+      }
+      
+      container.innerHTML = history.map(h => `
+        <div class="manifest">
+          <div class="manifest-top">
+            <div>
+              <div class="m-name">${h.name}</div>
+              <div class="m-loc">${h.type} · ${new Date(h.date).toLocaleDateString()}</div>
+            </div>
+            <span class="stamp-badge" style="border-color:var(--ok); color:var(--ok);">SENT</span>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    console.log("GoodsbarnX app loaded successfully");
   </script>
 </body>
 </html>
