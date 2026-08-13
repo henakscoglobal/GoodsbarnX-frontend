@@ -1,78 +1,130 @@
-// GoodsbarnX – Staff Management Module
-
-document.addEventListener("screenChanged", (e) => {
-  if (e.detail.screen === "staff") loadStaffList();
-});
-
-async function loadStaffList() {
-  if (!currentUser || currentUser.role !== "distributor") return;
-
-  const { data: invitations, error } = await sb.from("staff_invitations").select("*").eq("distributor_id", currentUser.id);
-  if (error) return;
-
-  const list = document.getElementById("staff-list");
-  if (!list) return;
-
-  if (invitations.length === 0) {
-    list.innerHTML = '<div class="loading-text">No staff members yet. Invite your first team member.</div>';
-    return;
-  }
-
-  list.innerHTML = invitations.map(inv => `
-    <div class="manifest">
-      <div class="manifest-top">
-        <div>
-          <div class="m-name">${inv.email}</div>
-          <div class="m-loc">${inv.role} · ${inv.status}</div>
+class Staff {
+  static async render(container) {
+    if (!state.currentUser || state.currentUser.role !== "distributor") {
+      container.innerHTML = `
+        <div class="screen active">
+          <div class="loading-text">Only distributors can manage staff.</div>
         </div>
-        ${inv.status === "accepted" ? '<span style="color:var(--ok); font-weight:700;">Active</span>' : '<span style="color:var(--brass-dark);">Pending</span>'}
+      `;
+      return;
+    }
+    
+    container.innerHTML = `
+      <div class="screen active">
+        <div class="section-label">Team Management</div>
+        <div id="staff-list">
+          <div class="loading-text">Loading staff...</div>
+        </div>
+        <button class="btn btn-primary btn-block" style="margin-bottom:8px;" onclick="Staff.openInviteModal()">
+          + Invite Staff Member
+        </button>
+        <div id="staff-error" class="status-msg"></div>
       </div>
-    </div>
-  `).join("");
-}
-
-function openInviteStaffModal() {
-  document.getElementById("staff-email").value = "";
-  document.getElementById("invite-staff-status").innerText = "";
-  document.getElementById("invite-staff-modal").classList.add("active");
-}
-
-function closeInviteStaffModal() {
-  document.getElementById("invite-staff-modal").classList.remove("active");
-}
-
-async function sendStaffInvite() {
-  const email = document.getElementById("staff-email").value;
-  const role = document.getElementById("staff-role").value;
-  const statusEl = document.getElementById("invite-staff-status");
-
-  if (!email) {
-    statusEl.innerText = "Please enter an email address.";
-    return;
+    `;
+    
+    await this.loadStaff();
   }
-
-  // Check subscription plan
-  const { data: sub } = await sb.from("subscriptions").select("plan_id").eq("user_id", currentUser.id).eq("status", "active").maybeSingle();
-  if (!sub || (sub.plan_id !== "business" && sub.plan_id !== "enterprise")) {
-    statusEl.innerText = "Staff management requires a Business or Enterprise plan. Upgrade now.";
-    return;
+  
+  static async loadStaff() {
+    const { data: staff } = await sb.from("staff_members")
+      .select("*")
+      .eq("distributor_id", state.currentUser.id)
+      .order("created_at", { ascending: false });
+    
+    const container = document.getElementById("staff-list");
+    
+    if (!staff || staff.length === 0) {
+      container.innerHTML = '<div class="loading-text">No staff members yet.</div>';
+      return;
+    }
+    
+    container.innerHTML = staff.map(s => `
+      <div class="manifest">
+        <div class="manifest-top">
+          <div>
+            <div class="m-name">${s.email}</div>
+            <div class="m-loc">${s.role} · ${s.status}</div>
+          </div>
+          <span class="badge badge-stamp" style="border-color:${s.status === "active" ? "var(--ok)" : "var(--stamp)"}; color:${s.status === "active" ? "var(--ok)" : "var(--stamp)"};">
+            ${s.status.toUpperCase()}
+          </span>
+        </div>
+        <div class="action-buttons">
+          ${s.status === "pending" ? `
+            <button class="btn btn-success" onclick="Staff.respondInvite('${s.id}', 'active')">Approve</button>
+          ` : ""}
+          <button class="btn btn-danger" onclick="Staff.respondInvite('${s.id}', 'inactive')">
+            ${s.status === "active" ? "Deactivate" : "Remove"}
+          </button>
+        </div>
+      </div>
+    `).join("");
   }
-
-  const { error } = await sb.from("staff_invitations").insert({
-    distributor_id: currentUser.id,
-    email: email,
-    role: role,
-    status: "pending"
-  });
-
-  if (error) {
-    if (error.message.includes("duplicate")) statusEl.innerText = "An invitation has already been sent to this email.";
-    else if (error.message.includes("Business plan allows up to 5")) statusEl.innerText = "You've reached the maximum of 5 staff members for your Business plan.";
-    else statusEl.innerText = error.message;
-    return;
+  
+  static openInviteModal() {
+    const modalHtml = `
+      <div class="sheet-overlay active" id="invite-staff-modal">
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <h3>Invite a team member</h3>
+          <div class="sub">They'll receive an email to set up their account.</div>
+          
+          <div class="field">
+            <label>Staff email</label>
+            <input type="email" id="staff-email" />
+          </div>
+          
+          <div class="field">
+            <label>Role</label>
+            <select id="staff-role">
+              <option value="responder">Responder</option>
+              <option value="manager">Manager</option>
+            </select>
+          </div>
+          
+          <button class="btn btn-primary btn-block" onclick="Staff.sendInvite()">Send invitation</button>
+          <button class="btn btn-outline btn-block" onclick="Staff.closeInviteModal()">Cancel</button>
+          <div class="status-msg" id="invite-staff-status"></div>
+        </div>
+      </div>
+    `;
+    
+    UI.renderModal(modalHtml);
   }
-
-  statusEl.innerText = "Invitation sent!";
-  setTimeout(closeInviteStaffModal, 2000);
-  loadStaffList();
+  
+  static closeInviteModal() {
+    UI.renderModal("");
+  }
+  
+  static async sendInvite() {
+    const email = document.getElementById("staff-email").value;
+    const role = document.getElementById("staff-role").value;
+    
+    if (!email) {
+      document.getElementById("invite-staff-status").innerText = "Enter email.";
+      return;
+    }
+    
+    const { error } = await sb.from("staff_members").insert({
+      distributor_id: state.currentUser.id,
+      email,
+      role,
+      status: "pending"
+    });
+    
+    if (error) {
+      document.getElementById("invite-staff-status").innerText = "Error: " + error.message;
+    } else {
+      document.getElementById("invite-staff-status").innerText = "Invitation sent!";
+      setTimeout(() => {
+        this.closeInviteModal();
+        this.render(document.getElementById("main-content"));
+      }, 1500);
+    }
+  }
+  
+  static async respondInvite(staffId, status) {
+    await sb.from("staff_members").update({ status }).eq("id", staffId);
+    await this.loadStaff();
+  }
 }
