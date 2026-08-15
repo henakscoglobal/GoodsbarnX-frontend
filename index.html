@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GoodsbarnX</title>
+</head>
+<body style="font-family: sans-serif; padding: 24px;">
+
+  <h1>GoodsbarnX — Step 1 Test</h1>
+  <p id="status">Checking Supabase connection…</p>
+
+  <!-- Step 1: only config.js loads. Nothing else exists yet. -->
+  <script type="module">
+    import { testConnection } from './js/config.js';
+
+    const statusEl = document.getElementById('status');
+    testConnection().then(result => {
+      statusEl.textContent = result.message;
+      statusEl.style.color = result.ok ? 'green' : 'red';
+    });
+  </script>
+
+</body>
+</html>
