@@ -23,6 +23,7 @@ function showScreen(name) {
   if (name === "trust") loadTrustData();
   if (name === "profile") loadProfile();
   if (name === "products") loadProductsManagement();
+  if (name === "staff") loadStaff();
   if (name === "upgrade") loadUpgradeScreen();
   if (name === "cart") renderCart();
 }
