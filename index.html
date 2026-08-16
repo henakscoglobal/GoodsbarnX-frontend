@@ -435,6 +435,8 @@
   <script src="js/ui.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/market.js"></script>
+  <script src="js/inquiries.js"></script>
+  <script src="js/storefront.js"></script>
 
   <script>
     // NOTE: SUPABASE_URL, SUPABASE_ANON_KEY, BACKEND, SECRET, and `sb` now
@@ -442,6 +444,8 @@
     // NOTE: navigation, modal controls, and UI helpers now live in js/ui.js.
     // NOTE: signup, login, logout, and current-user loading now live in js/auth.js.
     // NOTE: distributor/buyer loading, filtering, and rendering now live in js/market.js.
+    // NOTE: submitInquiry and submitDispute now live in js/inquiries.js.
+    // NOTE: openStorefrontModal now lives in js/storefront.js.
 
     // Global state
     let selectedSignupRole = "buyer";
@@ -473,122 +477,6 @@
       updateCartBadge();
       console.log("GoodsbarnX initialized successfully");
     })();
-
-    // Inquiry functions
-    async function submitInquiry() {
-      const name = document.getElementById("inquiry-name").value;
-      const phone = document.getElementById("inquiry-phone").value;
-
-      if (!name || !phone) {
-        document.getElementById("status-msg").innerText = "Fill name and phone.";
-        return;
-      }
-
-      const payload = {
-        inquirer_name: name,
-        inquirer_phone: phone,
-        inquirer_email: document.getElementById("inquiry-email").value || null,
-        item: document.getElementById("inquiry-item").value || null,
-        order_scale: selectedTier || null,
-        quantity: document.getElementById("inquiry-quantity").value || null,
-        distributor_id: selectedContactType === "distributor" ? selectedContactId : null,
-        buyer_id: selectedContactType === "buyer" ? selectedContactId : null,
-        contact_type: selectedContactType,
-        inquirer_id: currentUser?.id || null
-      };
-
-      const { error } = await sb.from("inquiries").insert(payload);
-
-      if (error) {
-        document.getElementById("status-msg").innerText = "Error: " + error.message;
-        return;
-      }
-
-      document.getElementById("status-msg").innerText = "Sent!";
-      setTimeout(closeModal, 1500);
-    }
-
-    // Dispute functions
-    async function submitDispute() {
-      const submittedBy = document.getElementById("dispute-submitted-by").value;
-      const phone = document.getElementById("dispute-phone").value;
-      const description = document.getElementById("dispute-description").value;
-
-      if (!submittedBy || !phone || !description) {
-        document.getElementById("dispute-status-msg").innerText = "Fill all fields.";
-        return;
-      }
-
-      await sb.from("disputes").insert({
-        distributor_id: disputeTargetId,
-        submitted_by: submittedBy,
-        submitted_phone: phone,
-        description: description,
-        status: "Pending"
-      });
-
-      document.getElementById("dispute-status-msg").innerText = "Submitted!";
-      setTimeout(closeDisputeModal, 1800);
-    }
-
-    // Storefront functions
-    async function openStorefrontModal(distId) {
-      document.getElementById("storefront-content").innerHTML = '<div class="loading-text">Loading...</div>';
-      document.getElementById("storefront-modal").classList.add("active");
-
-      const { data: dist } = await sb.from("distributor_profiles")
-        .select("*, profiles(phone)")
-        .eq("id", distId)
-        .single();
-
-      const { data: products } = await sb.from("products")
-        .select("*")
-        .eq("distributor_id", distId)
-        .eq("status", "active")
-        .order("created_at", { ascending: false });
-
-      if (!dist) {
-        document.getElementById("storefront-content").innerHTML = '<div class="loading-text">Not found.</div>';
-        return;
-      }
-
-      const availableProducts = products?.filter(p => p.stock_quantity > 0) || [];
-
-      document.getElementById("storefront-content").innerHTML = `
-        <div class="storefront-header">
-          <div>
-            <h3>${dist.business_name}</h3>
-            <div style="font-size:12px; color:rgba(18,21,28,0.6);">${dist.location || "Southeast"} · ${dist.market || "Multiple Markets"}</div>
-          </div>
-          <div>
-            <span class="storefront-badge">✓ Verified</span>
-            <div class="storefront-score">Trust Score: ${dist.verification_tier === "association" ? 80 : dist.verification_tier === "market board" ? 75 : 60}/100</div>
-          </div>
-        </div>
-
-        <div class="storefront-section">
-          <div class="section-label" style="margin-top:0;">Products (${availableProducts.length})</div>
-          ${availableProducts.length ? availableProducts.map(p => `
-            <div class="product-item">
-              <div class="product-image" style="${p.image_url ? `background-image:url('${p.image_url}')` : 'background-color:var(--ink-2);'}"></div>
-              <div style="display:inline-block; width:calc(100% - 80px);">
-                <div style="font-weight:600; font-size:13px;">${p.name}</div>
-                <div style="font-size:11px; color:rgba(18,21,28,0.55); margin-top:2px;">${p.brand ? p.brand + " · " : ""}${p.sku || "No SKU"}</div>
-                <div style="font-size:12px; margin-top:4px;">${p.price ? "₦" + p.price : "Negotiable"}</div>
-                <div style="margin-top:8px;">
-                  <button class="btn btn-success" onclick="addToCart('${p.id}', '${p.name}', ${p.price || 0}, '${p.distributor_id}', '${dist.business_name}')">Add to Cart</button>
-                </div>
-              </div>
-            </div>
-          `).join("") : '<div class="loading-text">No active products.</div>'}
-        </div>
-
-        <div class="action-buttons" style="margin-top:20px;">
-          <button class="btn btn-primary" onclick="closeStorefrontModal(); openModal('${dist.id}', '${dist.business_name}', 'distributor')">Contact Distributor</button>
-          ${dist.profiles?.phone ? `<button class="btn btn-whatsapp" onclick="openWhatsApp('${dist.profiles.phone}', '${dist.business_name}')">WhatsApp</button>` : ""}
-        </div>
-      `;
-    }
 
     // Cart functions
     function addToCart(productId, name, price, distributorId, distributorName) {
