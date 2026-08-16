@@ -443,75 +443,8 @@
   <script src="js/profile.js"></script>
   <script src="js/upgrade.js"></script>
 
-  <script>
-    // NOTE: SUPABASE_URL, SUPABASE_ANON_KEY, BACKEND, SECRET, and `sb` now
-    // live in js/config.js — do not redeclare them here.
-    // NOTE: navigation, modal controls, and UI helpers now live in js/ui.js.
-    // NOTE: signup, login, logout, and current-user loading now live in js/auth.js.
-    // NOTE: distributor/buyer loading, filtering, and rendering now live in js/market.js.
-    // NOTE: submitInquiry and submitDispute now live in js/inquiries.js.
-    // NOTE: openStorefrontModal now lives in js/storefront.js.
-    // NOTE: cart functions now live in js/cart.js.
-    // NOTE: loadProductsManagement and addProduct now live in js/products.js.
-    // NOTE: loadTrustData now lives in js/trust.js.
-    // NOTE: loadProfile, saveProfile, toggleFavourite now live in js/profile.js.
-    // NOTE: loadUpgradeScreen now lives in js/upgrade.js.
-
-    // Global state
-    let selectedSignupRole = "buyer";
-    let currentUser = null;
-    let productImageFile = null;
-    let allDistributors = [];
-    let allBuyers = [];
-    let activeCategory = "All";
-    let selectedContactName = "";
-    let selectedContactType = "";
-    let selectedContactId = "";
-    let selectedTier = "";
-    let userFavourites = new Set();
-    let disputeTargetId = "";
-    let disputeTargetName = "";
-    let cart = JSON.parse(localStorage.getItem("goodsbarnx_cart") || "[]");
-
-    // Initialize
-    (async () => {
-      console.log("GoodsbarnX initializing...");
-      await testSupabaseConnection();
-      const { data: { session } } = await sb.auth.getSession();
-      if (session) {
-        await loadCurrentUser();
-        document.getElementById("auth-shell").classList.add("hidden");
-        document.getElementById("app").style.display = "block";
-      }
-      await loadDistributorsAndBuyers();
-      updateCartBadge();
-      console.log("GoodsbarnX initialized successfully");
-    })();
-
-    // History
-    function renderHistory() {
-      const history = JSON.parse(localStorage.getItem("goodsbarnx_history") || "[]");
-      const container = document.getElementById("history-list");
-
-      if (!history.length) {
-        container.innerHTML = '<div class="loading-text">No inquiries yet.</div>';
-        return;
-      }
-
-      container.innerHTML = history.map(h => `
-        <div class="manifest">
-          <div class="manifest-top">
-            <div>
-              <div class="m-name">${h.name}</div>
-              <div class="m-loc">${h.type} · ${new Date(h.date).toLocaleDateString()}</div>
-            </div>
-            <span class="stamp-badge" style="border-color:var(--ok); color:var(--ok);">SENT</span>
-          </div>
-        </div>
-      `).join("");
-    }
-
-    console.log("GoodsbarnX app loaded successfully");
-  </script>
+  <!-- app.js loads LAST — it holds global state and the init block that calls
+       functions from every file above. -->
+  <script src="js/app.js"></script>
 </body>
 </html>
