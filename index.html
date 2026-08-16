@@ -429,9 +429,17 @@
   <!-- Step: config.js extracted. Loaded AFTER Supabase CDN, BEFORE the rest of app logic. -->
   <script src="js/config.js"></script>
 
+  <!-- Step: ui.js and auth.js extracted. Load AFTER config.js, BEFORE remaining inline script,
+       since remaining functions below (loadDistributorsAndBuyers, etc.) call things like
+       showScreen() and loadCurrentUser() that now live in these files. -->
+  <script src="js/ui.js"></script>
+  <script src="js/auth.js"></script>
+
   <script>
     // NOTE: SUPABASE_URL, SUPABASE_ANON_KEY, BACKEND, SECRET, and `sb` now
     // live in js/config.js — do not redeclare them here.
+    // NOTE: navigation, modal controls, and UI helpers now live in js/ui.js.
+    // NOTE: signup, login, logout, and current-user loading now live in js/auth.js.
 
     // Global state
     let selectedSignupRole = "buyer";
@@ -464,142 +472,6 @@
       console.log("GoodsbarnX initialized successfully");
     })();
 
-    // Auth functions
-    function selectRole(el) {
-      document.querySelectorAll("#signup-role-picker .role-pick").forEach(r => r.classList.remove("sel"));
-      el.classList.add("sel");
-      selectedSignupRole = el.dataset.role;
-      document.getElementById("auth-company").style.display = selectedSignupRole === "agent" ? "block" : "none";
-    }
-
-    function showLogin() {
-      document.getElementById("auth-shell").classList.add("hidden");
-      document.getElementById("login-shell").classList.remove("hidden");
-    }
-
-    function showSignup() {
-      document.getElementById("login-shell").classList.add("hidden");
-      document.getElementById("auth-shell").classList.remove("hidden");
-    }
-
-    function continueAsGuest() {
-      document.getElementById("auth-shell").classList.add("hidden");
-      document.getElementById("login-shell").classList.add("hidden");
-      document.getElementById("app").style.display = "block";
-    }
-
-    function toggleLoginPassword() {
-      const pw = document.getElementById("login-password");
-      pw.type = pw.type === "password" ? "text" : "password";
-    }
-
-    async function loadCurrentUser() {
-      const { data: { user } } = await sb.auth.getUser();
-      if (!user) { currentUser = null; return; }
-
-      const { data: profile } = await sb.from("profiles").select("*").eq("id", user.id).single();
-      currentUser = { id: user.id, ...profile };
-
-      if (currentUser.role === "distributor") {
-        const { data: dist } = await sb.from("distributor_profiles").select("*").eq("id", currentUser.id).single();
-        if (dist) currentUser = { ...currentUser, ...dist };
-      } else if (currentUser.role === "buyer") {
-        const { data: buyer } = await sb.from("buyer_profiles").select("*").eq("id", currentUser.id).single();
-        if (buyer) currentUser = { ...currentUser, ...buyer };
-      }
-
-      document.getElementById("logout-btn-holder").innerHTML = '<span class="logout-btn" onclick="handleLogout()">Log out</span>';
-
-      if (currentUser.role === "distributor") {
-        document.getElementById("nav-products").style.display = "flex";
-      }
-    }
-
-    async function handleLogout() {
-      await sb.auth.signOut();
-      location.reload();
-    }
-
-    async function handleSignup() {
-      const name = document.getElementById("auth-name").value;
-      const phone = document.getElementById("auth-phone").value;
-      const email = document.getElementById("auth-email").value;
-      const password = document.getElementById("auth-password").value;
-      const confirm = document.getElementById("auth-password-confirm").value;
-      const err = document.getElementById("auth-error");
-
-      err.innerText = "";
-      if (!name || !phone || !email || !password || !confirm) {
-        err.innerText = "Please fill in every field.";
-        return;
-      }
-      if (password !== confirm) {
-        err.innerText = "Passwords do not match.";
-        return;
-      }
-
-      const { data, error } = await sb.auth.signUp({ email, password });
-      if (error) {
-        err.innerText = error.message;
-        return;
-      }
-
-      const userId = data.user.id;
-      await sb.from("profiles").insert({ id: userId, full_name: name, phone: phone, role: selectedSignupRole });
-
-      if (selectedSignupRole === "distributor") {
-        await sb.from("distributor_profiles").insert({ id: userId, business_name: name });
-      } else if (selectedSignupRole === "buyer") {
-        await sb.from("buyer_profiles").insert({ id: userId });
-      }
-
-      await loadCurrentUser();
-      document.getElementById("auth-shell").classList.add("hidden");
-      document.getElementById("app").style.display = "block";
-    }
-
-    async function handleLogin() {
-      const email = document.getElementById("login-email").value;
-      const password = document.getElementById("login-password").value;
-      const err = document.getElementById("login-error");
-
-      err.innerText = "";
-      if (!email || !password) {
-        err.innerText = "Please fill in both fields.";
-        return;
-      }
-
-      const { data, error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) {
-        err.innerText = error.message;
-        return;
-      }
-
-      await loadCurrentUser();
-      document.getElementById("login-shell").classList.add("hidden");
-      document.getElementById("app").style.display = "block";
-    }
-
-    // Navigation
-    function showScreen(name) {
-      document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
-      const screenEl = document.getElementById("screen-" + name);
-      if (screenEl) screenEl.classList.add("active");
-
-      document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
-      const navItem = document.getElementById("nav-" + name);
-      if (navItem) navItem.classList.add("active");
-
-      window.scrollTo(0, 0);
-
-      if (name === "inquiries") renderHistory();
-      if (name === "trust") loadTrustData();
-      if (name === "profile") loadProfile();
-      if (name === "products") loadProductsManagement();
-      if (name === "upgrade") loadUpgradeScreen();
-      if (name === "cart") renderCart();
-    }
-
     // Market functions
     async function loadDistributorsAndBuyers() {
       console.log("Loading distributors and buyers...");
@@ -622,24 +494,6 @@
         document.getElementById("inquiry-count-ring").innerText = count ?? "–";
       });
 
-      applyFilters();
-    }
-
-    function selectCategory(cat, el) {
-      activeCategory = cat;
-      document.querySelectorAll(".category-card").forEach(c => c.classList.remove("active"));
-      el.classList.add("active");
-      applyFilters();
-    }
-
-    function toggleSearchClear() {
-      document.getElementById("search-clear").style.display =
-        document.getElementById("search-input").value.trim() ? "block" : "none";
-    }
-
-    function clearSearch() {
-      document.getElementById("search-input").value = "";
-      toggleSearchClear();
       applyFilters();
     }
 
@@ -759,24 +613,6 @@
       window.open("https://wa.me/" + (phone || "").replace(/[^0-9]/g, "") + "?text=" + encodeURIComponent("Hi " + name + ", I found you on GoodsbarnX."), "_blank");
     }
 
-    function openModal(id, name, type) {
-      selectedContactId = id;
-      selectedContactName = name;
-      selectedContactType = type;
-      document.getElementById("modal-title").innerText = "Contact " + name;
-      document.getElementById("inquiry-modal").classList.add("active");
-    }
-
-    function closeModal() {
-      document.getElementById("inquiry-modal").classList.remove("active");
-    }
-
-    function selectTier(el) {
-      document.querySelectorAll(".tier-opt").forEach(o => o.classList.remove("sel"));
-      el.classList.add("sel");
-      selectedTier = el.dataset.tier;
-    }
-
     async function submitInquiry() {
       const name = document.getElementById("inquiry-name").value;
       const phone = document.getElementById("inquiry-phone").value;
@@ -811,17 +647,6 @@
     }
 
     // Dispute functions
-    function openDisputeModal(id, name) {
-      disputeTargetId = id;
-      disputeTargetName = name;
-      document.getElementById("dispute-target-name").innerText = name;
-      document.getElementById("dispute-modal").classList.add("active");
-    }
-
-    function closeDisputeModal() {
-      document.getElementById("dispute-modal").classList.remove("active");
-    }
-
     async function submitDispute() {
       const submittedBy = document.getElementById("dispute-submitted-by").value;
       const phone = document.getElementById("dispute-phone").value;
@@ -901,10 +726,6 @@
           ${dist.profiles?.phone ? `<button class="btn btn-whatsapp" onclick="openWhatsApp('${dist.profiles.phone}', '${dist.business_name}')">WhatsApp</button>` : ""}
         </div>
       `;
-    }
-
-    function closeStorefrontModal() {
-      document.getElementById("storefront-modal").classList.remove("active");
     }
 
     // Cart functions
@@ -1077,43 +898,6 @@
           </div>
         </div>
       `).join("");
-    }
-
-    function openAddProductModal() {
-      document.getElementById("add-product-modal").classList.add("active");
-    }
-
-    function closeAddProductModal() {
-      document.getElementById("add-product-modal").classList.remove("active");
-    }
-
-    function previewProductImage() {
-      const input = document.getElementById("prod-image-input");
-      const preview = document.getElementById("prod-image-preview");
-      if (input.files && input.files[0]) {
-        productImageFile = input.files[0];
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          preview.style.backgroundImage = `url('${e.target.result}')`;
-          preview.classList.add("has-image");
-        };
-        reader.readAsDataURL(productImageFile);
-      }
-    }
-
-    function showCategoryFields() {
-      const category = document.getElementById("prod-category").value;
-      const container = document.getElementById("category-specific-fields");
-
-      const fields = {
-        "Auto Parts": `<div class="field"><label>Vehicle Make</label><input type="text" id="ap-make" /></div><div class="field"><label>Model</label><input type="text" id="ap-model" /></div><div class="field"><label>Year</label><input type="text" id="ap-year" /></div>`,
-        "Building Materials": `<div class="field"><label>Brand</label><input type="text" id="bm-brand" /></div><div class="field"><label>Grade</label><input type="text" id="bm-grade" /></div>`,
-        "Agriculture": `<div class="field"><label>Crop/Product</label><input type="text" id="ag-crop" /></div><div class="field"><label>Grade</label><input type="text" id="ag-grade" /></div>`,
-        "Pharma": `<div class="field"><label>Active Ingredient</label><input type="text" id="ph-ingredient" /></div><div class="field"><label>NAFDAC Number</label><input type="text" id="ph-nafdac" /></div>`,
-        "Electronics": `<div class="field"><label>Brand</label><input type="text" id="el-brand" /></div><div class="field"><label>Model</label><input type="text" id="el-model" /></div>`
-      };
-
-      container.innerHTML = fields[category] || "";
     }
 
     async function addProduct() {
