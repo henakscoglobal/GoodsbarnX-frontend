@@ -55,6 +55,7 @@ async function loadCurrentUser() {
 
   if (currentUser.role === "distributor") {
     document.getElementById("nav-products").style.display = "flex";
+    document.getElementById("nav-staff").style.display = "flex";
   }
 }
 
