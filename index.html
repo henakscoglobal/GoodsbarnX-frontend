@@ -303,6 +303,14 @@
       <div id="products-management-status" class="status-msg"></div>
     </div>
 
+    <!-- STAFF SCREEN -->
+    <div class="screen" id="screen-staff">
+      <div class="section-label">Team Management</div>
+      <div id="staff-list"><div class="loading-text">Loading staff...</div></div>
+      <button class="submit-btn" style="margin-top:16px;" onclick="openInviteStaffModal()">+ Invite Staff Member</button>
+      <div id="staff-status" class="status-msg"></div>
+    </div>
+
     <!-- CART SCREEN -->
     <div class="screen" id="screen-cart">
       <div class="section-label">Your Cart</div>
@@ -316,6 +324,7 @@
       <div class="nav-item" id="nav-trust" onclick="showScreen('trust')"><span class="ic">🛡️</span>Trust</div>
       <div class="nav-item" id="nav-profile" onclick="showScreen('profile')"><span class="ic">👤</span>Profile</div>
       <div class="nav-item" id="nav-products" onclick="showScreen('products')" style="display:none;"><span class="ic">📦</span>Products</div>
+      <div class="nav-item" id="nav-staff" onclick="showScreen('staff')" style="display:none;"><span class="ic">👥</span>Staff</div>
       <div class="nav-item" id="nav-upgrade" onclick="showScreen('upgrade')"><span class="ic">⭐</span>Upgrade</div>
     </nav>
   </div>
@@ -423,6 +432,25 @@
     </div>
   </div>
 
+  <div class="sheet-overlay" id="invite-staff-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Invite a team member</h3>
+      <div class="sub">They'll receive an email to set up their account.</div>
+      <div class="field"><label>Staff email</label><input type="email" id="staff-email" /></div>
+      <div class="field">
+        <label>Role</label>
+        <select id="staff-role">
+          <option value="responder">Responder</option>
+          <option value="manager">Manager</option>
+        </select>
+      </div>
+      <button class="submit-btn" onclick="sendStaffInvite()">Send invitation</button>
+      <button class="cancel-btn" onclick="closeInviteStaffModal()">Cancel</button>
+      <div class="status-msg" id="invite-staff-status"></div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://js.paystack.co/v2/inline.js"></script>
 
@@ -442,6 +470,7 @@
   <script src="js/trust.js"></script>
   <script src="js/profile.js"></script>
   <script src="js/upgrade.js"></script>
+  <script src="js/staff.js"></script>
 
   <!-- app.js loads LAST — it holds global state and the init block that calls
        functions from every file above. -->
