@@ -37,6 +37,25 @@ async function submitInquiry() {
     return;
   }
 
+  // Fire the email notification after the Supabase save succeeds.
+  // This is intentionally non-blocking: if the notification fails, the
+  // inquiry itself is already safely saved, so we don't want a slow or
+  // failed email to hold up the "Sent!" confirmation the user sees.
+  fetch(BACKEND + "/inquiries", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      secret: SECRET,
+      name,
+      phone,
+      email: payload.inquirer_email,
+      distributor: selectedContactType === "distributor" ? selectedContactName : null,
+      buyer: selectedContactType === "buyer" ? selectedContactName : null,
+      contactType: selectedContactType,
+      contactId: selectedContactId
+    })
+  }).catch(err => console.error("Notification request failed:", err.message));
+
   document.getElementById("status-msg").innerText = "Sent!";
   setTimeout(closeModal, 1500);
 }
