@@ -1,0 +1,472 @@
+/* ==========================================================================
+   GoodsbarnX — main.css
+   Variables, base/reset, typography, app shell, layout, screens, nav, auth
+   ========================================================================== */
+
+:root {
+  --ink: #12151C;
+  --ink-2: #1B1F29;
+  --paper: #EFE9DE;
+  --paper-dim: #E2DBCC;
+  --brass: #C88A34;
+  --brass-bright: #E3A94F;
+  --stamp: #A63D2F;
+  --stamp-bright: #C24632;
+  --ok: #3F7A4E;
+  --line: rgba(239, 233, 222, 0.14);
+  --line-dark: rgba(18, 21, 28, 0.12);
+  --brass-dark: #9A6A22;
+  --shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  background: var(--ink);
+  color: var(--paper);
+  min-height: 100vh;
+  font-family: 'Inter', -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--brass);
+  color: var(--ink);
+}
+
+h1, h2, h3, .display {
+  font-family: 'Roboto Slab', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  letter-spacing: 0.02em;
+}
+
+/* ---------- App shell ---------- */
+
+#app {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  position: relative;
+  background: var(--ink);
+}
+
+.status-bar {
+  height: env(safe-area-inset-top, 0px);
+  background: var(--ink);
+}
+
+header.top {
+  padding: 22px 20px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: linear-gradient(180deg, var(--ink) 80%, rgba(18, 21, 28, 0.96));
+  backdrop-filter: blur(6px);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-name {
+  font-family: 'Roboto Slab', serif;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.brand-sub {
+  font-size: 10px;
+  color: var(--brass-bright);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin-top: 1px;
+}
+
+.logout-btn {
+  font-size: 10.5px;
+  color: rgba(239, 233, 222, 0.45);
+  text-decoration: underline;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+
+main {
+  padding: 20px 20px 100px;
+}
+
+/* ---------- Screens ---------- */
+
+.screen {
+  display: none;
+}
+
+.screen.active {
+  display: block;
+  animation: fadein 0.25s ease;
+}
+
+@keyframes fadein {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.loading-text {
+  color: rgba(239, 233, 222, 0.5);
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 8px 0;
+  text-align: center;
+}
+
+/* ---------- Hero ---------- */
+
+.hero {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: radial-gradient(120% 140% at 0% 0%, #232838 0%, #171B24 55%, #12151C 100%);
+  padding: 24px 20px 22px;
+  overflow: hidden;
+  margin-bottom: 22px;
+}
+
+.hero-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--brass-bright);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.hero-headline {
+  font-size: 24px;
+  line-height: 1.18;
+  margin-bottom: 14px;
+}
+
+.hero-headline em {
+  color: var(--brass-bright);
+  font-style: normal;
+}
+
+.clock-seal {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(239, 233, 222, 0.05);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.seal-ring {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.seal-ring svg {
+  transform: rotate(-90deg);
+}
+
+.seal-ring .bg {
+  stroke: rgba(239, 233, 222, 0.1);
+}
+
+.seal-ring .fg {
+  stroke: var(--brass-bright);
+  stroke-linecap: round;
+}
+
+.seal-ring .num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--paper);
+}
+
+.clock-copy .clock-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--paper);
+  margin-bottom: 2px;
+}
+
+.clock-copy .clock-sub {
+  font-size: 12px;
+  color: rgba(239, 233, 222, 0.55);
+}
+
+.trust-strip {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.trust-item {
+  flex: 1;
+  text-align: center;
+  background: rgba(239, 233, 222, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 6px;
+}
+
+.trust-item .n {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--brass-bright);
+}
+
+.trust-item .t {
+  font-size: 9.5px;
+  color: rgba(239, 233, 222, 0.45);
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ---------- Section labels ---------- */
+
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(239, 233, 222, 0.45);
+  font-weight: 600;
+  margin: 26px 0 12px;
+}
+
+.section-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* ---------- Bottom nav ---------- */
+
+nav.bottom {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0;
+  width: 100%;
+  max-width: 480px;
+  background: rgba(18, 21, 28, 0.94);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--line);
+  display: flex;
+  padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0px));
+  z-index: 50;
+}
+
+.nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: rgba(239, 233, 222, 0.4);
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  position: relative;
+}
+
+.nav-item .ic {
+  font-size: 19px;
+}
+
+.nav-item.active {
+  color: var(--brass-bright);
+}
+
+.nav-badge {
+  position: absolute;
+  top: -4px;
+  right: 10px;
+  background: var(--stamp);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 10px;
+  display: none;
+}
+
+/* ---------- Auth screens ---------- */
+
+.auth-shell {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  background: var(--ink);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 32px 24px;
+}
+
+.auth-shell.hidden {
+  display: none;
+}
+
+.auth-brand {
+  text-align: center;
+  margin-bottom: 36px;
+}
+
+.auth-brand h1 {
+  font-size: 24px;
+  color: var(--paper);
+}
+
+.auth-brand p {
+  font-size: 12.5px;
+  color: rgba(239, 233, 222, 0.5);
+  margin-top: 6px;
+}
+
+.auth-box {
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 22px;
+}
+
+.role-picker {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.role-pick {
+  flex: 1;
+  text-align: center;
+  padding: 10px 4px;
+  border-radius: 10px;
+  border: 1.5px solid var(--line);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgba(239, 233, 222, 0.6);
+  cursor: pointer;
+}
+
+.role-pick.sel {
+  border-color: var(--brass);
+  background: rgba(200, 138, 52, 0.1);
+  color: var(--brass-bright);
+}
+
+.auth-box input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 14px;
+  font-family: 'Inter', sans-serif;
+  box-sizing: border-box;
+}
+
+.auth-box input::placeholder {
+  color: rgba(239, 233, 222, 0.35);
+}
+
+.auth-submit {
+  width: 100%;
+  background: var(--stamp);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 13px;
+  font-size: 14px;
+  font-weight: 700;
+  margin-top: 6px;
+  cursor: pointer;
+}
+
+.auth-switch {
+  text-align: center;
+  margin-top: 16px;
+  font-size: 12.5px;
+  color: rgba(239, 233, 222, 0.5);
+}
+
+.auth-switch span {
+  color: var(--brass-bright);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-guest {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 12px;
+  color: rgba(239, 233, 222, 0.35);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.auth-error {
+  font-size: 12.5px;
+  color: var(--stamp-bright);
+  text-align: center;
+  margin-top: 10px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--ink-2);
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--brass-bright);
+}
+
+/* ---------- Onboarding banner ---------- */
+
+.onboarding-banner {
+  background: rgba(200, 138, 52, 0.1);
+  border: 1px solid var(--brass);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
