@@ -9,6 +9,8 @@
 async function loadProfile() {
   if (!currentUser) return;
 
+  loadMyTradeRelationship();
+
   const isDist = currentUser.role === "distributor";
   document.getElementById("profile-business-name-field").style.display = isDist ? "block" : "none";
   document.getElementById("profile-category-field").style.display = isDist ? "block" : "none";
