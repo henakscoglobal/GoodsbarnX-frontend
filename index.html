@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+  <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -156,6 +156,7 @@
         <div class="category-card" onclick="selectCategory('Home Appliances',this)">🏠<span>Appliances</span></div>
         <div class="category-card" onclick="selectCategory('Packaging',this)">📦<span>Packaging</span></div>
         <div class="category-card" onclick="selectCategory('Logistics',this)">🚚<span>Logistics</span></div>
+        <div class="category-card" onclick="selectCategory('Iron & Industrial Materials',this)">🗜️<span>Iron & Industrial Materials</span></div>
       </div>
 
       <div class="section-label">Distributors <span class="mono" id="distributor-count">0</span></div>
@@ -186,6 +187,7 @@
       <div class="section-label">Your Profile</div>
       <div id="profile-saved-banner" style="display:none; background:var(--ok); color:white; padding:8px; border-radius:8px; text-align:center; margin-bottom:12px;">Profile saved successfully!</div>
       <div id="my-relationship-card"></div>
+      <div id="my-relationships-list"></div>
       <div id="profile-form">
         <div class="field" id="profile-business-name-field">
           <label>Business Name</label>
@@ -223,6 +225,7 @@
             <option value="Home Appliances">Home Appliances</option>
             <option value="Packaging">Packaging</option>
             <option value="Logistics">Logistics</option>
+            <option value="Iron & Industrial Materials">Iron & Industrial Materials</option>
           </select>
         </div>
         <div class="field">
@@ -281,6 +284,7 @@
             <option value="Home Appliances">Home Appliances</option>
             <option value="Packaging">Packaging</option>
             <option value="Logistics">Logistics</option>
+            <option value="Iron & Industrial Materials">Iron & Industrial Materials</option>
           </select>
         </div>
         <button class="submit-btn" onclick="saveProfile()">Save Profile</button>
@@ -413,6 +417,7 @@
           <option value="Home Appliances">Home Appliances</option>
           <option value="Packaging">Packaging</option>
           <option value="Logistics">Logistics</option>
+          <option value="Iron & Industrial Materials">Iron & Industrial Materials</option>
         </select>
       </div>
       <div id="category-specific-fields"></div>
@@ -504,3 +509,4 @@
   <script src="js/app.js"></script>
 </body>
 </html>
+
