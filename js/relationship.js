@@ -27,6 +27,26 @@ const RELATIONSHIP_STATUS_LABELS = {
   terminated: "Terminated"
 };
 
+// Shared trust-score rendering — used on both the buyer's own card and the
+// distributor's relationship list, so the two stay visually consistent.
+// Returns "" (nothing) if no trust record exists yet, rather than showing
+// a fabricated 0 that would look like a bad score.
+function renderTrustLine(trust) {
+  if (!trust || trust.trust_score == null) return "";
+
+  const score = Number(trust.trust_score);
+  const scoreColor = score >= 70 ? "var(--ok)" : score >= 40 ? "var(--brass)" : "var(--stamp)";
+  const completed = trust.completed_orders || 0;
+  const disputed = trust.disputed_orders || 0;
+
+  return `
+    <div style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:12px;">
+      <span style="font-weight:700; color:${scoreColor};">Trust ${score}/100</span>
+      <span style="color:rgba(18,21,28,0.5);">· ${completed} completed order${completed === 1 ? "" : "s"}${disputed ? ` · ${disputed} disputed` : ""}</span>
+    </div>
+  `;
+}
+
 async function loadMyTradeRelationship() {
   const container = document.getElementById("my-relationship-card");
   if (!container || !currentUser || currentUser.role !== "buyer") return;
@@ -67,6 +87,13 @@ async function loadMyTradeRelationship() {
     .eq("distributor_id", relationship.distributor_id)
     .maybeSingle();
 
+  // Fourth lookup: trust score for this specific relationship.
+  const { data: trust } = await sb
+    .from("relationship_trust")
+    .select("trust_score, completed_orders, disputed_orders")
+    .eq("relationship_id", relationship.id)
+    .maybeSingle();
+
   const distributorName = distributor?.business_name || "Your distributor";
   const statusLabel = RELATIONSHIP_STATUS_LABELS[relationship.status] || relationship.status;
   const startedDate = relationship.relationship_started_at
@@ -95,6 +122,7 @@ async function loadMyTradeRelationship() {
         <span class="stamp-badge" style="border-color:${relationship.status === "active" ? "var(--ok)" : "var(--brass)"}; color:${relationship.status === "active" ? "var(--ok)" : "var(--brass)"};">${statusLabel.toUpperCase()}</span>
       </div>
       ${startedDate ? `<div class="m-loc" style="margin-top:8px;">Trading together since ${startedDate}</div>` : ""}
+      ${renderTrustLine(trust)}
       ${creditHtml}
     </div>
   `;
@@ -211,7 +239,7 @@ async function loadMyTradeRelationships() {
 
   const [{ data: buyers }, { data: trustRows }, { data: termsRows }] = await Promise.all([
     sb.from("buyer_profiles").select("id, name, profiles(full_name, phone)").in("id", buyerIds),
-    sb.from("relationship_trust").select("relationship_id, total_trade_value").in("relationship_id", relationshipIds),
+    sb.from("relationship_trust").select("relationship_id, total_trade_value, trust_score, completed_orders, disputed_orders").in("relationship_id", relationshipIds),
     sb.from("current_relationship_trade_terms").select("buyer_id, credit_enabled, credit_limit, credit_days").eq("distributor_id", currentUser.id)
   ]);
 
@@ -243,6 +271,7 @@ async function loadMyTradeRelationships() {
           ${trust?.total_trade_value ? `Lifetime trade: ₦${Number(trust.total_trade_value).toLocaleString()}` : "No trade history yet"}
           ${terms?.credit_enabled ? ` · Credit: ₦${Number(terms.credit_limit || 0).toLocaleString()} / ${terms.credit_days || 0}d` : ""}
         </div>
+        ${renderTrustLine(trust)}
       </div>
     `;
   }).join("");
