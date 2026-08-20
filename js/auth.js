@@ -127,3 +127,85 @@ async function handleLogin() {
   document.getElementById("login-shell").classList.add("hidden");
   document.getElementById("app").style.display = "block";
 }
+
+// ---------- Forgot password ----------
+
+function openForgotPasswordModal() {
+  document.getElementById("forgot-password-email").value = "";
+  document.getElementById("forgot-password-status").innerText = "";
+  document.getElementById("forgot-password-modal").classList.add("active");
+}
+
+function closeForgotPasswordModal() {
+  document.getElementById("forgot-password-modal").classList.remove("active");
+}
+
+async function sendPasswordReset() {
+  const email = document.getElementById("forgot-password-email").value.trim();
+  const status = document.getElementById("forgot-password-status");
+
+  if (!email) {
+    status.innerText = "Enter your email address.";
+    return;
+  }
+
+  status.innerText = "Sending...";
+
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin
+  });
+
+  if (error) {
+    status.innerText = "Error: " + error.message;
+  } else {
+    status.innerText = "Check your email for a reset link.";
+    setTimeout(closeForgotPasswordModal, 2500);
+  }
+}
+
+// ---------- Set new password (after clicking the email link) ----------
+// Supabase redirects the person back here with a recovery session already
+// active. We listen for that specific event and show the modal automatically
+// — the person never needs to know this mechanism exists, it just works.
+
+sb.auth.onAuthStateChange((event) => {
+  if (event === "PASSWORD_RECOVERY") {
+    document.getElementById("new-password").value = "";
+    document.getElementById("new-password-confirm").value = "";
+    document.getElementById("reset-password-status").innerText = "";
+    document.getElementById("reset-password-modal").classList.add("active");
+  }
+});
+
+async function submitNewPassword() {
+  const password = document.getElementById("new-password").value;
+  const confirm = document.getElementById("new-password-confirm").value;
+  const status = document.getElementById("reset-password-status");
+
+  if (!password || !confirm) {
+    status.innerText = "Fill in both fields.";
+    return;
+  }
+  if (password !== confirm) {
+    status.innerText = "Passwords do not match.";
+    return;
+  }
+  if (password.length < 6) {
+    status.innerText = "Password must be at least 6 characters.";
+    return;
+  }
+
+  status.innerText = "Saving...";
+
+  const { error } = await sb.auth.updateUser({ password });
+
+  if (error) {
+    status.innerText = "Error: " + error.message;
+  } else {
+    status.innerText = "Password updated! Redirecting...";
+    setTimeout(() => {
+      document.getElementById("reset-password-modal").classList.remove("active");
+      location.href = window.location.origin;
+    }, 1500);
+  }
+}
