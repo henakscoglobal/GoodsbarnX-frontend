@@ -98,6 +98,83 @@ async function loadMyTradeRelationship() {
       ${creditHtml}
     </div>
   `;
+
+  loadMyPreferredProducts(relationship.id, relationship.distributor_id, distributorName);
+}
+
+// ==========================================================================
+// Buyer's "Your Preferred Products" — the products marked preferred=true
+// for this buyer's primary relationship. This is the "usual products" list
+// from the architecture doc (Section 9) — so a buyer doesn't have to search
+// the whole marketplace every time for what they always order.
+// ==========================================================================
+
+async function loadMyPreferredProducts(relationshipId, distributorId, distributorName) {
+  const container = document.getElementById("my-preferred-products");
+  if (!container) return;
+
+  const { data: prefs, error } = await sb
+    .from("relationship_product_preferences")
+    .select("*")
+    .eq("relationship_id", relationshipId)
+    .eq("preferred", true);
+
+  if (error) {
+    console.error("Preferred products lookup failed:", error.message);
+    container.innerHTML = "";
+    return;
+  }
+
+  if (!prefs || prefs.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+
+  const productIds = prefs.map(p => p.product_id);
+  const { data: products } = await sb
+    .from("products")
+    .select("id, name, sku, brand, price, image_url, stock_quantity, status")
+    .in("id", productIds);
+
+  const productMap = {};
+  (products || []).forEach(p => { productMap[p.id] = p; });
+
+  const rows = prefs
+    .map(pref => ({ pref, product: productMap[pref.product_id] }))
+    .filter(({ product }) => product && product.status === "active");
+
+  if (rows.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="section-label">Your Preferred Products</div>
+    ${rows.map(({ pref, product }) => {
+      const publicPrice = product.price || 0;
+      const hasNegotiated = pref.negotiated_unit_price != null;
+      const finalPrice = hasNegotiated ? pref.negotiated_unit_price : publicPrice;
+      const priceHtml = !product.price && !hasNegotiated
+        ? "Negotiable"
+        : hasNegotiated
+          ? `<span style="text-decoration:line-through; color:rgba(18,21,28,0.4); font-size:11px;">₦${publicPrice.toLocaleString()}</span> <span style="color:var(--ok); font-weight:700;">₦${finalPrice.toLocaleString()}</span>`
+          : `₦${publicPrice.toLocaleString()}`;
+
+      return `
+        <div class="product-item">
+          <div class="product-image" style="${product.image_url ? `background-image:url('${product.image_url}')` : 'background-color:var(--ink-2);'}"></div>
+          <div style="display:inline-block; width:calc(100% - 80px);">
+            <div style="font-weight:600; font-size:13px;">${product.name} <span style="color:var(--brass-dark); font-size:11px;">★</span></div>
+            <div style="font-size:11px; color:rgba(18,21,28,0.55); margin-top:2px;">${product.brand ? product.brand + " · " : ""}${product.sku || "No SKU"}</div>
+            <div style="font-size:12px; margin-top:4px;">${priceHtml}</div>
+            <div style="margin-top:8px;">
+              <button class="btn btn-success" onclick="addToCart('${product.id}', '${product.name}', ${finalPrice}, '${distributorId}', '${distributorName}')">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("")}
+  `;
 }
 
 // ==========================================================================
