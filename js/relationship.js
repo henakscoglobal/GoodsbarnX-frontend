@@ -99,3 +99,74 @@ async function loadMyTradeRelationship() {
     </div>
   `;
 }
+
+// ==========================================================================
+// Distributor side: "My Trade Relationships" — list of all buyers with
+// their relationship status, credit terms, and trade value where it exists.
+// Same read-only, database-is-truth principle as the buyer card above.
+// ==========================================================================
+
+async function loadMyTradeRelationships() {
+  const container = document.getElementById("my-relationships-list");
+  if (!container || !currentUser || currentUser.role !== "distributor") return;
+
+  container.innerHTML = '<div class="loading-text">Loading your trade relationships...</div>';
+
+  const { data: relationships, error } = await sb
+    .from("trade_relationships")
+    .select("*")
+    .eq("distributor_id", currentUser.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Trade relationships lookup failed:", error.message);
+    container.innerHTML = "";
+    return;
+  }
+
+  if (!relationships || relationships.length === 0) {
+    container.innerHTML = '<div class="loading-text">No buyer relationships yet.</div>';
+    return;
+  }
+
+  const buyerIds = relationships.map(r => r.buyer_id);
+  const relationshipIds = relationships.map(r => r.id);
+
+  const [{ data: buyers }, { data: trustRows }, { data: termsRows }] = await Promise.all([
+    sb.from("buyer_profiles").select("id, name, profiles(full_name, phone)").in("id", buyerIds),
+    sb.from("relationship_trust").select("relationship_id, total_trade_value").in("relationship_id", relationshipIds),
+    sb.from("current_relationship_trade_terms").select("buyer_id, credit_enabled, credit_limit, credit_days").eq("distributor_id", currentUser.id)
+  ]);
+
+  const buyerMap = {};
+  (buyers || []).forEach(b => { buyerMap[b.id] = b; });
+  const trustMap = {};
+  (trustRows || []).forEach(t => { trustMap[t.relationship_id] = t; });
+  const termsMap = {};
+  (termsRows || []).forEach(t => { termsMap[t.buyer_id] = t; });
+
+  container.innerHTML = '<div class="section-label" style="margin-top:0;">Your Trade Relationships</div>' + relationships.map(r => {
+    const buyer = buyerMap[r.buyer_id];
+    const buyerName = buyer?.name || buyer?.profiles?.full_name || "Buyer";
+    const phone = buyer?.profiles?.phone || "";
+    const statusLabel = RELATIONSHIP_STATUS_LABELS[r.status] || r.status;
+    const trust = trustMap[r.id];
+    const terms = termsMap[r.buyer_id];
+
+    return `
+      <div class="manifest">
+        <div class="manifest-top">
+          <div>
+            <div class="m-name">${buyerName}${r.is_primary ? ' <span style="font-size:10px; color:var(--brass-dark);">· PRIMARY</span>' : ""}</div>
+            <div class="m-loc">${phone}</div>
+          </div>
+          <span class="stamp-badge" style="border-color:${r.status === "active" ? "var(--ok)" : "var(--brass)"}; color:${r.status === "active" ? "var(--ok)" : "var(--brass)"};">${statusLabel.toUpperCase()}</span>
+        </div>
+        <div style="font-size:12px; margin-top:6px; color:rgba(18,21,28,0.6);">
+          ${trust?.total_trade_value ? `Lifetime trade: ₦${Number(trust.total_trade_value).toLocaleString()}` : "No trade history yet"}
+          ${terms?.credit_enabled ? ` · Credit: ₦${Number(terms.credit_limit || 0).toLocaleString()} / ${terms.credit_days || 0}d` : ""}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
