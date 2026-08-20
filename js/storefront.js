@@ -5,11 +5,11 @@
 // The "Add to Cart" and "Contact Distributor" buttons rendered here call
 // addToCart() (js/cart.js) and openModal()/closeStorefrontModal() (js/ui.js).
 //
-// Relationship-aware pricing: if the logged-in buyer has an active trade
-// relationship with this distributor carrying a default_discount_percent,
-// show both public price and their relationship price. This reads from
-// current_relationship_trade_terms — never computed locally beyond simple
-// arithmetic on a value the database already gives us.
+// Relationship-aware pricing, two layers, per-product wins when both exist:
+//   1. Per-product negotiated price (relationship_product_preferences) —
+//      a specific agreed price for a specific product.
+//   2. Relationship-level default_discount_percent
+//      (current_relationship_trade_terms) — flat % off everything else.
 // ==========================================================================
 
 async function openStorefrontModal(distId) {
@@ -31,6 +31,8 @@ async function openStorefrontModal(distId) {
   // guests/distributors/agents, and silently ignored on any error so a
   // missing relationship never blocks the storefront from showing.
   let discountPercent = null;
+  let productPreferences = {}; // product_id -> { negotiated_unit_price, preferred }
+
   if (currentUser && currentUser.role === "buyer") {
     const { data: terms } = await sb
       .from("current_relationship_trade_terms")
@@ -41,6 +43,28 @@ async function openStorefrontModal(distId) {
 
     if (terms && terms.relationship_status === "active" && terms.default_discount_percent > 0) {
       discountPercent = terms.default_discount_percent;
+    }
+
+    // Separate lookup for the relationship's own id, since the terms view
+    // above may return nothing at all if no trade-term row exists yet —
+    // but per-product preferences can still exist independently of that.
+    const { data: relationship } = await sb
+      .from("trade_relationships")
+      .select("id")
+      .eq("buyer_id", currentUser.id)
+      .eq("distributor_id", distId)
+      .eq("is_primary", true)
+      .maybeSingle();
+
+    if (relationship) {
+      const { data: prefs } = await sb
+        .from("relationship_product_preferences")
+        .select("product_id, negotiated_unit_price, preferred")
+        .eq("relationship_id", relationship.id);
+
+      (prefs || []).forEach(pref => {
+        productPreferences[pref.product_id] = pref;
+      });
     }
   }
 
@@ -69,24 +93,33 @@ async function openStorefrontModal(distId) {
       <div class="section-label" style="margin-top:0;">Products (${availableProducts.length})</div>
       ${availableProducts.length ? availableProducts.map(p => {
         const publicPrice = p.price || 0;
-        const hasDiscount = discountPercent && publicPrice > 0;
-        const yourPrice = hasDiscount ? Math.round(publicPrice * (1 - discountPercent / 100)) : publicPrice;
+        const pref = productPreferences[p.id];
+        const hasNegotiatedPrice = pref && pref.negotiated_unit_price != null;
+        const hasDiscount = !hasNegotiatedPrice && discountPercent && publicPrice > 0;
 
-        const priceHtml = !p.price
-          ? "Negotiable"
-          : hasDiscount
-            ? `<span style="text-decoration:line-through; color:rgba(18,21,28,0.4); font-size:11px;">₦${publicPrice.toLocaleString()}</span> <span style="color:var(--ok); font-weight:700;">₦${yourPrice.toLocaleString()}</span>`
-            : `₦${publicPrice.toLocaleString()}`;
+        let finalPrice = publicPrice;
+        let priceHtml;
+        if (!p.price && !hasNegotiatedPrice) {
+          priceHtml = "Negotiable";
+        } else if (hasNegotiatedPrice) {
+          finalPrice = pref.negotiated_unit_price;
+          priceHtml = `<span style="text-decoration:line-through; color:rgba(18,21,28,0.4); font-size:11px;">₦${publicPrice.toLocaleString()}</span> <span style="color:var(--ok); font-weight:700;">₦${finalPrice.toLocaleString()}</span> <span style="font-size:9.5px; color:var(--ok); text-transform:uppercase; letter-spacing:0.04em;">Your price</span>`;
+        } else if (hasDiscount) {
+          finalPrice = Math.round(publicPrice * (1 - discountPercent / 100));
+          priceHtml = `<span style="text-decoration:line-through; color:rgba(18,21,28,0.4); font-size:11px;">₦${publicPrice.toLocaleString()}</span> <span style="color:var(--ok); font-weight:700;">₦${finalPrice.toLocaleString()}</span>`;
+        } else {
+          priceHtml = `₦${publicPrice.toLocaleString()}`;
+        }
 
         return `
         <div class="product-item">
           <div class="product-image" style="${p.image_url ? `background-image:url('${p.image_url}')` : 'background-color:var(--ink-2);'}"></div>
           <div style="display:inline-block; width:calc(100% - 80px);">
-            <div style="font-weight:600; font-size:13px;">${p.name}</div>
+            <div style="font-weight:600; font-size:13px;">${p.name}${pref?.preferred ? ' <span style="color:var(--brass-dark); font-size:11px;">★ Preferred</span>' : ""}</div>
             <div style="font-size:11px; color:rgba(18,21,28,0.55); margin-top:2px;">${p.brand ? p.brand + " · " : ""}${p.sku || "No SKU"}</div>
             <div style="font-size:12px; margin-top:4px;">${priceHtml}</div>
             <div style="margin-top:8px;">
-              <button class="btn btn-success" onclick="addToCart('${p.id}', '${p.name}', ${hasDiscount ? yourPrice : publicPrice}, '${p.distributor_id}', '${dist.business_name}')">Add to Cart</button>
+              <button class="btn btn-success" onclick="addToCart('${p.id}', '${p.name}', ${finalPrice}, '${p.distributor_id}', '${dist.business_name}')">Add to Cart</button>
             </div>
           </div>
         </div>
