@@ -56,6 +56,7 @@
       <button class="auth-submit" onclick="handleLogin()">Log in</button>
       <div class="auth-error" id="login-error"></div>
     </div>
+    <div class="auth-switch" style="margin-top:10px;"><span onclick="openForgotPasswordModal()">Forgot password?</span></div>
     <div class="auth-switch">New here? <span onclick="showSignup()">Create an account</span></div>
     <div class="auth-guest" onclick="continueAsGuest()">Continue browsing without an account</div>
   </div>
@@ -449,6 +450,30 @@
       <button class="submit-btn" onclick="sendStaffInvite()">Send invitation</button>
       <button class="cancel-btn" onclick="closeInviteStaffModal()">Cancel</button>
       <div class="status-msg" id="invite-staff-status"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="forgot-password-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Reset your password</h3>
+      <div class="sub">Enter your account email — we'll send a reset link.</div>
+      <div class="field"><label>Email address</label><input type="email" id="forgot-password-email" /></div>
+      <button class="submit-btn" onclick="sendPasswordReset()">Send reset link</button>
+      <button class="cancel-btn" onclick="closeForgotPasswordModal()">Cancel</button>
+      <div class="status-msg" id="forgot-password-status"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="reset-password-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Set a new password</h3>
+      <div class="sub">You clicked a valid reset link. Choose a new password below.</div>
+      <div class="field"><label>New password</label><input type="password" id="new-password" /></div>
+      <div class="field"><label>Confirm new password</label><input type="password" id="new-password-confirm" /></div>
+      <button class="submit-btn" onclick="submitNewPassword()">Save new password</button>
+      <div class="status-msg" id="reset-password-status"></div>
     </div>
   </div>
 
