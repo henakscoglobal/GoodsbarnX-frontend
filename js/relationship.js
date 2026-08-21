@@ -18,6 +18,57 @@
 // Revisit once real order/payment tracking exists.
 // ==========================================================================
 
+// Dispute status → color, so open/pending disputes stand out from resolved ones
+const DISPUTE_STATUS_COLORS = {
+  open: "var(--stamp)",
+  pending: "var(--brass)",
+  under_review: "var(--brass)",
+  resolved: "var(--ok)",
+  closed: "var(--ok)"
+};
+
+async function loadRelationshipDisputes(relationshipId) {
+  const container = document.getElementById("my-relationship-disputes");
+  if (!container) return;
+
+  const { data: disputes, error } = await sb
+    .from("relationship_disputes")
+    .select("category, description, status, resolution, created_at, resolved_at")
+    .eq("relationship_id", relationshipId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Relationship disputes lookup failed:", error.message);
+    container.innerHTML = "";
+    return;
+  }
+
+  if (!disputes || disputes.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="section-label">Relationship Disputes</div>
+    ${disputes.map(d => {
+      const color = DISPUTE_STATUS_COLORS[d.status] || "var(--brass)";
+      return `
+        <div class="manifest">
+          <div class="manifest-top">
+            <div>
+              <div class="m-name">${d.category || "Dispute"}</div>
+              <div class="m-loc">${d.description || ""}</div>
+            </div>
+            <span class="stamp-badge" style="border-color:${color}; color:${color};">${(d.status || "").toUpperCase()}</span>
+          </div>
+          ${d.resolution ? `<div class="m-loc" style="margin-top:8px; border-top:1px dashed var(--line-dark); padding-top:8px;">Resolution: ${d.resolution}</div>` : ""}
+          <div class="m-loc" style="margin-top:6px; font-size:10px;">${new Date(d.created_at).toLocaleDateString()}${d.resolved_at ? ` · Resolved ${new Date(d.resolved_at).toLocaleDateString()}` : ""}</div>
+        </div>
+      `;
+    }).join("")}
+  `;
+}
+
 // Human-readable labels for event_type values. Falls back to the raw
 // value (with underscores replaced) for any type not listed here, so new
 // event types added later still display reasonably without a code change.
@@ -217,6 +268,7 @@ async function loadMyTradeRelationship() {
 
   loadMyPreferredProducts(relationship.id, relationship.distributor_id, distributorName);
   loadRelationshipHistory(relationship.id);
+  loadRelationshipDisputes(relationship.id);
 }
 
 // ==========================================================================
