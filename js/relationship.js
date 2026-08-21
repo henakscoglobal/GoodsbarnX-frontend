@@ -18,7 +18,70 @@
 // Revisit once real order/payment tracking exists.
 // ==========================================================================
 
-// Human-readable labels for the trade_relationship_status enum
+// Human-readable labels for event_type values. Falls back to the raw
+// value (with underscores replaced) for any type not listed here, so new
+// event types added later still display reasonably without a code change.
+const RELATIONSHIP_EVENT_LABELS = {
+  relationship_created: "Relationship created",
+  relationship_activated: "Relationship activated",
+  relationship_paused: "Relationship paused",
+  relationship_resumed: "Relationship resumed",
+  relationship_released: "Relationship released",
+  relationship_terminated: "Relationship terminated",
+  commercial_terms_created: "Trade terms set",
+  commercial_terms_updated: "Trade terms updated",
+  agent_assigned: "Agent assigned",
+  agent_unassigned: "Agent unassigned",
+  payment_method_added: "Payment method added",
+  payment_method_changed: "Payment method changed",
+  credit_enabled: "Credit enabled",
+  credit_limit_changed: "Credit limit changed",
+  product_preference_added: "Product preference added",
+  dispute_opened: "Dispute opened",
+  dispute_resolved: "Dispute resolved"
+};
+
+function formatEventType(eventType) {
+  return RELATIONSHIP_EVENT_LABELS[eventType] || eventType.replace(/_/g, " ");
+}
+
+async function loadRelationshipHistory(relationshipId) {
+  const container = document.getElementById("my-relationship-history");
+  if (!container) return;
+
+  const { data: events, error } = await sb
+    .from("relationship_events")
+    .select("event_type, created_at")
+    .eq("relationship_id", relationshipId)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (error) {
+    console.error("Relationship history lookup failed:", error.message);
+    container.innerHTML = "";
+    return;
+  }
+
+  if (!events || events.length === 0) {
+    container.innerHTML = `
+      <div class="section-label">Relationship History</div>
+      <div class="loading-text">No history yet.</div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="section-label">Relationship History</div>
+    <div class="manifest" style="padding:6px 16px;">
+      ${events.map((e, i) => `
+        <div style="padding:10px 0; ${i < events.length - 1 ? 'border-bottom:1px dashed var(--line-dark);' : ''}">
+          <div style="font-size:13px; font-weight:600;">${formatEventType(e.event_type)}</div>
+          <div style="font-size:11px; color:rgba(18,21,28,0.5); margin-top:2px;">${new Date(e.created_at).toLocaleString()}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
 const RELATIONSHIP_STATUS_LABELS = {
   pending: "Pending",
   active: "Active",
@@ -128,6 +191,7 @@ async function loadMyTradeRelationship() {
   `;
 
   loadMyPreferredProducts(relationship.id, relationship.distributor_id, distributorName);
+  loadRelationshipHistory(relationship.id);
 }
 
 // ==========================================================================
