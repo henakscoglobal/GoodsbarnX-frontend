@@ -57,6 +57,10 @@ async function loadCurrentUser() {
     document.getElementById("nav-products").style.display = "flex";
     document.getElementById("nav-staff").style.display = "flex";
   }
+
+  if (currentUser.role === "agent") {
+    document.getElementById("nav-agent").style.display = "flex";
+  }
 }
 
 async function handleLogout() {
