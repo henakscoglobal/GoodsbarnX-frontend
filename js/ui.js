@@ -24,6 +24,7 @@ function showScreen(name) {
   if (name === "profile") loadProfile();
   if (name === "products") loadProductsManagement();
   if (name === "staff") loadStaff();
+  if (name === "agent") loadMyAgentRelationships();
   if (name === "upgrade") loadUpgradeScreen();
   if (name === "cart") renderCart();
 }
@@ -87,15 +88,7 @@ function closeStorefrontModal() {
   document.getElementById("storefront-modal").classList.remove("active");
 }
 
-// ---------- Add product modal ----------
-
-function openAddProductModal() {
-  document.getElementById("add-product-modal").classList.add("active");
-}
-
-function closeAddProductModal() {
-  document.getElementById("add-product-modal").classList.remove("active");
-}
+// ---------- Product category fields ----------
 
 function showCategoryFields() {
   const category = document.getElementById("prod-category").value;
@@ -110,18 +103,4 @@ function showCategoryFields() {
   };
 
   container.innerHTML = fields[category] || "";
-}
-
-function previewProductImage() {
-  const input = document.getElementById("prod-image-input");
-  const preview = document.getElementById("prod-image-preview");
-  if (input.files && input.files[0]) {
-    productImageFile = input.files[0];
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      preview.style.backgroundImage = `url('${e.target.result}')`;
-      preview.classList.add("has-image");
-    };
-    reader.readAsDataURL(productImageFile);
-  }
 }
