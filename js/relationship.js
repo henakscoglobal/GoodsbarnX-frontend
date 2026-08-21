@@ -449,3 +449,87 @@ async function loadMyTradeRelationships() {
     `;
   }).join("");
 }
+
+// ==========================================================================
+// Agent side: "My Relationships" — the relationships this agent is
+// currently assigned to (relationship_agents.unassigned_at IS NULL means
+// still active). Read-only, same principles as buyer/distributor views.
+// ==========================================================================
+
+async function loadMyAgentRelationships() {
+  const container = document.getElementById("agent-relationships-list");
+  if (!container || !currentUser || currentUser.role !== "agent") return;
+
+  container.innerHTML = '<div class="loading-text">Loading your assigned relationships...</div>';
+
+  const { data: assignments, error } = await sb
+    .from("relationship_agents")
+    .select("relationship_id, is_primary, assigned_at")
+    .eq("agent_id", currentUser.id)
+    .is("unassigned_at", null);
+
+  if (error) {
+    console.error("Agent relationship assignments lookup failed:", error.message);
+    container.innerHTML = "";
+    return;
+  }
+
+  if (!assignments || assignments.length === 0) {
+    container.innerHTML = '<div class="loading-text">No relationships assigned to you yet.</div>';
+    return;
+  }
+
+  const relationshipIds = assignments.map(a => a.relationship_id);
+
+  const { data: relationships } = await sb
+    .from("trade_relationships")
+    .select("*")
+    .in("id", relationshipIds);
+
+  if (!relationships || relationships.length === 0) {
+    container.innerHTML = '<div class="loading-text">No relationships assigned to you yet.</div>';
+    return;
+  }
+
+  const buyerIds = relationships.map(r => r.buyer_id);
+  const distributorIds = relationships.map(r => r.distributor_id);
+
+  const [{ data: buyers }, { data: distributors }, { data: trustRows }] = await Promise.all([
+    sb.from("buyer_profiles").select("id, name, profiles(full_name, phone)").in("id", buyerIds),
+    sb.from("distributor_profiles").select("id, business_name, location, market").in("id", distributorIds),
+    sb.from("relationship_trust").select("relationship_id, trust_score, completed_orders, disputed_orders").in("relationship_id", relationshipIds)
+  ]);
+
+  const buyerMap = {};
+  (buyers || []).forEach(b => { buyerMap[b.id] = b; });
+  const distributorMap = {};
+  (distributors || []).forEach(d => { distributorMap[d.id] = d; });
+  const trustMap = {};
+  (trustRows || []).forEach(t => { trustMap[t.relationship_id] = t; });
+  const assignmentMap = {};
+  assignments.forEach(a => { assignmentMap[a.relationship_id] = a; });
+
+  container.innerHTML = relationships.map(r => {
+    const buyer = buyerMap[r.buyer_id];
+    const distributor = distributorMap[r.distributor_id];
+    const buyerName = buyer?.name || buyer?.profiles?.full_name || "Buyer";
+    const distributorName = distributor?.business_name || "Distributor";
+    const statusLabel = RELATIONSHIP_STATUS_LABELS[r.status] || r.status;
+    const trust = trustMap[r.id];
+    const assignment = assignmentMap[r.id];
+
+    return `
+      <div class="manifest">
+        <div class="manifest-top">
+          <div>
+            <div class="m-name">${buyerName} <span style="color:rgba(18,21,28,0.4);">↔</span> ${distributorName}</div>
+            <div class="m-loc">${buyer?.profiles?.phone || ""}${distributor?.location ? " · " + distributor.location : ""}</div>
+          </div>
+          <span class="stamp-badge" style="border-color:${r.status === "active" ? "var(--ok)" : "var(--brass)"}; color:${r.status === "active" ? "var(--ok)" : "var(--brass)"};">${statusLabel.toUpperCase()}</span>
+        </div>
+        ${assignment?.is_primary ? '<div class="m-loc" style="margin-top:6px;">You are the primary agent</div>' : ""}
+        ${renderTrustLine(trust)}
+      </div>
+    `;
+  }).join("");
+}
