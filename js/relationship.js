@@ -27,6 +27,25 @@ const DISPUTE_STATUS_COLORS = {
   closed: "var(--ok)"
 };
 
+const DISPUTE_OPEN_STATUSES = ["open", "pending", "under_review"];
+
+// Compact one-line dispute summary — used in the distributor's relationship
+// list, where showing every dispute in full for every buyer would mean too
+// many nested details on one screen. Full per-dispute detail lives on the
+// buyer's own card (loadRelationshipDisputes below).
+function renderDisputeSummaryLine(disputes) {
+  if (!disputes || disputes.length === 0) return "";
+
+  const openCount = disputes.filter(d => DISPUTE_OPEN_STATUSES.includes(d.status)).length;
+  const color = openCount > 0 ? "var(--stamp)" : "var(--ok)";
+
+  return `
+    <div style="font-size:12px; margin-top:4px; color:${color}; font-weight:600;">
+      ${disputes.length} dispute${disputes.length === 1 ? "" : "s"}${openCount > 0 ? ` · ${openCount} open` : " · all resolved"}
+    </div>
+  `;
+}
+
 async function loadRelationshipDisputes(relationshipId) {
   const container = document.getElementById("my-relationship-disputes");
   if (!container) return;
@@ -378,11 +397,12 @@ async function loadMyTradeRelationships() {
   const buyerIds = relationships.map(r => r.buyer_id);
   const relationshipIds = relationships.map(r => r.id);
 
-  const [{ data: buyers }, { data: trustRows }, { data: loyaltyRows }, { data: termsRows }] = await Promise.all([
+  const [{ data: buyers }, { data: trustRows }, { data: loyaltyRows }, { data: termsRows }, { data: disputeRows }] = await Promise.all([
     sb.from("buyer_profiles").select("id, name, profiles(full_name, phone)").in("id", buyerIds),
     sb.from("relationship_trust").select("relationship_id, total_trade_value, trust_score, completed_orders, disputed_orders").in("relationship_id", relationshipIds),
     sb.from("relationship_loyalty").select("relationship_id, loyalty_level, loyalty_points, consecutive_order_count").in("relationship_id", relationshipIds),
-    sb.from("current_relationship_trade_terms").select("buyer_id, credit_enabled, credit_limit, credit_days").eq("distributor_id", currentUser.id)
+    sb.from("current_relationship_trade_terms").select("buyer_id, credit_enabled, credit_limit, credit_days").eq("distributor_id", currentUser.id),
+    sb.from("relationship_disputes").select("relationship_id, status").in("relationship_id", relationshipIds)
   ]);
 
   const buyerMap = {};
@@ -393,6 +413,11 @@ async function loadMyTradeRelationships() {
   (loyaltyRows || []).forEach(l => { loyaltyMap[l.relationship_id] = l; });
   const termsMap = {};
   (termsRows || []).forEach(t => { termsMap[t.buyer_id] = t; });
+  const disputesMap = {};
+  (disputeRows || []).forEach(d => {
+    if (!disputesMap[d.relationship_id]) disputesMap[d.relationship_id] = [];
+    disputesMap[d.relationship_id].push(d);
+  });
 
   container.innerHTML = '<div class="section-label" style="margin-top:0;">Your Trade Relationships</div>' + relationships.map(r => {
     const buyer = buyerMap[r.buyer_id];
@@ -402,6 +427,7 @@ async function loadMyTradeRelationships() {
     const trust = trustMap[r.id];
     const loyalty = loyaltyMap[r.id];
     const terms = termsMap[r.buyer_id];
+    const disputes = disputesMap[r.id];
 
     return `
       <div class="manifest">
@@ -418,6 +444,7 @@ async function loadMyTradeRelationships() {
         </div>
         ${renderTrustLine(trust)}
         ${renderLoyaltyLine(loyalty)}
+        ${renderDisputeSummaryLine(disputes)}
       </div>
     `;
   }).join("");
