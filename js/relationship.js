@@ -110,6 +110,23 @@ function renderTrustLine(trust) {
   `;
 }
 
+// Loyalty is intentionally free-text at the database level (per the
+// architecture doc — levels are configurable, not hardcoded), so this
+// renders whatever string is stored rather than assuming a fixed set.
+function renderLoyaltyLine(loyalty) {
+  if (!loyalty || !loyalty.loyalty_level) return "";
+
+  const points = loyalty.loyalty_points != null ? Number(loyalty.loyalty_points) : null;
+  const consecutive = loyalty.consecutive_order_count || 0;
+
+  return `
+    <div style="display:flex; align-items:center; gap:6px; margin-top:4px; font-size:12px;">
+      <span class="stamp-badge" style="font-size:9px; padding:2px 6px; border-color:var(--brass); color:var(--brass-dark); transform:none;">${loyalty.loyalty_level.toUpperCase()}</span>
+      <span style="color:rgba(18,21,28,0.5);">${points != null ? `${points} pts` : ""}${consecutive ? ` · ${consecutive} in a row` : ""}</span>
+    </div>
+  `;
+}
+
 async function loadMyTradeRelationship() {
   const container = document.getElementById("my-relationship-card");
   if (!container || !currentUser || currentUser.role !== "buyer") return;
@@ -157,6 +174,13 @@ async function loadMyTradeRelationship() {
     .eq("relationship_id", relationship.id)
     .maybeSingle();
 
+  // Fifth lookup: loyalty status for this specific relationship.
+  const { data: loyalty } = await sb
+    .from("relationship_loyalty")
+    .select("loyalty_level, loyalty_points, consecutive_order_count")
+    .eq("relationship_id", relationship.id)
+    .maybeSingle();
+
   const distributorName = distributor?.business_name || "Your distributor";
   const statusLabel = RELATIONSHIP_STATUS_LABELS[relationship.status] || relationship.status;
   const startedDate = relationship.relationship_started_at
@@ -186,6 +210,7 @@ async function loadMyTradeRelationship() {
       </div>
       ${startedDate ? `<div class="m-loc" style="margin-top:8px;">Trading together since ${startedDate}</div>` : ""}
       ${renderTrustLine(trust)}
+      ${renderLoyaltyLine(loyalty)}
       ${creditHtml}
     </div>
   `;
@@ -301,9 +326,10 @@ async function loadMyTradeRelationships() {
   const buyerIds = relationships.map(r => r.buyer_id);
   const relationshipIds = relationships.map(r => r.id);
 
-  const [{ data: buyers }, { data: trustRows }, { data: termsRows }] = await Promise.all([
+  const [{ data: buyers }, { data: trustRows }, { data: loyaltyRows }, { data: termsRows }] = await Promise.all([
     sb.from("buyer_profiles").select("id, name, profiles(full_name, phone)").in("id", buyerIds),
     sb.from("relationship_trust").select("relationship_id, total_trade_value, trust_score, completed_orders, disputed_orders").in("relationship_id", relationshipIds),
+    sb.from("relationship_loyalty").select("relationship_id, loyalty_level, loyalty_points, consecutive_order_count").in("relationship_id", relationshipIds),
     sb.from("current_relationship_trade_terms").select("buyer_id, credit_enabled, credit_limit, credit_days").eq("distributor_id", currentUser.id)
   ]);
 
@@ -311,6 +337,8 @@ async function loadMyTradeRelationships() {
   (buyers || []).forEach(b => { buyerMap[b.id] = b; });
   const trustMap = {};
   (trustRows || []).forEach(t => { trustMap[t.relationship_id] = t; });
+  const loyaltyMap = {};
+  (loyaltyRows || []).forEach(l => { loyaltyMap[l.relationship_id] = l; });
   const termsMap = {};
   (termsRows || []).forEach(t => { termsMap[t.buyer_id] = t; });
 
@@ -320,6 +348,7 @@ async function loadMyTradeRelationships() {
     const phone = buyer?.profiles?.phone || "";
     const statusLabel = RELATIONSHIP_STATUS_LABELS[r.status] || r.status;
     const trust = trustMap[r.id];
+    const loyalty = loyaltyMap[r.id];
     const terms = termsMap[r.buyer_id];
 
     return `
@@ -336,6 +365,7 @@ async function loadMyTradeRelationships() {
           ${terms?.credit_enabled ? ` · Credit: ₦${Number(terms.credit_limit || 0).toLocaleString()} / ${terms.credit_days || 0}d` : ""}
         </div>
         ${renderTrustLine(trust)}
+        ${renderLoyaltyLine(loyalty)}
       </div>
     `;
   }).join("");
