@@ -493,6 +493,36 @@
     </div>
   </div>
 
+  <div class="sheet-overlay" id="edit-terms-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Edit Trade Terms</h3>
+      <div class="sub">For <span id="edit-terms-buyer-name"></span>. Previous terms are automatically preserved in history.</div>
+      <div class="field">
+        <label>Discount (%)</label>
+        <input type="number" step="0.1" min="0" max="100" id="terms-discount" placeholder="e.g. 5" />
+      </div>
+      <div class="field">
+        <label>Credit Enabled</label>
+        <select id="terms-credit-enabled">
+          <option value="false">No</option>
+          <option value="true">Yes</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Credit Limit (₦)</label>
+        <input type="number" step="1" min="0" id="terms-credit-limit" placeholder="e.g. 500000" />
+      </div>
+      <div class="field">
+        <label>Credit Days</label>
+        <input type="number" step="1" min="0" id="terms-credit-days" placeholder="e.g. 14" />
+      </div>
+      <button class="submit-btn" onclick="saveRelationshipTerms()">Save Terms</button>
+      <button class="cancel-btn" onclick="closeEditTermsModal()">Cancel</button>
+      <div class="status-msg" id="edit-terms-status"></div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://js.paystack.co/v2/inline.js"></script>
 
