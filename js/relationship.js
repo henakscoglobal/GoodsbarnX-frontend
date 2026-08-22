@@ -402,7 +402,7 @@ async function loadMyTradeRelationships() {
     sb.from("buyer_profiles").select("id, name, profiles(full_name, phone)").in("id", buyerIds),
     sb.from("relationship_trust").select("relationship_id, total_trade_value, trust_score, completed_orders, disputed_orders").in("relationship_id", relationshipIds),
     sb.from("relationship_loyalty").select("relationship_id, loyalty_level, loyalty_points, consecutive_order_count").in("relationship_id", relationshipIds),
-    sb.from("current_relationship_trade_terms").select("buyer_id, credit_enabled, credit_limit, credit_days").eq("distributor_id", currentUser.id),
+    sb.from("current_relationship_trade_terms").select("buyer_id, credit_enabled, credit_limit, credit_days, default_discount_percent").eq("distributor_id", currentUser.id),
     sb.from("relationship_disputes").select("relationship_id, status").in("relationship_id", relationshipIds)
   ]);
 
@@ -446,9 +446,27 @@ async function loadMyTradeRelationships() {
         ${renderTrustLine(trust)}
         ${renderLoyaltyLine(loyalty)}
         ${renderDisputeSummaryLine(disputes)}
+        <div style="margin-top:10px;">
+          <button class="btn btn-outline" onclick="openEditTermsModal('${r.id}')">Edit Terms</button>
+        </div>
       </div>
     `;
   }).join("");
+
+  // Cache term data so the modal can read it without fragile inline-string
+  // escaping through onclick attributes.
+  window.__relTermsCache = {};
+  relationships.forEach(r => {
+    const buyer = buyerMap[r.buyer_id];
+    const terms = termsMap[r.buyer_id];
+    window.__relTermsCache[r.id] = {
+      buyerName: buyer?.name || buyer?.profiles?.full_name || "Buyer",
+      discount: terms?.default_discount_percent ?? "",
+      creditEnabled: terms?.credit_enabled ?? false,
+      creditLimit: terms?.credit_limit ?? "",
+      creditDays: terms?.credit_days ?? ""
+    };
+  });
 }
 
 // ==========================================================================
@@ -577,4 +595,85 @@ async function loadRelationshipPaymentMethods(relationshipId) {
       `).join("")}
     </div>
   `;
+}
+
+// ==========================================================================
+// Distributor: edit a relationship's trade terms (discount + credit).
+// Writes directly to relationship_trade_terms — the database's own
+// snapshot_relationship_trade_terms trigger handles preserving the previous
+// version into relationship_trade_term_history automatically, so this code
+// does NOT need to manage history itself (per the architecture doc's rule
+// that the frontend should not own that logic).
+// ==========================================================================
+
+let editingTermsRelationshipId = null;
+
+function openEditTermsModal(relationshipId) {
+  const cached = window.__relTermsCache?.[relationshipId];
+  if (!cached) return;
+
+  editingTermsRelationshipId = relationshipId;
+
+  document.getElementById("edit-terms-buyer-name").innerText = cached.buyerName;
+  document.getElementById("terms-discount").value = cached.discount;
+  document.getElementById("terms-credit-enabled").value = cached.creditEnabled ? "true" : "false";
+  document.getElementById("terms-credit-limit").value = cached.creditLimit;
+  document.getElementById("terms-credit-days").value = cached.creditDays;
+  document.getElementById("edit-terms-status").innerText = "";
+  document.getElementById("edit-terms-modal").classList.add("active");
+}
+
+function closeEditTermsModal() {
+  document.getElementById("edit-terms-modal").classList.remove("active");
+  editingTermsRelationshipId = null;
+}
+
+async function saveRelationshipTerms() {
+  if (!editingTermsRelationshipId) return;
+
+  const status = document.getElementById("edit-terms-status");
+  status.innerText = "Saving...";
+
+  const discountRaw = document.getElementById("terms-discount").value;
+  const creditEnabled = document.getElementById("terms-credit-enabled").value === "true";
+  const creditLimitRaw = document.getElementById("terms-credit-limit").value;
+  const creditDaysRaw = document.getElementById("terms-credit-days").value;
+
+  const payload = {
+    default_discount_percent: discountRaw !== "" ? parseFloat(discountRaw) : null,
+    credit_enabled: creditEnabled,
+    credit_limit: creditEnabled && creditLimitRaw !== "" ? parseFloat(creditLimitRaw) : null,
+    credit_days: creditEnabled && creditDaysRaw !== "" ? parseInt(creditDaysRaw) : null
+  };
+
+  // Check for an existing terms row first — update it if present (so the
+  // snapshot trigger fires and preserves the old version), otherwise create
+  // a fresh one.
+  const { data: existing } = await sb
+    .from("relationship_trade_terms")
+    .select("id")
+    .eq("relationship_id", editingTermsRelationshipId)
+    .maybeSingle();
+
+  let error;
+  if (existing) {
+    ({ error } = await sb
+      .from("relationship_trade_terms")
+      .update(payload)
+      .eq("id", existing.id));
+  } else {
+    ({ error } = await sb
+      .from("relationship_trade_terms")
+      .insert({ relationship_id: editingTermsRelationshipId, effective_from: new Date().toISOString(), ...payload }));
+  }
+
+  if (error) {
+    status.innerText = "Error: " + error.message;
+  } else {
+    status.innerText = "Saved!";
+    setTimeout(() => {
+      closeEditTermsModal();
+      loadMyTradeRelationships();
+    }, 1000);
+  }
 }
