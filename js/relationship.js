@@ -288,6 +288,7 @@ async function loadMyTradeRelationship() {
   loadMyPreferredProducts(relationship.id, relationship.distributor_id, distributorName);
   loadRelationshipHistory(relationship.id);
   loadRelationshipDisputes(relationship.id);
+  loadRelationshipPaymentMethods(relationship.id);
 }
 
 // ==========================================================================
@@ -532,4 +533,48 @@ async function loadMyAgentRelationships() {
       </div>
     `;
   }).join("");
+}
+
+// ==========================================================================
+// Buyer's approved payment methods for this relationship. Only shown if at
+// least one active method exists — otherwise the section stays hidden
+// rather than showing an empty placeholder that adds no value.
+// ==========================================================================
+
+async function loadRelationshipPaymentMethods(relationshipId) {
+  const container = document.getElementById("my-payment-methods");
+  if (!container) return;
+
+  const { data: methods, error } = await sb
+    .from("relationship_payment_methods")
+    .select("payment_method, is_default, is_active, transaction_limit")
+    .eq("relationship_id", relationshipId)
+    .eq("is_active", true)
+    .order("is_default", { ascending: false });
+
+  if (error) {
+    console.error("Payment methods lookup failed:", error.message);
+    container.innerHTML = "";
+    return;
+  }
+
+  if (!methods || methods.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="section-label">Approved Payment Methods</div>
+    <div class="manifest" style="padding:6px 16px;">
+      ${methods.map((m, i) => `
+        <div style="padding:10px 0; ${i < methods.length - 1 ? 'border-bottom:1px dashed var(--line-dark);' : ''} display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <span style="font-size:13px; font-weight:600;">${m.payment_method}</span>
+            ${m.is_default ? '<span class="stamp-badge" style="font-size:8px; padding:2px 6px; border-color:var(--ok); color:var(--ok); transform:none; margin-left:6px;">DEFAULT</span>' : ""}
+          </div>
+          ${m.transaction_limit ? `<span style="font-size:11px; color:rgba(18,21,28,0.5);">Limit ₦${Number(m.transaction_limit).toLocaleString()}</span>` : ""}
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
