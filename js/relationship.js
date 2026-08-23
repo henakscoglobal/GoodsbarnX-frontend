@@ -451,6 +451,7 @@ async function loadMyTradeRelationships() {
         <div style="margin-top:10px;">
           <button class="btn btn-outline" onclick="openEditTermsModal('${r.id}')">Edit Terms</button>
         </div>
+        ${renderRelationshipActions(r.id, r.status)}
       </div>
     `;
   }).join("");
@@ -754,5 +755,63 @@ async function inviteBuyerToRelationship(buyerId, buyerName) {
       closeInviteBuyerModal();
       loadMyTradeRelationships();
     }, 1200);
+  }
+}
+
+// ==========================================================================
+// Distributor: change a relationship's status (pause/resume/release/
+// terminate). Writes a plain UPDATE to trade_relationships — the database's
+// own enforce_relationship_status_transitions trigger validates the
+// transition against the state machine rules and rejects anything invalid,
+// so this code doesn't duplicate that logic, per the architecture doc.
+// ==========================================================================
+
+const RELATIONSHIP_ACTIONS = {
+  pending: [{ label: "Activate", newStatus: "active" }],
+  active: [{ label: "Pause", newStatus: "paused" }, { label: "Release", newStatus: "released" }],
+  paused: [{ label: "Resume", newStatus: "active" }, { label: "Release", newStatus: "released" }]
+};
+
+function renderRelationshipActions(relationshipId, status) {
+  const actions = RELATIONSHIP_ACTIONS[status];
+  if (!actions) return "";
+
+  return `
+    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+      ${actions.map(a => `<button class="btn btn-outline" onclick="updateRelationshipStatus('${relationshipId}', '${a.newStatus}')">${a.label}</button>`).join("")}
+    </div>
+  `;
+}
+
+async function updateRelationshipStatus(relationshipId, newStatus) {
+  const timestampFields = {
+    active: "activated_at",
+    paused: "paused_at",
+    released: "released_at",
+    terminated: "terminated_at"
+  };
+
+  const payload = {
+    status: newStatus,
+    [timestampFields[newStatus]]: new Date().toISOString()
+  };
+
+  if (newStatus === "released") {
+    const reason = prompt("Reason for releasing this relationship (required):");
+    if (!reason || !reason.trim()) return;
+    payload.release_reason = reason.trim();
+  }
+
+  if (!confirm(`Change this relationship's status to "${newStatus}"? This cannot be casually undone.`)) return;
+
+  const { error } = await sb
+    .from("trade_relationships")
+    .update(payload)
+    .eq("id", relationshipId);
+
+  if (error) {
+    alert("Could not update status: " + error.message);
+  } else {
+    loadMyTradeRelationships();
   }
 }
