@@ -523,6 +523,21 @@
     </div>
   </div>
 
+  <div class="sheet-overlay" id="invite-buyer-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Invite a Buyer</h3>
+      <div class="sub">Search by name, then tap a buyer to add them as a trade relationship.</div>
+      <div class="field">
+        <label>Search buyers</label>
+        <input type="text" id="invite-buyer-search" oninput="searchBuyersForInvite()" placeholder="Type a buyer's name..." />
+      </div>
+      <div id="invite-buyer-results"></div>
+      <button class="cancel-btn" onclick="closeInviteBuyerModal()">Cancel</button>
+      <div class="status-msg" id="invite-buyer-status"></div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://js.paystack.co/v2/inline.js"></script>
 
