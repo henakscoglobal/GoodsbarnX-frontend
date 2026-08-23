@@ -376,7 +376,9 @@ async function loadMyTradeRelationships() {
   const container = document.getElementById("my-relationships-list");
   if (!container || !currentUser || currentUser.role !== "distributor") return;
 
-  container.innerHTML = '<div class="loading-text">Loading your trade relationships...</div>';
+  const inviteButtonHtml = '<div class="section-label" style="margin-top:0;">Your Trade Relationships</div><button class="btn btn-primary btn-block" style="margin-bottom:14px;" onclick="openInviteBuyerModal()">+ Invite a Buyer</button>';
+
+  container.innerHTML = inviteButtonHtml + '<div class="loading-text">Loading your trade relationships...</div>';
 
   const { data: relationships, error } = await sb
     .from("trade_relationships")
@@ -386,12 +388,12 @@ async function loadMyTradeRelationships() {
 
   if (error) {
     console.error("Trade relationships lookup failed:", error.message);
-    container.innerHTML = "";
+    container.innerHTML = inviteButtonHtml;
     return;
   }
 
   if (!relationships || relationships.length === 0) {
-    container.innerHTML = '<div class="loading-text">No buyer relationships yet.</div>';
+    container.innerHTML = inviteButtonHtml + '<div class="loading-text">No buyer relationships yet.</div>';
     return;
   }
 
@@ -420,7 +422,7 @@ async function loadMyTradeRelationships() {
     disputesMap[d.relationship_id].push(d);
   });
 
-  container.innerHTML = '<div class="section-label" style="margin-top:0;">Your Trade Relationships</div>' + relationships.map(r => {
+  container.innerHTML = inviteButtonHtml + relationships.map(r => {
     const buyer = buyerMap[r.buyer_id];
     const buyerName = buyer?.name || buyer?.profiles?.full_name || "Buyer";
     const phone = buyer?.profiles?.phone || "";
@@ -675,5 +677,82 @@ async function saveRelationshipTerms() {
       closeEditTermsModal();
       loadMyTradeRelationships();
     }, 1000);
+  }
+}
+
+// ==========================================================================
+// Distributor: invite a buyer into a trade relationship, by searching for
+// an existing buyer account and selecting them. Calls the database's own
+// create_trade_relationship() function — it handles authorization,
+// duplicate prevention, and auto-creating trust/loyalty/event rows, so this
+// code just calls it and reports the result. No business logic duplicated
+// here, per the architecture doc's rule that the frontend shouldn't own it.
+// ==========================================================================
+
+function openInviteBuyerModal() {
+  document.getElementById("invite-buyer-search").value = "";
+  document.getElementById("invite-buyer-results").innerHTML = "";
+  document.getElementById("invite-buyer-status").innerText = "";
+  document.getElementById("invite-buyer-modal").classList.add("active");
+}
+
+function closeInviteBuyerModal() {
+  document.getElementById("invite-buyer-modal").classList.remove("active");
+}
+
+async function searchBuyersForInvite() {
+  const query = document.getElementById("invite-buyer-search").value.trim();
+  const resultsEl = document.getElementById("invite-buyer-results");
+
+  if (query.length < 2) {
+    resultsEl.innerHTML = "";
+    return;
+  }
+
+  const { data: buyers, error } = await sb
+    .from("buyer_profiles")
+    .select("id, name, location, profiles(full_name, phone)")
+    .or(`name.ilike.%${query}%`)
+    .limit(10);
+
+  if (error) {
+    console.error("Buyer search failed:", error.message);
+    resultsEl.innerHTML = "";
+    return;
+  }
+
+  if (!buyers || buyers.length === 0) {
+    resultsEl.innerHTML = '<div class="loading-text">No matching buyers found.</div>';
+    return;
+  }
+
+  resultsEl.innerHTML = buyers.map(b => {
+    const name = b.name || b.profiles?.full_name || "Buyer";
+    return `
+      <div class="manifest" style="padding:12px; cursor:pointer;" onclick="inviteBuyerToRelationship('${b.id}', '${name.replace(/'/g, "\\'")}')">
+        <div class="m-name">${name}</div>
+        <div class="m-loc">${b.location || ""}${b.profiles?.phone ? " · " + b.profiles.phone : ""}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function inviteBuyerToRelationship(buyerId, buyerName) {
+  const status = document.getElementById("invite-buyer-status");
+  status.innerText = `Inviting ${buyerName}...`;
+
+  const { error } = await sb.rpc("create_trade_relationship", {
+    p_buyer_id: buyerId,
+    p_distributor_id: currentUser.id
+  });
+
+  if (error) {
+    status.innerText = "Error: " + error.message;
+  } else {
+    status.innerText = `${buyerName} added as a trade relationship!`;
+    setTimeout(() => {
+      closeInviteBuyerModal();
+      loadMyTradeRelationships();
+    }, 1200);
   }
 }
