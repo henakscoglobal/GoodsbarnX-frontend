@@ -538,6 +538,21 @@
     </div>
   </div>
 
+  <div class="sheet-overlay" id="assign-agent-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Assign an Agent</h3>
+      <div class="sub">Search by name, then tap an agent to assign them to this relationship.</div>
+      <div class="field">
+        <label>Search agents</label>
+        <input type="text" id="assign-agent-search" oninput="searchAgentsForAssignment()" placeholder="Type an agent's name..." />
+      </div>
+      <div id="assign-agent-results"></div>
+      <button class="cancel-btn" onclick="closeAssignAgentModal()">Cancel</button>
+      <div class="status-msg" id="assign-agent-status"></div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://js.paystack.co/v2/inline.js"></script>
 
