@@ -450,6 +450,7 @@ async function loadMyTradeRelationships() {
         ${renderDisputeSummaryLine(disputes)}
         <div style="margin-top:10px;">
           <button class="btn btn-outline" onclick="openEditTermsModal('${r.id}')">Edit Terms</button>
+          <button class="btn btn-outline" onclick="openAssignAgentModal('${r.id}')">Assign Agent</button>
         </div>
         ${renderRelationshipActions(r.id, r.status)}
       </div>
@@ -813,5 +814,100 @@ async function updateRelationshipStatus(relationshipId, newStatus) {
     alert("Could not update status: " + error.message);
   } else {
     loadMyTradeRelationships();
+  }
+}
+
+// ==========================================================================
+// Distributor: assign an agent to a relationship, by searching agent
+// accounts and selecting one. No dedicated database function exists for
+// this (confirmed by checking the full function list), so this writes
+// directly to relationship_agents. Unassigning a previous primary agent
+// (if any) is handled by setting their unassigned_at timestamp first, so
+// the assignment history stays intact rather than being overwritten.
+// ==========================================================================
+
+let assigningAgentRelationshipId = null;
+
+function openAssignAgentModal(relationshipId) {
+  assigningAgentRelationshipId = relationshipId;
+  document.getElementById("assign-agent-search").value = "";
+  document.getElementById("assign-agent-results").innerHTML = "";
+  document.getElementById("assign-agent-status").innerText = "";
+  document.getElementById("assign-agent-modal").classList.add("active");
+}
+
+function closeAssignAgentModal() {
+  document.getElementById("assign-agent-modal").classList.remove("active");
+  assigningAgentRelationshipId = null;
+}
+
+async function searchAgentsForAssignment() {
+  const query = document.getElementById("assign-agent-search").value.trim();
+  const resultsEl = document.getElementById("assign-agent-results");
+
+  if (query.length < 2) {
+    resultsEl.innerHTML = "";
+    return;
+  }
+
+  const { data: agents, error } = await sb
+    .from("agent_profiles")
+    .select("id, profiles(full_name, phone)")
+    .limit(20);
+
+  if (error) {
+    console.error("Agent search failed:", error.message);
+    resultsEl.innerHTML = "";
+    return;
+  }
+
+  const filtered = (agents || []).filter(a =>
+    (a.profiles?.full_name || "").toLowerCase().includes(query.toLowerCase())
+  );
+
+  if (filtered.length === 0) {
+    resultsEl.innerHTML = '<div class="loading-text">No matching agents found.</div>';
+    return;
+  }
+
+  resultsEl.innerHTML = filtered.map(a => {
+    const name = a.profiles?.full_name || "Agent";
+    return `
+      <div class="manifest" style="padding:12px; cursor:pointer;" onclick="assignAgentToRelationship('${a.id}', '${name.replace(/'/g, "\\'")}')">
+        <div class="m-name">${name}</div>
+        <div class="m-loc">${a.profiles?.phone || ""}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function assignAgentToRelationship(agentId, agentName) {
+  const status = document.getElementById("assign-agent-status");
+  status.innerText = `Assigning ${agentName}...`;
+
+  // Unassign any current primary agent first, preserving their history
+  // rather than deleting or overwriting the row.
+  await sb
+    .from("relationship_agents")
+    .update({ unassigned_at: new Date().toISOString() })
+    .eq("relationship_id", assigningAgentRelationshipId)
+    .eq("is_primary", true)
+    .is("unassigned_at", null);
+
+  const { error } = await sb.from("relationship_agents").insert({
+    relationship_id: assigningAgentRelationshipId,
+    agent_id: agentId,
+    is_primary: true,
+    assigned_at: new Date().toISOString()
+  });
+
+  if (error) {
+    status.innerText = "Error: " + error.message;
+  } else {
+    status.innerText = `${agentName} assigned!`;
+    setTimeout(() => {
+      closeAssignAgentModal();
+      loadMyTradeRelationships();
+    }, 1200);
   }
 }
