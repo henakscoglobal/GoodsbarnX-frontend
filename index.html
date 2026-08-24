@@ -553,6 +553,20 @@
     </div>
   </div>
 
+  <div class="sheet-overlay" id="manage-payment-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Payment Methods</h3>
+      <div class="sub">Manage approved payment methods for this relationship.</div>
+      <div id="existing-payment-methods" style="margin-bottom:16px;"></div>
+      <div class="field"><label>Add new method</label><input type="text" id="new-payment-method" placeholder="e.g. Bank Transfer" /></div>
+      <div class="field"><label>Transaction Limit (₦, optional)</label><input type="number" step="1" min="0" id="new-payment-method-limit" placeholder="e.g. 500000" /></div>
+      <button class="submit-btn" onclick="addPaymentMethod()">Add Method</button>
+      <button class="cancel-btn" onclick="closeManagePaymentMethodsModal()">Close</button>
+      <div class="status-msg" id="manage-payment-status"></div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://js.paystack.co/v2/inline.js"></script>
 
