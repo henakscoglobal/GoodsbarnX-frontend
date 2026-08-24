@@ -452,6 +452,7 @@ async function loadMyTradeRelationships() {
           <button class="btn btn-outline" onclick="openEditTermsModal('${r.id}')">Edit Terms</button>
           <button class="btn btn-outline" onclick="openAssignAgentModal('${r.id}')">Assign Agent</button>
           <button class="btn btn-outline" onclick="openManagePaymentMethodsModal('${r.id}')">Payment Methods</button>
+          <button class="btn btn-outline" onclick="openManagePreferredProductsModal('${r.id}')">Preferred Products</button>
         </div>
         ${renderRelationshipActions(r.id, r.status)}
       </div>
@@ -1021,4 +1022,141 @@ async function togglePaymentMethodActive(methodId, newActiveState) {
     .eq("id", methodId);
 
   loadExistingPaymentMethodsForModal(managingPaymentMethodsRelationshipId);
+}
+
+// ==========================================================================
+// Distributor: mark products as preferred for a specific buyer relationship,
+// optionally with a negotiated price. Search is scoped to the distributor's
+// own products only — they can't mark someone else's catalog item as
+// preferred. Writes directly to relationship_product_preferences.
+// ==========================================================================
+
+let managingPreferencesRelationshipId = null;
+
+function openManagePreferredProductsModal(relationshipId) {
+  managingPreferencesRelationshipId = relationshipId;
+  document.getElementById("preference-product-search").value = "";
+  document.getElementById("preference-search-results").innerHTML = "";
+  document.getElementById("manage-preferences-status").innerText = "";
+  document.getElementById("manage-preferences-modal").classList.add("active");
+  loadExistingPreferredProducts(relationshipId);
+}
+
+function closeManagePreferredProductsModal() {
+  document.getElementById("manage-preferences-modal").classList.remove("active");
+  managingPreferencesRelationshipId = null;
+}
+
+async function loadExistingPreferredProducts(relationshipId) {
+  const listEl = document.getElementById("existing-preferred-products");
+  listEl.innerHTML = '<div class="loading-text">Loading...</div>';
+
+  const { data: prefs } = await sb
+    .from("relationship_product_preferences")
+    .select("id, product_id, negotiated_unit_price")
+    .eq("relationship_id", relationshipId)
+    .eq("preferred", true);
+
+  if (!prefs || prefs.length === 0) {
+    listEl.innerHTML = '<div class="loading-text">No preferred products marked yet.</div>';
+    return;
+  }
+
+  const productIds = prefs.map(p => p.product_id);
+  const { data: products } = await sb.from("products").select("id, name, price").in("id", productIds);
+  const productMap = {};
+  (products || []).forEach(p => { productMap[p.id] = p; });
+
+  listEl.innerHTML = prefs.map(pref => {
+    const product = productMap[pref.product_id];
+    if (!product) return "";
+    return `
+      <div class="manifest" style="padding:10px 14px;">
+        <div class="manifest-top">
+          <div>
+            <span style="font-size:13px; font-weight:600;">${product.name} ★</span>
+            <div class="m-loc">Public: ₦${(product.price || 0).toLocaleString()}${pref.negotiated_unit_price != null ? ` · Negotiated: ₦${Number(pref.negotiated_unit_price).toLocaleString()}` : ""}</div>
+          </div>
+        </div>
+        <div class="action-buttons">
+          <button class="btn btn-outline" onclick="setNegotiatedPrice('${pref.id}')">${pref.negotiated_unit_price != null ? "Change" : "Set"} Price</button>
+          <button class="btn btn-danger" onclick="removeProductPreference('${pref.id}')">Remove</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function searchDistributorProductsForPreference() {
+  const query = document.getElementById("preference-product-search").value.trim();
+  const resultsEl = document.getElementById("preference-search-results");
+
+  if (query.length < 2) {
+    resultsEl.innerHTML = "";
+    return;
+  }
+
+  const { data: products, error } = await sb
+    .from("products")
+    .select("id, name, price, sku")
+    .eq("distributor_id", currentUser.id)
+    .ilike("name", `%${query}%`)
+    .limit(10);
+
+  if (error) {
+    console.error("Product search failed:", error.message);
+    return;
+  }
+
+  if (!products || products.length === 0) {
+    resultsEl.innerHTML = '<div class="loading-text">No matching products found.</div>';
+    return;
+  }
+
+  resultsEl.innerHTML = products.map(p => `
+    <div class="manifest" style="padding:10px 14px; cursor:pointer;" onclick="addProductPreference('${p.id}')">
+      <div class="m-name">${p.name}</div>
+      <div class="m-loc">${p.sku || "No SKU"} · ₦${(p.price || 0).toLocaleString()}</div>
+    </div>
+  `).join("");
+}
+
+async function addProductPreference(productId) {
+  const status = document.getElementById("manage-preferences-status");
+  status.innerText = "Adding...";
+
+  const { error } = await sb.from("relationship_product_preferences").insert({
+    relationship_id: managingPreferencesRelationshipId,
+    product_id: productId,
+    preferred: true
+  });
+
+  if (error) {
+    status.innerText = "Error: " + error.message;
+  } else {
+    status.innerText = "Added!";
+    document.getElementById("preference-product-search").value = "";
+    document.getElementById("preference-search-results").innerHTML = "";
+    loadExistingPreferredProducts(managingPreferencesRelationshipId);
+  }
+}
+
+async function setNegotiatedPrice(prefId) {
+  const priceInput = prompt("Enter the negotiated price for this product (₦), or leave blank to clear it:");
+  if (priceInput === null) return;
+
+  const price = priceInput.trim() === "" ? null : parseFloat(priceInput);
+
+  await sb
+    .from("relationship_product_preferences")
+    .update({ negotiated_unit_price: price })
+    .eq("id", prefId);
+
+  loadExistingPreferredProducts(managingPreferencesRelationshipId);
+}
+
+async function removeProductPreference(prefId) {
+  if (!confirm("Remove this product from preferred?")) return;
+  await sb.from("relationship_product_preferences").delete().eq("id", prefId);
+  loadExistingPreferredProducts(managingPreferencesRelationshipId);
 }
