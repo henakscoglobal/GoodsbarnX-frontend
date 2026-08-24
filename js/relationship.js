@@ -451,6 +451,7 @@ async function loadMyTradeRelationships() {
         <div style="margin-top:10px;">
           <button class="btn btn-outline" onclick="openEditTermsModal('${r.id}')">Edit Terms</button>
           <button class="btn btn-outline" onclick="openAssignAgentModal('${r.id}')">Assign Agent</button>
+          <button class="btn btn-outline" onclick="openManagePaymentMethodsModal('${r.id}')">Payment Methods</button>
         </div>
         ${renderRelationshipActions(r.id, r.status)}
       </div>
@@ -910,4 +911,114 @@ async function assignAgentToRelationship(agentId, agentName) {
       loadMyTradeRelationships();
     }, 1200);
   }
+}
+
+// ==========================================================================
+// Distributor: manage a relationship's approved payment methods — add new
+// ones, toggle active/inactive, change which is the default. Only one
+// method should be marked default at a time, enforced here by unsetting
+// any existing default before setting a new one (no dedicated database
+// function exists for this, confirmed against the full function list).
+// ==========================================================================
+
+let managingPaymentMethodsRelationshipId = null;
+
+function openManagePaymentMethodsModal(relationshipId) {
+  managingPaymentMethodsRelationshipId = relationshipId;
+  document.getElementById("new-payment-method").value = "";
+  document.getElementById("new-payment-method-limit").value = "";
+  document.getElementById("manage-payment-status").innerText = "";
+  document.getElementById("manage-payment-modal").classList.add("active");
+  loadExistingPaymentMethodsForModal(relationshipId);
+}
+
+function closeManagePaymentMethodsModal() {
+  document.getElementById("manage-payment-modal").classList.remove("active");
+  managingPaymentMethodsRelationshipId = null;
+}
+
+async function loadExistingPaymentMethodsForModal(relationshipId) {
+  const listEl = document.getElementById("existing-payment-methods");
+  listEl.innerHTML = '<div class="loading-text">Loading...</div>';
+
+  const { data: methods } = await sb
+    .from("relationship_payment_methods")
+    .select("id, payment_method, is_default, is_active, transaction_limit")
+    .eq("relationship_id", relationshipId)
+    .order("created_at", { ascending: false });
+
+  if (!methods || methods.length === 0) {
+    listEl.innerHTML = '<div class="loading-text">No payment methods added yet.</div>';
+    return;
+  }
+
+  listEl.innerHTML = methods.map(m => `
+    <div class="manifest" style="padding:10px 14px;">
+      <div class="manifest-top">
+        <div>
+          <span style="font-size:13px; font-weight:600;">${m.payment_method}</span>
+          ${m.is_default ? '<span class="stamp-badge" style="font-size:8px; padding:2px 6px; border-color:var(--ok); color:var(--ok); transform:none; margin-left:6px;">DEFAULT</span>' : ""}
+          ${!m.is_active ? '<span class="stamp-badge" style="font-size:8px; padding:2px 6px; border-color:var(--brass); color:var(--brass); transform:none; margin-left:6px;">INACTIVE</span>' : ""}
+        </div>
+      </div>
+      <div class="action-buttons">
+        ${!m.is_default ? `<button class="btn btn-outline" onclick="makePaymentMethodDefault('${m.id}')">Make Default</button>` : ""}
+        <button class="btn ${m.is_active ? 'btn-danger' : 'btn-success'}" onclick="togglePaymentMethodActive('${m.id}', ${!m.is_active})">${m.is_active ? "Deactivate" : "Activate"}</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function addPaymentMethod() {
+  const status = document.getElementById("manage-payment-status");
+  const methodName = document.getElementById("new-payment-method").value.trim();
+  const limitRaw = document.getElementById("new-payment-method-limit").value;
+
+  if (!methodName) {
+    status.innerText = "Enter a payment method name.";
+    return;
+  }
+
+  status.innerText = "Adding...";
+
+  const { error } = await sb.from("relationship_payment_methods").insert({
+    relationship_id: managingPaymentMethodsRelationshipId,
+    payment_method: methodName,
+    is_active: true,
+    is_default: false,
+    transaction_limit: limitRaw !== "" ? parseFloat(limitRaw) : null
+  });
+
+  if (error) {
+    status.innerText = "Error: " + error.message;
+  } else {
+    status.innerText = "Added!";
+    document.getElementById("new-payment-method").value = "";
+    document.getElementById("new-payment-method-limit").value = "";
+    loadExistingPaymentMethodsForModal(managingPaymentMethodsRelationshipId);
+  }
+}
+
+async function makePaymentMethodDefault(methodId) {
+  await sb
+    .from("relationship_payment_methods")
+    .update({ is_default: false })
+    .eq("relationship_id", managingPaymentMethodsRelationshipId)
+    .eq("is_default", true);
+
+  await sb
+    .from("relationship_payment_methods")
+    .update({ is_default: true })
+    .eq("id", methodId);
+
+  loadExistingPaymentMethodsForModal(managingPaymentMethodsRelationshipId);
+}
+
+async function togglePaymentMethodActive(methodId, newActiveState) {
+  await sb
+    .from("relationship_payment_methods")
+    .update({ is_active: newActiveState })
+    .eq("id", methodId);
+
+  loadExistingPaymentMethodsForModal(managingPaymentMethodsRelationshipId);
 }
