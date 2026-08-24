@@ -567,6 +567,22 @@
     </div>
   </div>
 
+  <div class="sheet-overlay" id="manage-preferences-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Preferred Products</h3>
+      <div class="sub">Mark products this buyer usually orders, with optional negotiated pricing.</div>
+      <div id="existing-preferred-products" style="margin-bottom:16px;"></div>
+      <div class="field">
+        <label>Search your products</label>
+        <input type="text" id="preference-product-search" oninput="searchDistributorProductsForPreference()" placeholder="Type a product name..." />
+      </div>
+      <div id="preference-search-results"></div>
+      <button class="cancel-btn" onclick="closeManagePreferredProductsModal()">Close</button>
+      <div class="status-msg" id="manage-preferences-status"></div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://js.paystack.co/v2/inline.js"></script>
 
