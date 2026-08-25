@@ -9,11 +9,23 @@
 //
 // Database is the source of truth. Frontend displays database state and
 // delegates business rules / authorization to Supabase RLS, triggers and RPCs.
+//
+// IMPORTANT RELATIONSHIP MODEL
+// --------------------------------------------------------------------------
+// 1. A distributor can establish a buyer relationship.
+// 2. A distributor may assign an agent to that relationship.
+// 3. An agent belongs to / works through a distributor relationship.
+// 4. Agent-referred buyers must ultimately resolve through the agent's
+//    distributor attachment. The frontend must not allow an agent to choose
+//    an arbitrary distributor.
+// 5. Buyer purchasing restrictions are enforced by the database/RLS/RPC layer.
+// 6. This file is a UI/data-access layer and must not be treated as the
+//    authorization boundary.
 // ==========================================================================
 
 
 // ==========================================================================
-// DISPUTES
+// SHARED CONSTANTS
 // ==========================================================================
 
 const DISPUTE_STATUS_COLORS = {
@@ -30,42 +42,205 @@ const DISPUTE_OPEN_STATUSES = [
   "under_review"
 ];
 
+const RELATIONSHIP_STATUS_LABELS = {
+  pending: "Pending",
+  active: "Active",
+  paused: "Paused",
+  released: "Released",
+  terminated: "Terminated"
+};
+
+const RELATIONSHIP_EVENT_LABELS = {
+  relationship_created: "Relationship created",
+  relationship_activated: "Relationship activated",
+  relationship_paused: "Relationship paused",
+  relationship_resumed: "Relationship resumed",
+  relationship_released: "Relationship released",
+  relationship_terminated: "Relationship terminated",
+  commercial_terms_created: "Trade terms set",
+  commercial_terms_updated: "Trade terms updated",
+  agent_assigned: "Agent assigned",
+  agent_unassigned: "Agent unassigned",
+  payment_method_added: "Payment method added",
+  payment_method_changed: "Payment method changed",
+  credit_enabled: "Credit enabled",
+  credit_limit_changed: "Credit limit changed",
+  product_preference_added: "Product preference added",
+  dispute_opened: "Dispute opened",
+  dispute_resolved: "Dispute resolved"
+};
+
+const RELATIONSHIP_ACTIONS = {
+  pending: [
+    {
+      label: "Activate",
+      newStatus: "active"
+    }
+  ],
+
+  active: [
+    {
+      label: "Pause",
+      newStatus: "paused"
+    },
+    {
+      label: "Release",
+      newStatus: "released"
+    }
+  ],
+
+  paused: [
+    {
+      label: "Resume",
+      newStatus: "active"
+    },
+    {
+      label: "Release",
+      newStatus: "released"
+    }
+  ]
+};
+
+
+// ==========================================================================
+// SMALL HELPERS
+// ==========================================================================
+
+function relationshipEscapeHtml(value) {
+  if (value == null) return "";
+
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+
+function relationshipEscapeAttribute(value) {
+  return relationshipEscapeHtml(value);
+}
+
+
+function relationshipFormatDate(value) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleDateString();
+}
+
+
+function relationshipFormatDateTime(value) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleString();
+}
+
+
+function relationshipMoney(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "₦0";
+  }
+
+  return `₦${number.toLocaleString()}`;
+}
+
+
+function relationshipSafeNumber(value, fallback = 0) {
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : fallback;
+}
+
+
+function formatEventType(eventType) {
+  if (!eventType) {
+    return "Relationship event";
+  }
+
+  return (
+    RELATIONSHIP_EVENT_LABELS[eventType] ||
+    String(eventType).replace(/_/g, " ")
+  );
+}
+
+
+function getRelationshipStatusColor(status) {
+  return status === "active"
+    ? "var(--ok)"
+    : "var(--brass)";
+}
+
+
+// ==========================================================================
+// DISPUTES
+// ==========================================================================
+
 function renderDisputeSummaryLine(disputes) {
-  if (!disputes || disputes.length === 0) return "";
+  if (!disputes || disputes.length === 0) {
+    return "";
+  }
 
   const openCount = disputes.filter(d =>
     DISPUTE_OPEN_STATUSES.includes(d.status)
   ).length;
 
-  const color = openCount > 0 ? "var(--stamp)" : "var(--ok)";
+  const color =
+    openCount > 0
+      ? "var(--stamp)"
+      : "var(--ok)";
 
   return `
-    <div style="
-      font-size:12px;
-      margin-top:4px;
-      color:${color};
-      font-weight:600;
-    ">
+    <div
+      style="
+        font-size:12px;
+        margin-top:4px;
+        color:${color};
+        font-weight:600;
+      "
+    >
       ${disputes.length}
       dispute${disputes.length === 1 ? "" : "s"}
-      ${openCount > 0
-        ? ` · ${openCount} open`
-        : " · all resolved"}
+      ${
+        openCount > 0
+          ? ` · ${openCount} open`
+          : " · all resolved"
+      }
     </div>
   `;
 }
 
 
-// ==========================================================================
-// BUYER — RELATIONSHIP DISPUTES
-// ==========================================================================
-
 async function loadRelationshipDisputes(relationshipId) {
-  const container = document.getElementById("my-relationship-disputes");
+  const container =
+    document.getElementById(
+      "my-relationship-disputes"
+    );
 
-  if (!container) return;
+  if (!container || !relationshipId) {
+    return;
+  }
 
-  const { data: disputes, error } = await sb
+  const {
+    data: disputes,
+    error
+  } = await sb
     .from("relationship_disputes")
     .select(`
       category,
@@ -75,8 +250,16 @@ async function loadRelationshipDisputes(relationshipId) {
       created_at,
       resolved_at
     `)
-    .eq("relationship_id", relationshipId)
-    .order("created_at", { ascending: false });
+    .eq(
+      "relationship_id",
+      relationshipId
+    )
+    .order(
+      "created_at",
+      {
+        ascending: false
+      }
+    );
 
   if (error) {
     console.error(
@@ -101,7 +284,8 @@ async function loadRelationshipDisputes(relationshipId) {
     ${disputes.map(d => {
 
       const color =
-        DISPUTE_STATUS_COLORS[d.status] || "var(--brass)";
+        DISPUTE_STATUS_COLORS[d.status] ||
+        "var(--brass)";
 
       return `
         <div class="manifest">
@@ -111,11 +295,15 @@ async function loadRelationshipDisputes(relationshipId) {
             <div>
 
               <div class="m-name">
-                ${d.category || "Dispute"}
+                ${relationshipEscapeHtml(
+                  d.category || "Dispute"
+                )}
               </div>
 
               <div class="m-loc">
-                ${d.description || ""}
+                ${relationshipEscapeHtml(
+                  d.description || ""
+                )}
               </div>
 
             </div>
@@ -127,7 +315,11 @@ async function loadRelationshipDisputes(relationshipId) {
                 color:${color};
               "
             >
-              ${(d.status || "").toUpperCase()}
+              ${relationshipEscapeHtml(
+                String(
+                  d.status || ""
+                ).toUpperCase()
+              )}
             </span>
 
           </div>
@@ -143,7 +335,10 @@ async function loadRelationshipDisputes(relationshipId) {
                     padding-top:8px;
                   "
                 >
-                  Resolution: ${d.resolution}
+                  Resolution:
+                  ${relationshipEscapeHtml(
+                    d.resolution
+                  )}
                 </div>
               `
               : ""
@@ -156,12 +351,22 @@ async function loadRelationshipDisputes(relationshipId) {
               font-size:10px;
             "
           >
-            ${new Date(d.created_at).toLocaleDateString()}
+            ${relationshipEscapeHtml(
+              relationshipFormatDate(
+                d.created_at
+              )
+            )}
+
             ${
               d.resolved_at
-                ? ` · Resolved ${new Date(
-                    d.resolved_at
-                  ).toLocaleDateString()}`
+                ? `
+                  · Resolved
+                  ${relationshipEscapeHtml(
+                    relationshipFormatDate(
+                      d.resolved_at
+                    )
+                  )}
+                `
                 : ""
             }
           </div>
@@ -177,91 +382,39 @@ async function loadRelationshipDisputes(relationshipId) {
 // RELATIONSHIP HISTORY
 // ==========================================================================
 
-const RELATIONSHIP_EVENT_LABELS = {
+async function loadRelationshipHistory(
+  relationshipId
+) {
+  const container =
+    document.getElementById(
+      "my-relationship-history"
+    );
 
-  relationship_created:
-    "Relationship created",
-
-  relationship_activated:
-    "Relationship activated",
-
-  relationship_paused:
-    "Relationship paused",
-
-  relationship_resumed:
-    "Relationship resumed",
-
-  relationship_released:
-    "Relationship released",
-
-  relationship_terminated:
-    "Relationship terminated",
-
-  commercial_terms_created:
-    "Trade terms set",
-
-  commercial_terms_updated:
-    "Trade terms updated",
-
-  agent_assigned:
-    "Agent assigned",
-
-  agent_unassigned:
-    "Agent unassigned",
-
-  payment_method_added:
-    "Payment method added",
-
-  payment_method_changed:
-    "Payment method changed",
-
-  credit_enabled:
-    "Credit enabled",
-
-  credit_limit_changed:
-    "Credit limit changed",
-
-  product_preference_added:
-    "Product preference added",
-
-  dispute_opened:
-    "Dispute opened",
-
-  dispute_resolved:
-    "Dispute resolved"
-};
-
-function formatEventType(eventType) {
-
-  if (!eventType) {
-    return "Relationship event";
+  if (!container || !relationshipId) {
+    return;
   }
 
-  return (
-    RELATIONSHIP_EVENT_LABELS[eventType] ||
-    eventType.replace(/_/g, " ")
-  );
-}
-
-
-async function loadRelationshipHistory(relationshipId) {
-
-  const container =
-    document.getElementById("my-relationship-history");
-
-  if (!container) return;
-
-  const { data: events, error } = await sb
+  const {
+    data: events,
+    error
+  } = await sb
     .from("relationship_events")
-    .select("event_type, created_at")
-    .eq("relationship_id", relationshipId)
-    .order("created_at", {
-      ascending: false
-    })
+    .select(
+      "event_type, created_at"
+    )
+    .eq(
+      "relationship_id",
+      relationshipId
+    )
+    .order(
+      "created_at",
+      {
+        ascending: false
+      }
+    )
     .limit(10);
 
   if (error) {
-
     console.error(
       "Relationship history lookup failed:",
       error.message
@@ -272,7 +425,6 @@ async function loadRelationshipHistory(relationshipId) {
   }
 
   if (!events || events.length === 0) {
-
     container.innerHTML = `
       <div class="section-label">
         Relationship History
@@ -287,7 +439,6 @@ async function loadRelationshipHistory(relationshipId) {
   }
 
   container.innerHTML = `
-
     <div class="section-label">
       Relationship History
     </div>
@@ -297,13 +448,12 @@ async function loadRelationshipHistory(relationshipId) {
       style="padding:6px 16px;"
     >
 
-      ${events.map((e, i) => `
-
+      ${events.map((event, index) => `
         <div
           style="
             padding:10px 0;
             ${
-              i < events.length - 1
+              index < events.length - 1
                 ? "border-bottom:1px dashed var(--line-dark);"
                 : ""
             }
@@ -316,7 +466,11 @@ async function loadRelationshipHistory(relationshipId) {
               font-weight:600;
             "
           >
-            ${formatEventType(e.event_type)}
+            ${relationshipEscapeHtml(
+              formatEventType(
+                event.event_type
+              )
+            )}
           </div>
 
           <div
@@ -326,11 +480,14 @@ async function loadRelationshipHistory(relationshipId) {
               margin-top:2px;
             "
           >
-            ${new Date(e.created_at).toLocaleString()}
+            ${relationshipEscapeHtml(
+              relationshipFormatDateTime(
+                event.created_at
+              )
+            )}
           </div>
 
         </div>
-
       `).join("")}
 
     </div>
@@ -339,34 +496,21 @@ async function loadRelationshipHistory(relationshipId) {
 
 
 // ==========================================================================
-// RELATIONSHIP STATUS
-// ==========================================================================
-
-const RELATIONSHIP_STATUS_LABELS = {
-
-  pending: "Pending",
-
-  active: "Active",
-
-  paused: "Paused",
-
-  released: "Released",
-
-  terminated: "Terminated"
-};
-
-
-// ==========================================================================
 // TRUST
 // ==========================================================================
 
 function renderTrustLine(trust) {
-
-  if (!trust || trust.trust_score == null) {
+  if (
+    !trust ||
+    trust.trust_score == null
+  ) {
     return "";
   }
 
-  const score = Number(trust.trust_score);
+  const score =
+    relationshipSafeNumber(
+      trust.trust_score
+    );
 
   const scoreColor =
     score >= 70
@@ -376,10 +520,14 @@ function renderTrustLine(trust) {
         : "var(--stamp)";
 
   const completed =
-    trust.completed_orders || 0;
+    relationshipSafeNumber(
+      trust.completed_orders
+    );
 
   const disputed =
-    trust.disputed_orders || 0;
+    relationshipSafeNumber(
+      trust.disputed_orders
+    );
 
   return `
     <div
@@ -425,7 +573,6 @@ function renderTrustLine(trust) {
 // ==========================================================================
 
 function renderLoyaltyLine(loyalty) {
-
   if (
     !loyalty ||
     !loyalty.loyalty_level
@@ -435,11 +582,15 @@ function renderLoyaltyLine(loyalty) {
 
   const points =
     loyalty.loyalty_points != null
-      ? Number(loyalty.loyalty_points)
+      ? relationshipSafeNumber(
+          loyalty.loyalty_points
+        )
       : null;
 
   const consecutive =
-    loyalty.consecutive_order_count || 0;
+    relationshipSafeNumber(
+      loyalty.consecutive_order_count
+    );
 
   return `
     <div
@@ -462,7 +613,11 @@ function renderLoyaltyLine(loyalty) {
           transform:none;
         "
       >
-        ${String(loyalty.loyalty_level).toUpperCase()}
+        ${relationshipEscapeHtml(
+          String(
+            loyalty.loyalty_level
+          ).toUpperCase()
+        )}
       </span>
 
       <span
@@ -470,7 +625,12 @@ function renderLoyaltyLine(loyalty) {
           color:rgba(18,21,28,0.5);
         "
       >
-        ${points != null ? `${points} pts` : ""}
+        ${
+          points != null
+            ? `${points} pts`
+            : ""
+        }
+
         ${
           consecutive
             ? ` · ${consecutive} in a row`
@@ -488,9 +648,10 @@ function renderLoyaltyLine(loyalty) {
 // ==========================================================================
 
 async function loadMyTradeRelationship() {
-
   const container =
-    document.getElementById("my-relationship-card");
+    document.getElementById(
+      "my-relationship-card"
+    );
 
   if (
     !container ||
@@ -512,12 +673,17 @@ async function loadMyTradeRelationship() {
   } = await sb
     .from("trade_relationships")
     .select("*")
-    .eq("buyer_id", currentUser.id)
-    .eq("is_primary", true)
+    .eq(
+      "buyer_id",
+      currentUser.id
+    )
+    .eq(
+      "is_primary",
+      true
+    )
     .maybeSingle();
 
   if (error) {
-
     console.error(
       "Trade relationship lookup failed:",
       error.message
@@ -528,75 +694,76 @@ async function loadMyTradeRelationship() {
   }
 
   if (!relationship) {
-
     container.innerHTML = "";
     return;
   }
 
+  const [
+    { data: distributor },
+    { data: terms },
+    { data: trust },
+    { data: loyalty }
+  ] = await Promise.all([
 
-  // ------------------------------------------------------------
-  // Distributor
-  // ------------------------------------------------------------
+    sb
+      .from("distributor_profiles")
+      .select(`
+        business_name,
+        location,
+        market
+      `)
+      .eq(
+        "id",
+        relationship.distributor_id
+      )
+      .maybeSingle(),
 
-  const { data: distributor } = await sb
-    .from("distributor_profiles")
-    .select(`
-      business_name,
-      location,
-      market
-    `)
-    .eq("id", relationship.distributor_id)
-    .maybeSingle();
+    sb
+      .from(
+        "current_relationship_trade_terms"
+      )
+      .select(`
+        credit_enabled,
+        credit_limit,
+        credit_days
+      `)
+      .eq(
+        "buyer_id",
+        currentUser.id
+      )
+      .eq(
+        "distributor_id",
+        relationship.distributor_id
+      )
+      .maybeSingle(),
 
+    sb
+      .from("relationship_trust")
+      .select(`
+        trust_score,
+        completed_orders,
+        disputed_orders
+      `)
+      .eq(
+        "relationship_id",
+        relationship.id
+      )
+      .maybeSingle(),
 
-  // ------------------------------------------------------------
-  // Current approved trade terms
-  // ------------------------------------------------------------
+    sb
+      .from("relationship_loyalty")
+      .select(`
+        loyalty_level,
+        loyalty_points,
+        consecutive_order_count
+      `)
+      .eq(
+        "relationship_id",
+        relationship.id
+      )
+      .maybeSingle()
 
-  const { data: terms } = await sb
-    .from("current_relationship_trade_terms")
-    .select(`
-      credit_enabled,
-      credit_limit,
-      credit_days
-    `)
-    .eq("buyer_id", currentUser.id)
-    .eq(
-      "distributor_id",
-      relationship.distributor_id
-    )
-    .maybeSingle();
-
-
-  // ------------------------------------------------------------
-  // Trust
-  // ------------------------------------------------------------
-
-  const { data: trust } = await sb
-    .from("relationship_trust")
-    .select(`
-      trust_score,
-      completed_orders,
-      disputed_orders
-    `)
-    .eq("relationship_id", relationship.id)
-    .maybeSingle();
-
-
-  // ------------------------------------------------------------
-  // Loyalty
-  // ------------------------------------------------------------
-
-  const { data: loyalty } = await sb
-    .from("relationship_loyalty")
-    .select(`
-      loyalty_level,
-      loyalty_points,
-      consecutive_order_count
-    `)
-    .eq("relationship_id", relationship.id)
-    .maybeSingle();
-
+  ]);
 
   const distributorName =
     distributor?.business_name ||
@@ -609,15 +776,10 @@ async function loadMyTradeRelationship() {
 
   const startedDate =
     relationship.relationship_started_at
-      ? new Date(
+      ? relationshipFormatDate(
           relationship.relationship_started_at
-        ).toLocaleDateString()
+        )
       : null;
-
-
-  // ------------------------------------------------------------
-  // Approved credit
-  // ------------------------------------------------------------
 
   const creditHtml =
     terms?.credit_enabled
@@ -646,20 +808,20 @@ async function loadMyTradeRelationship() {
           <div style="font-size:13px;">
 
             ${
-              terms.credit_limit
+              terms.credit_limit != null
                 ? `
                   Limit:
                   <strong>
-                    ₦${Number(
+                    ${relationshipMoney(
                       terms.credit_limit
-                    ).toLocaleString()}
+                    )}
                   </strong>
                 `
                 : ""
             }
 
             ${
-              terms.credit_days
+              terms.credit_days != null
                 ? ` · ${terms.credit_days} days`
                 : ""
             }
@@ -670,13 +832,12 @@ async function loadMyTradeRelationship() {
       `
       : "";
 
-
-  // ------------------------------------------------------------
-  // Render
-  // ------------------------------------------------------------
+  const statusColor =
+    getRelationshipStatusColor(
+      relationship.status
+    );
 
   container.innerHTML = `
-
     <div class="manifest">
 
       <div class="manifest-top">
@@ -684,14 +845,22 @@ async function loadMyTradeRelationship() {
         <div>
 
           <div class="m-name">
-            ${distributorName}
+            ${relationshipEscapeHtml(
+              distributorName
+            )}
           </div>
 
           <div class="m-loc">
-            ${distributor?.location || ""}
+            ${relationshipEscapeHtml(
+              distributor?.location || ""
+            )}
+
             ${
               distributor?.market
-                ? " · " + distributor.market
+                ? " · " +
+                  relationshipEscapeHtml(
+                    distributor.market
+                  )
                 : ""
             }
           </div>
@@ -701,22 +870,13 @@ async function loadMyTradeRelationship() {
         <span
           class="stamp-badge"
           style="
-            border-color:
-              ${
-                relationship.status === "active"
-                  ? "var(--ok)"
-                  : "var(--brass)"
-              };
-
-            color:
-              ${
-                relationship.status === "active"
-                  ? "var(--ok)"
-                  : "var(--brass)"
-              };
+            border-color:${statusColor};
+            color:${statusColor};
           "
         >
-          ${String(statusLabel).toUpperCase()}
+          ${relationshipEscapeHtml(
+            String(statusLabel).toUpperCase()
+          )}
         </span>
 
       </div>
@@ -728,7 +888,10 @@ async function loadMyTradeRelationship() {
               class="m-loc"
               style="margin-top:8px;"
             >
-              Trading together since ${startedDate}
+              Trading together since
+              ${relationshipEscapeHtml(
+                startedDate
+              )}
             </div>
           `
           : ""
@@ -741,9 +904,7 @@ async function loadMyTradeRelationship() {
       ${creditHtml}
 
     </div>
-
   `;
-
 
   loadMyPreferredProducts(
     relationship.id,
@@ -774,28 +935,33 @@ async function loadMyPreferredProducts(
   distributorId,
   distributorName
 ) {
-
   const container =
     document.getElementById(
       "my-preferred-products"
     );
 
-  if (!container) return;
+  if (!container) {
+    return;
+  }
 
   const {
     data: prefs,
     error
   } = await sb
-    .from("relationship_product_preferences")
+    .from(
+      "relationship_product_preferences"
+    )
     .select("*")
     .eq(
       "relationship_id",
       relationshipId
     )
-    .eq("preferred", true);
+    .eq(
+      "preferred",
+      true
+    );
 
   if (error) {
-
     console.error(
       "Preferred products lookup failed:",
       error.message
@@ -806,55 +972,67 @@ async function loadMyPreferredProducts(
   }
 
   if (!prefs || prefs.length === 0) {
-
     container.innerHTML = "";
     return;
   }
 
   const productIds =
-    prefs.map(p => p.product_id);
+    prefs.map(
+      preference =>
+        preference.product_id
+    );
 
-  const { data: products } =
-    await sb
-      .from("products")
-      .select(`
-        id,
-        name,
-        sku,
-        brand,
-        price,
-        image_url,
-        stock_quantity,
-        status
-      `)
-      .in("id", productIds);
+  if (productIds.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+
+  const {
+    data: products
+  } = await sb
+    .from("products")
+    .select(`
+      id,
+      name,
+      sku,
+      brand,
+      price,
+      image_url,
+      stock_quantity,
+      status
+    `)
+    .in(
+      "id",
+      productIds
+    );
 
   const productMap = {};
 
-  (products || []).forEach(p => {
-    productMap[p.id] = p;
+  (products || []).forEach(product => {
+    productMap[product.id] = product;
   });
 
   const rows =
     prefs
-      .map(pref => ({
-        pref,
-        product: productMap[pref.product_id]
+      .map(preference => ({
+        pref: preference,
+        product:
+          productMap[
+            preference.product_id
+          ]
       }))
       .filter(
-        ({ product }) =>
-          product &&
-          product.status === "active"
+        row =>
+          row.product &&
+          row.product.status === "active"
       );
 
   if (rows.length === 0) {
-
     container.innerHTML = "";
     return;
   }
 
   container.innerHTML = `
-
     <div class="section-label">
       Your Preferred Products
     </div>
@@ -862,54 +1040,80 @@ async function loadMyPreferredProducts(
     ${rows.map(({ pref, product }) => {
 
       const publicPrice =
-        product.price || 0;
+        relationshipSafeNumber(
+          product.price
+        );
 
       const hasNegotiated =
         pref.negotiated_unit_price != null;
 
       const finalPrice =
         hasNegotiated
-          ? pref.negotiated_unit_price
+          ? relationshipSafeNumber(
+              pref.negotiated_unit_price
+            )
           : publicPrice;
 
-      const priceHtml =
-        !product.price &&
+      let priceHtml;
+
+      if (
+        product.price == null &&
         !hasNegotiated
+      ) {
+        priceHtml = "Negotiable";
+      } else if (hasNegotiated) {
+        priceHtml = `
+          <span
+            style="
+              text-decoration:line-through;
+              color:rgba(18,21,28,0.4);
+              font-size:11px;
+            "
+          >
+            ${relationshipMoney(
+              publicPrice
+            )}
+          </span>
 
-          ? "Negotiable"
+          <span
+            style="
+              color:var(--ok);
+              font-weight:700;
+            "
+          >
+            ${relationshipMoney(
+              finalPrice
+            )}
+          </span>
+        `;
+      } else {
+        priceHtml =
+          relationshipMoney(
+            publicPrice
+          );
+      }
 
-          : hasNegotiated
+      const productName =
+        relationshipEscapeHtml(
+          product.name
+        );
 
-            ? `
-              <span
-                style="
-                  text-decoration:line-through;
-                  color:rgba(18,21,28,0.4);
-                  font-size:11px;
-                "
-              >
-                ₦${publicPrice.toLocaleString()}
-              </span>
+      const productId =
+        relationshipEscapeAttribute(
+          product.id
+        );
 
-              <span
-                style="
-                  color:var(--ok);
-                  font-weight:700;
-                "
-              >
-                ₦${Number(
-                  finalPrice
-                ).toLocaleString()}
-              </span>
-            `
+      const distributorIdSafe =
+        relationshipEscapeAttribute(
+          distributorId
+        );
 
-            : `₦${Number(
-                publicPrice
-              ).toLocaleString()}`;
-
+      const distributorNameSafe =
+        relationshipEscapeAttribute(
+          distributorName
+        );
 
       return `
-
         <div class="product-item">
 
           <div
@@ -917,7 +1121,9 @@ async function loadMyPreferredProducts(
             style="
               ${
                 product.image_url
-                  ? `background-image:url('${product.image_url}')`
+                  ? `background-image:url('${relationshipEscapeAttribute(
+                      product.image_url
+                    )}')`
                   : "background-color:var(--ink-2);"
               }
             "
@@ -936,7 +1142,7 @@ async function loadMyPreferredProducts(
                 font-size:13px;
               "
             >
-              ${product.name}
+              ${productName}
 
               <span
                 style="
@@ -957,11 +1163,16 @@ async function loadMyPreferredProducts(
             >
               ${
                 product.brand
-                  ? product.brand + " · "
+                  ? relationshipEscapeHtml(
+                      product.brand
+                    ) + " · "
                   : ""
               }
 
-              ${product.sku || "No SKU"}
+              ${relationshipEscapeHtml(
+                product.sku ||
+                "No SKU"
+              )}
             </div>
 
             <div
@@ -977,13 +1188,19 @@ async function loadMyPreferredProducts(
 
               <button
                 class="btn btn-success"
+                data-product-id="${productId}"
+                data-distributor-id="${distributorIdSafe}"
                 onclick="
                   addToCart(
-                    '${product.id}',
-                    '${String(product.name).replace(/'/g, "\\'")}',
+                    this.dataset.productId,
+                    ${JSON.stringify(
+                      String(product.name)
+                    )},
                     ${Number(finalPrice) || 0},
-                    '${distributorId}',
-                    '${String(distributorName).replace(/'/g, "\\'")}'
+                    this.dataset.distributorId,
+                    ${JSON.stringify(
+                      String(distributorName)
+                    )}
                   )
                 "
               >
@@ -995,11 +1212,8 @@ async function loadMyPreferredProducts(
           </div>
 
         </div>
-
       `;
-
     }).join("")}
-
   `;
 }
 
@@ -1009,7 +1223,6 @@ async function loadMyPreferredProducts(
 // ==========================================================================
 
 async function loadMyTradeRelationships() {
-
   const container =
     document.getElementById(
       "my-relationships-list"
@@ -1048,7 +1261,6 @@ async function loadMyTradeRelationships() {
       </div>
     `;
 
-
   const {
     data: relationships,
     error
@@ -1061,11 +1273,12 @@ async function loadMyTradeRelationships() {
     )
     .order(
       "created_at",
-      { ascending: false }
+      {
+        ascending: false
+      }
     );
 
   if (error) {
-
     console.error(
       "Trade relationships lookup failed:",
       error.message
@@ -1081,7 +1294,6 @@ async function loadMyTradeRelationships() {
     !relationships ||
     relationships.length === 0
   ) {
-
     container.innerHTML =
       inviteButtonHtml +
       `
@@ -1094,11 +1306,16 @@ async function loadMyTradeRelationships() {
   }
 
   const buyerIds =
-    relationships.map(r => r.buyer_id);
+    relationships.map(
+      relationship =>
+        relationship.buyer_id
+    );
 
   const relationshipIds =
-    relationships.map(r => r.id);
-
+    relationships.map(
+      relationship =>
+        relationship.id
+    );
 
   const [
     { data: buyers },
@@ -1113,7 +1330,10 @@ async function loadMyTradeRelationships() {
       .select(
         "id, name, profiles(full_name, phone)"
       )
-      .in("id", buyerIds),
+      .in(
+        "id",
+        buyerIds
+      ),
 
     sb
       .from("relationship_trust")
@@ -1143,7 +1363,9 @@ async function loadMyTradeRelationships() {
       ),
 
     sb
-      .from("current_relationship_trade_terms")
+      .from(
+        "current_relationship_trade_terms"
+      )
       .select(`
         buyer_id,
         credit_enabled,
@@ -1168,269 +1390,309 @@ async function loadMyTradeRelationships() {
 
   ]);
 
-
   const buyerMap = {};
-
-  (buyers || []).forEach(b => {
-    buyerMap[b.id] = b;
-  });
-
-
   const trustMap = {};
-
-  (trustRows || []).forEach(t => {
-    trustMap[t.relationship_id] = t;
-  });
-
-
   const loyaltyMap = {};
-
-  (loyaltyRows || []).forEach(l => {
-    loyaltyMap[l.relationship_id] = l;
-  });
-
-
   const termsMap = {};
-
-  (termsRows || []).forEach(t => {
-    termsMap[t.buyer_id] = t;
-  });
-
-
   const disputesMap = {};
 
-  (disputeRows || []).forEach(d => {
-
-    if (!disputesMap[d.relationship_id]) {
-      disputesMap[d.relationship_id] = [];
-    }
-
-    disputesMap[d.relationship_id].push(d);
-
+  (buyers || []).forEach(buyer => {
+    buyerMap[buyer.id] = buyer;
   });
 
+  (trustRows || []).forEach(row => {
+    trustMap[
+      row.relationship_id
+    ] = row;
+  });
+
+  (loyaltyRows || []).forEach(row => {
+    loyaltyMap[
+      row.relationship_id
+    ] = row;
+  });
+
+  (termsRows || []).forEach(row => {
+    termsMap[
+      row.buyer_id
+    ] = row;
+  });
+
+  (disputeRows || []).forEach(dispute => {
+    if (
+      !disputesMap[
+        dispute.relationship_id
+      ]
+    ) {
+      disputesMap[
+        dispute.relationship_id
+      ] = [];
+    }
+
+    disputesMap[
+      dispute.relationship_id
+    ].push(dispute);
+  });
 
   container.innerHTML =
     inviteButtonHtml +
+    relationships.map(
+      relationship => {
 
-    relationships.map(r => {
+        const buyer =
+          buyerMap[
+            relationship.buyer_id
+          ];
 
-      const buyer =
-        buyerMap[r.buyer_id];
+        const buyerName =
+          buyer?.name ||
+          buyer?.profiles?.full_name ||
+          "Buyer";
 
-      const buyerName =
-        buyer?.name ||
-        buyer?.profiles?.full_name ||
-        "Buyer";
+        const phone =
+          buyer?.profiles?.phone ||
+          "";
 
-      const phone =
-        buyer?.profiles?.phone || "";
+        const statusLabel =
+          RELATIONSHIP_STATUS_LABELS[
+            relationship.status
+          ] ||
+          relationship.status;
 
-      const statusLabel =
-        RELATIONSHIP_STATUS_LABELS[
-          r.status
-        ] || r.status;
+        const trust =
+          trustMap[
+            relationship.id
+          ];
 
-      const trust =
-        trustMap[r.id];
+        const loyalty =
+          loyaltyMap[
+            relationship.id
+          ];
 
-      const loyalty =
-        loyaltyMap[r.id];
+        const terms =
+          termsMap[
+            relationship.buyer_id
+          ];
 
-      const terms =
-        termsMap[r.buyer_id];
+        const disputes =
+          disputesMap[
+            relationship.id
+          ];
 
-      const disputes =
-        disputesMap[r.id];
+        const statusColor =
+          getRelationshipStatusColor(
+            relationship.status
+          );
 
+        return `
+          <div class="manifest">
 
-      return `
+            <div class="manifest-top">
 
-        <div class="manifest">
+              <div>
 
-          <div class="manifest-top">
+                <div class="m-name">
 
-            <div>
+                  ${relationshipEscapeHtml(
+                    buyerName
+                  )}
 
-              <div class="m-name">
+                  ${
+                    relationship.is_primary
+                      ? `
+                        <span
+                          style="
+                            font-size:10px;
+                            color:var(--brass-dark);
+                          "
+                        >
+                          · PRIMARY
+                        </span>
+                      `
+                      : ""
+                  }
 
-                ${buyerName}
+                </div>
 
-                ${
-                  r.is_primary
-                    ? `
-                      <span
-                        style="
-                          font-size:10px;
-                          color:var(--brass-dark);
-                        "
-                      >
-                        · PRIMARY
-                      </span>
-                    `
-                    : ""
-                }
+                <div class="m-loc">
+                  ${relationshipEscapeHtml(
+                    phone
+                  )}
+                </div>
 
               </div>
 
-              <div class="m-loc">
-                ${phone}
-              </div>
+              <span
+                class="stamp-badge"
+                style="
+                  border-color:${statusColor};
+                  color:${statusColor};
+                "
+              >
+                ${relationshipEscapeHtml(
+                  String(
+                    statusLabel
+                  ).toUpperCase()
+                )}
+              </span>
 
             </div>
 
-            <span
-              class="stamp-badge"
+            <div
               style="
-                border-color:
-                  ${
-                    r.status === "active"
-                      ? "var(--ok)"
-                      : "var(--brass)"
-                  };
-
-                color:
-                  ${
-                    r.status === "active"
-                      ? "var(--ok)"
-                      : "var(--brass)"
-                  };
+                font-size:12px;
+                margin-top:6px;
+                color:rgba(18,21,28,0.6);
               "
             >
-              ${String(statusLabel).toUpperCase()}
-            </span>
+
+              ${
+                trust?.total_trade_value
+                  ? `
+                    Lifetime trade:
+                    ${relationshipMoney(
+                      trust.total_trade_value
+                    )}
+                  `
+                  : "No trade history yet"
+              }
+
+              ${
+                terms?.credit_enabled
+                  ? `
+                    · Credit:
+                    ${relationshipMoney(
+                      terms.credit_limit || 0
+                    )}
+                    /
+                    ${terms.credit_days || 0}d
+                  `
+                  : ""
+              }
+
+            </div>
+
+            ${renderTrustLine(trust)}
+
+            ${renderLoyaltyLine(loyalty)}
+
+            ${renderDisputeSummaryLine(
+              disputes
+            )}
+
+            <div
+              style="
+                margin-top:10px;
+              "
+            >
+
+              <button
+                class="btn btn-outline"
+                onclick="
+                  openEditTermsModal(
+                    '${relationshipEscapeAttribute(
+                      relationship.id
+                    )}'
+                  )
+                "
+              >
+                Edit Terms
+              </button>
+
+              <button
+                class="btn btn-outline"
+                onclick="
+                  openAssignAgentModal(
+                    '${relationshipEscapeAttribute(
+                      relationship.id
+                    )}'
+                  )
+                "
+              >
+                Assign Agent
+              </button>
+
+              <button
+                class="btn btn-outline"
+                onclick="
+                  openManagePaymentMethodsModal(
+                    '${relationshipEscapeAttribute(
+                      relationship.id
+                    )}'
+                  )
+                "
+              >
+                Payment Methods
+              </button>
+
+              <button
+                class="btn btn-outline"
+                onclick="
+                  openManagePreferredProductsModal(
+                    '${relationshipEscapeAttribute(
+                      relationship.id
+                    )}'
+                  )
+                "
+              >
+                Preferred Products
+              </button>
+
+            </div>
+
+            ${renderRelationshipActions(
+              relationship.id,
+              relationship.status
+            )}
 
           </div>
+        `;
+      }
+    ).join("");
 
-          <div
-            style="
-              font-size:12px;
-              margin-top:6px;
-              color:rgba(18,21,28,0.6);
-            "
-          >
-
-            ${
-              trust?.total_trade_value
-                ? `
-                  Lifetime trade:
-                  ₦${Number(
-                    trust.total_trade_value
-                  ).toLocaleString()}
-                `
-                : "No trade history yet"
-            }
-
-            ${
-              terms?.credit_enabled
-                ? `
-                  · Credit:
-                  ₦${Number(
-                    terms.credit_limit || 0
-                  ).toLocaleString()}
-                  /
-                  ${terms.credit_days || 0}d
-                `
-                : ""
-            }
-
-          </div>
-
-          ${renderTrustLine(trust)}
-
-          ${renderLoyaltyLine(loyalty)}
-
-          ${renderDisputeSummaryLine(disputes)}
-
-          <div
-            style="
-              margin-top:10px;
-            "
-          >
-
-            <button
-              class="btn btn-outline"
-              onclick="
-                openEditTermsModal('${r.id}')
-              "
-            >
-              Edit Terms
-            </button>
-
-            <button
-              class="btn btn-outline"
-              onclick="
-                openAssignAgentModal('${r.id}')
-              "
-            >
-              Assign Agent
-            </button>
-
-            <button
-              class="btn btn-outline"
-              onclick="
-                openManagePaymentMethodsModal('${r.id}')
-              "
-            >
-              Payment Methods
-            </button>
-
-            <button
-              class="btn btn-outline"
-              onclick="
-                openManagePreferredProductsModal('${r.id}')
-              "
-            >
-              Preferred Products
-            </button>
-
-          </div>
-
-          ${renderRelationshipActions(
-            r.id,
-            r.status
-          )}
-
-        </div>
-
-      `;
-
-    }).join("");
-
-
-  // Cache terms for modal
   window.__relTermsCache = {};
 
-  relationships.forEach(r => {
+  relationships.forEach(
+    relationship => {
 
-    const buyer =
-      buyerMap[r.buyer_id];
+      const buyer =
+        buyerMap[
+          relationship.buyer_id
+        ];
 
-    const terms =
-      termsMap[r.buyer_id];
+      const terms =
+        termsMap[
+          relationship.buyer_id
+        ];
 
-    window.__relTermsCache[r.id] = {
+      window.__relTermsCache[
+        relationship.id
+      ] = {
 
-      buyerName:
-        buyer?.name ||
-        buyer?.profiles?.full_name ||
-        "Buyer",
+        buyerName:
+          buyer?.name ||
+          buyer?.profiles?.full_name ||
+          "Buyer",
 
-      discount:
-        terms?.default_discount_percent ?? "",
+        discount:
+          terms?.default_discount_percent ??
+          "",
 
-      creditEnabled:
-        terms?.credit_enabled ?? false,
+        creditEnabled:
+          terms?.credit_enabled ??
+          false,
 
-      creditLimit:
-        terms?.credit_limit ?? "",
+        creditLimit:
+          terms?.credit_limit ??
+          "",
 
-      creditDays:
-        terms?.credit_days ?? ""
+        creditDays:
+          terms?.credit_days ??
+          ""
 
-    };
-
-  });
+      };
+    }
+  );
 }
 
 
@@ -1439,7 +1701,6 @@ async function loadMyTradeRelationships() {
 // ==========================================================================
 
 async function loadMyAgentRelationships() {
-
   const container =
     document.getElementById(
       "agent-relationships-list"
@@ -1458,7 +1719,6 @@ async function loadMyAgentRelationships() {
       Loading your assigned relationships...
     </div>
   `;
-
 
   const {
     data: assignments,
@@ -1479,25 +1739,20 @@ async function loadMyAgentRelationships() {
       null
     );
 
-
   if (error) {
-
     console.error(
       "Agent relationship assignments lookup failed:",
       error.message
     );
 
     container.innerHTML = "";
-
     return;
   }
-
 
   if (
     !assignments ||
     assignments.length === 0
   ) {
-
     container.innerHTML = `
       <div class="loading-text">
         No relationships assigned to you yet.
@@ -1507,12 +1762,11 @@ async function loadMyAgentRelationships() {
     return;
   }
 
-
   const relationshipIds =
     assignments.map(
-      a => a.relationship_id
+      assignment =>
+        assignment.relationship_id
     );
-
 
   const {
     data: relationships
@@ -1524,12 +1778,10 @@ async function loadMyAgentRelationships() {
       relationshipIds
     );
 
-
   if (
     !relationships ||
     relationships.length === 0
   ) {
-
     container.innerHTML = `
       <div class="loading-text">
         No relationships assigned to you yet.
@@ -1539,17 +1791,17 @@ async function loadMyAgentRelationships() {
     return;
   }
 
-
   const buyerIds =
     relationships.map(
-      r => r.buyer_id
+      relationship =>
+        relationship.buyer_id
     );
 
   const distributorIds =
     relationships.map(
-      r => r.distributor_id
+      relationship =>
+        relationship.distributor_id
     );
-
 
   const [
     { data: buyers },
@@ -1592,147 +1844,167 @@ async function loadMyAgentRelationships() {
 
   ]);
 
-
   const buyerMap = {};
-
-  (buyers || []).forEach(b => {
-    buyerMap[b.id] = b;
-  });
-
-
   const distributorMap = {};
-
-  (distributors || []).forEach(d => {
-    distributorMap[d.id] = d;
-  });
-
-
   const trustMap = {};
-
-  (trustRows || []).forEach(t => {
-    trustMap[t.relationship_id] = t;
-  });
-
-
   const assignmentMap = {};
 
-  assignments.forEach(a => {
-    assignmentMap[a.relationship_id] = a;
-  });
+  (buyers || []).forEach(
+    buyer => {
+      buyerMap[buyer.id] = buyer;
+    }
+  );
 
+  (distributors || []).forEach(
+    distributor => {
+      distributorMap[
+        distributor.id
+      ] = distributor;
+    }
+  );
+
+  (trustRows || []).forEach(
+    trust => {
+      trustMap[
+        trust.relationship_id
+      ] = trust;
+    }
+  );
+
+  assignments.forEach(
+    assignment => {
+      assignmentMap[
+        assignment.relationship_id
+      ] = assignment;
+    }
+  );
 
   container.innerHTML =
-    relationships.map(r => {
+    relationships.map(
+      relationship => {
 
-      const buyer =
-        buyerMap[r.buyer_id];
+        const buyer =
+          buyerMap[
+            relationship.buyer_id
+          ];
 
-      const distributor =
-        distributorMap[r.distributor_id];
+        const distributor =
+          distributorMap[
+            relationship.distributor_id
+          ];
 
-      const buyerName =
-        buyer?.name ||
-        buyer?.profiles?.full_name ||
-        "Buyer";
+        const buyerName =
+          buyer?.name ||
+          buyer?.profiles?.full_name ||
+          "Buyer";
 
-      const distributorName =
-        distributor?.business_name ||
-        "Distributor";
+        const distributorName =
+          distributor?.business_name ||
+          "Distributor";
 
-      const statusLabel =
-        RELATIONSHIP_STATUS_LABELS[
-          r.status
-        ] || r.status;
+        const statusLabel =
+          RELATIONSHIP_STATUS_LABELS[
+            relationship.status
+          ] ||
+          relationship.status;
 
-      const trust =
-        trustMap[r.id];
+        const trust =
+          trustMap[
+            relationship.id
+          ];
 
-      const assignment =
-        assignmentMap[r.id];
+        const assignment =
+          assignmentMap[
+            relationship.id
+          ];
 
+        const statusColor =
+          getRelationshipStatusColor(
+            relationship.status
+          );
 
-      return `
+        return `
+          <div class="manifest">
 
-        <div class="manifest">
+            <div class="manifest-top">
 
-          <div class="manifest-top">
+              <div>
 
-            <div>
+                <div class="m-name">
 
-              <div class="m-name">
+                  ${relationshipEscapeHtml(
+                    buyerName
+                  )}
 
-                ${buyerName}
+                  <span
+                    style="
+                      color:rgba(18,21,28,0.4);
+                    "
+                  >
+                    ↔
+                  </span>
 
-                <span
-                  style="
-                    color:rgba(18,21,28,0.4);
-                  "
-                >
-                  ↔
-                </span>
+                  ${relationshipEscapeHtml(
+                    distributorName
+                  )}
 
-                ${distributorName}
+                </div>
+
+                <div class="m-loc">
+
+                  ${relationshipEscapeHtml(
+                    buyer?.profiles?.phone ||
+                    ""
+                  )}
+
+                  ${
+                    distributor?.location
+                      ? " · " +
+                        relationshipEscapeHtml(
+                          distributor.location
+                        )
+                      : ""
+                  }
+
+                </div>
 
               </div>
 
-              <div class="m-loc">
-
-                ${buyer?.profiles?.phone || ""}
-
-                ${
-                  distributor?.location
-                    ? " · " +
-                      distributor.location
-                    : ""
-                }
-
-              </div>
+              <span
+                class="stamp-badge"
+                style="
+                  border-color:${statusColor};
+                  color:${statusColor};
+                "
+              >
+                ${relationshipEscapeHtml(
+                  String(
+                    statusLabel
+                  ).toUpperCase()
+                )}
+              </span>
 
             </div>
 
-            <span
-              class="stamp-badge"
-              style="
-                border-color:
-                  ${
-                    r.status === "active"
-                      ? "var(--ok)"
-                      : "var(--brass)"
-                  };
+            ${
+              assignment?.is_primary
+                ? `
+                  <div
+                    class="m-loc"
+                    style="margin-top:6px;"
+                  >
+                    You are the primary agent
+                  </div>
+                `
+                : ""
+            }
 
-                color:
-                  ${
-                    r.status === "active"
-                      ? "var(--ok)"
-                      : "var(--brass)"
-                  };
-              "
-            >
-              ${String(statusLabel).toUpperCase()}
-            </span>
+            ${renderTrustLine(trust)}
 
           </div>
-
-          ${
-            assignment?.is_primary
-              ? `
-                <div
-                  class="m-loc"
-                  style="margin-top:6px;"
-                >
-                  You are the primary agent
-                </div>
-              `
-              : ""
-          }
-
-          ${renderTrustLine(trust)}
-
-        </div>
-
-      `;
-
-    }).join("");
+        `;
+      }
+    ).join("");
 }
 
 
@@ -1743,20 +2015,22 @@ async function loadMyAgentRelationships() {
 async function loadRelationshipPaymentMethods(
   relationshipId
 ) {
-
   const container =
     document.getElementById(
       "my-payment-methods"
     );
 
-  if (!container) return;
-
+  if (!container || !relationshipId) {
+    return;
+  }
 
   const {
     data: methods,
     error
   } = await sb
-    .from("relationship_payment_methods")
+    .from(
+      "relationship_payment_methods"
+    )
     .select(`
       payment_method,
       is_default,
@@ -1773,36 +2047,30 @@ async function loadRelationshipPaymentMethods(
     )
     .order(
       "is_default",
-      { ascending: false }
+      {
+        ascending: false
+      }
     );
 
-
   if (error) {
-
     console.error(
       "Payment methods lookup failed:",
       error.message
     );
 
     container.innerHTML = "";
-
     return;
   }
-
 
   if (
     !methods ||
     methods.length === 0
   ) {
-
     container.innerHTML = "";
-
     return;
   }
 
-
   container.innerHTML = `
-
     <div class="section-label">
       Approved Payment Methods
     </div>
@@ -1812,13 +2080,12 @@ async function loadRelationshipPaymentMethods(
       style="padding:6px 16px;"
     >
 
-      ${methods.map((m, i) => `
-
+      ${methods.map((method, index) => `
         <div
           style="
             padding:10px 0;
             ${
-              i < methods.length - 1
+              index < methods.length - 1
                 ? "border-bottom:1px dashed var(--line-dark);"
                 : ""
             }
@@ -1836,11 +2103,13 @@ async function loadRelationshipPaymentMethods(
                 font-weight:600;
               "
             >
-              ${m.payment_method}
+              ${relationshipEscapeHtml(
+                method.payment_method
+              )}
             </span>
 
             ${
-              m.is_default
+              method.is_default
                 ? `
                   <span
                     class="stamp-badge"
@@ -1862,7 +2131,7 @@ async function loadRelationshipPaymentMethods(
           </div>
 
           ${
-            m.transaction_limit
+            method.transaction_limit != null
               ? `
                 <span
                   style="
@@ -1870,16 +2139,16 @@ async function loadRelationshipPaymentMethods(
                     color:rgba(18,21,28,0.5);
                   "
                 >
-                  Limit ₦${Number(
-                    m.transaction_limit
-                  ).toLocaleString()}
+                  Limit
+                  ${relationshipMoney(
+                    method.transaction_limit
+                  )}
                 </span>
               `
               : ""
           }
 
         </div>
-
       `).join("")}
 
     </div>
@@ -1897,66 +2166,101 @@ let editingTermsRelationshipId = null;
 function openEditTermsModal(
   relationshipId
 ) {
-
   const cached =
     window.__relTermsCache?.[
       relationshipId
     ];
 
-  if (!cached) return;
+  if (!cached) {
+    return;
+  }
 
   editingTermsRelationshipId =
     relationshipId;
 
+  const buyerNameEl =
+    document.getElementById(
+      "edit-terms-buyer-name"
+    );
 
-  document.getElementById(
-    "edit-terms-buyer-name"
-  ).innerText =
-    cached.buyerName;
+  const discountEl =
+    document.getElementById(
+      "terms-discount"
+    );
 
+  const creditEnabledEl =
+    document.getElementById(
+      "terms-credit-enabled"
+    );
 
-  document.getElementById(
-    "terms-discount"
-  ).value =
-    cached.discount;
+  const creditLimitEl =
+    document.getElementById(
+      "terms-credit-limit"
+    );
 
+  const creditDaysEl =
+    document.getElementById(
+      "terms-credit-days"
+    );
 
-  document.getElementById(
-    "terms-credit-enabled"
-  ).value =
-    cached.creditEnabled
-      ? "true"
-      : "false";
+  const statusEl =
+    document.getElementById(
+      "edit-terms-status"
+    );
 
+  const modal =
+    document.getElementById(
+      "edit-terms-modal"
+    );
 
-  document.getElementById(
-    "terms-credit-limit"
-  ).value =
-    cached.creditLimit;
+  if (!modal) {
+    return;
+  }
 
+  if (buyerNameEl) {
+    buyerNameEl.innerText =
+      cached.buyerName;
+  }
 
-  document.getElementById(
-    "terms-credit-days"
-  ).value =
-    cached.creditDays;
+  if (discountEl) {
+    discountEl.value =
+      cached.discount;
+  }
 
+  if (creditEnabledEl) {
+    creditEnabledEl.value =
+      cached.creditEnabled
+        ? "true"
+        : "false";
+  }
 
-  document.getElementById(
-    "edit-terms-status"
-  ).innerText = "";
+  if (creditLimitEl) {
+    creditLimitEl.value =
+      cached.creditLimit;
+  }
 
+  if (creditDaysEl) {
+    creditDaysEl.value =
+      cached.creditDays;
+  }
 
-  document.getElementById(
-    "edit-terms-modal"
-  ).classList.add("active");
+  if (statusEl) {
+    statusEl.innerText = "";
+  }
+
+  modal.classList.add("active");
 }
 
 
 function closeEditTermsModal() {
+  const modal =
+    document.getElementById(
+      "edit-terms-modal"
+    );
 
-  document.getElementById(
-    "edit-terms-modal"
-  ).classList.remove("active");
+  if (modal) {
+    modal.classList.remove("active");
+  }
 
   editingTermsRelationshipId =
     null;
@@ -1964,7 +2268,6 @@ function closeEditTermsModal() {
 
 
 async function saveRelationshipTerms() {
-
   if (!editingTermsRelationshipId) {
     return;
   }
@@ -1974,58 +2277,106 @@ async function saveRelationshipTerms() {
       "edit-terms-status"
     );
 
+  if (!status) {
+    return;
+  }
+
   status.innerText =
     "Saving...";
-
 
   const discountRaw =
     document.getElementById(
       "terms-discount"
-    ).value;
+    )?.value ?? "";
 
   const creditEnabled =
-    document.getElementById(
-      "terms-credit-enabled"
-    ).value === "true";
+    (
+      document.getElementById(
+        "terms-credit-enabled"
+      )?.value
+    ) === "true";
 
   const creditLimitRaw =
     document.getElementById(
       "terms-credit-limit"
-    ).value;
+    )?.value ?? "";
 
   const creditDaysRaw =
     document.getElementById(
       "terms-credit-days"
-    ).value;
+    )?.value ?? "";
 
+  const discount =
+    discountRaw !== ""
+      ? parseFloat(discountRaw)
+      : null;
+
+  const creditLimit =
+    creditEnabled &&
+    creditLimitRaw !== ""
+      ? parseFloat(
+          creditLimitRaw
+        )
+      : null;
+
+  const creditDays =
+    creditEnabled &&
+    creditDaysRaw !== ""
+      ? parseInt(
+          creditDaysRaw,
+          10
+        )
+      : null;
+
+  if (
+    discount != null &&
+    !Number.isFinite(discount)
+  ) {
+    status.innerText =
+      "Invalid discount.";
+
+    return;
+  }
+
+  if (
+    creditEnabled &&
+    creditLimit != null &&
+    !Number.isFinite(
+      creditLimit
+    )
+  ) {
+    status.innerText =
+      "Invalid credit limit.";
+
+    return;
+  }
+
+  if (
+    creditEnabled &&
+    creditDays != null &&
+    !Number.isInteger(
+      creditDays
+    )
+  ) {
+    status.innerText =
+      "Invalid credit days.";
+
+    return;
+  }
 
   const payload = {
-
     default_discount_percent:
-      discountRaw !== ""
-        ? parseFloat(discountRaw)
-        : null,
+      discount,
 
     credit_enabled:
       creditEnabled,
 
     credit_limit:
-      creditEnabled &&
-      creditLimitRaw !== ""
-        ? parseFloat(creditLimitRaw)
-        : null,
+      creditLimit,
 
     credit_days:
-      creditEnabled &&
-      creditDaysRaw !== ""
-        ? parseInt(
-            creditDaysRaw,
-            10
-          )
-        : null
-
+      creditDays
   };
-
 
   const {
     data: existing
@@ -2040,13 +2391,13 @@ async function saveRelationshipTerms() {
     )
     .maybeSingle();
 
-
   let error;
-
 
   if (existing) {
 
-    ({ error } = await sb
+    ({
+      error
+    } = await sb
       .from(
         "relationship_trade_terms"
       )
@@ -2076,26 +2427,20 @@ async function saveRelationshipTerms() {
 
   }
 
-
   if (error) {
-
     status.innerText =
       "Error: " + error.message;
 
-  } else {
-
-    status.innerText =
-      "Saved!";
-
-    setTimeout(() => {
-
-      closeEditTermsModal();
-
-      loadMyTradeRelationships();
-
-    }, 1000);
-
+    return;
   }
+
+  status.innerText =
+    "Saved!";
+
+  setTimeout(() => {
+    closeEditTermsModal();
+    loadMyTradeRelationships();
+  }, 1000);
 }
 
 
@@ -2104,53 +2449,80 @@ async function saveRelationshipTerms() {
 // ==========================================================================
 
 function openInviteBuyerModal() {
+  const modal =
+    document.getElementById(
+      "invite-buyer-modal"
+    );
 
-  document.getElementById(
-    "invite-buyer-search"
-  ).value = "";
+  if (!modal) {
+    return;
+  }
 
-  document.getElementById(
-    "invite-buyer-results"
-  ).innerHTML = "";
+  const search =
+    document.getElementById(
+      "invite-buyer-search"
+    );
 
-  document.getElementById(
-    "invite-buyer-status"
-  ).innerText = "";
+  const results =
+    document.getElementById(
+      "invite-buyer-results"
+    );
 
-  document.getElementById(
-    "invite-buyer-modal"
-  ).classList.add("active");
+  const status =
+    document.getElementById(
+      "invite-buyer-status"
+    );
+
+  if (search) {
+    search.value = "";
+  }
+
+  if (results) {
+    results.innerHTML = "";
+  }
+
+  if (status) {
+    status.innerText = "";
+  }
+
+  modal.classList.add("active");
 }
 
 
 function closeInviteBuyerModal() {
+  const modal =
+    document.getElementById(
+      "invite-buyer-modal"
+    );
 
-  document.getElementById(
-    "invite-buyer-modal"
-  ).classList.remove("active");
+  if (modal) {
+    modal.classList.remove("active");
+  }
 }
 
 
 async function searchBuyersForInvite() {
-
-  const query =
+  const search =
     document.getElementById(
       "invite-buyer-search"
-    ).value.trim();
+    );
 
   const resultsEl =
     document.getElementById(
       "invite-buyer-results"
     );
 
-
-  if (query.length < 2) {
-
-    resultsEl.innerHTML = "";
-
+  if (!search || !resultsEl) {
     return;
   }
 
+  const query =
+    search.value.trim();
+
+  if (query.length < 2) {
+    resultsEl.innerHTML = "";
+    return;
+  }
 
   const {
     data: buyers,
@@ -2165,25 +2537,20 @@ async function searchBuyersForInvite() {
     )
     .limit(10);
 
-
   if (error) {
-
     console.error(
       "Buyer search failed:",
       error.message
     );
 
     resultsEl.innerHTML = "";
-
     return;
   }
-
 
   if (
     !buyers ||
     buyers.length === 0
   ) {
-
     resultsEl.innerHTML = `
       <div class="loading-text">
         No matching buyers found.
@@ -2193,58 +2560,60 @@ async function searchBuyersForInvite() {
     return;
   }
 
-
   resultsEl.innerHTML =
-    buyers.map(b => {
+    buyers.map(buyer => {
 
       const name =
-        b.name ||
-        b.profiles?.full_name ||
+        buyer.name ||
+        buyer.profiles?.full_name ||
         "Buyer";
 
-      const safeName =
-        String(name)
-          .replace(/\\/g, "\\\\")
-          .replace(/'/g, "\\'");
-
-
       return `
-
         <div
           class="manifest"
           style="
             padding:12px;
             cursor:pointer;
           "
+          data-buyer-id="${relationshipEscapeAttribute(
+            buyer.id
+          )}"
+          data-buyer-name="${relationshipEscapeAttribute(
+            name
+          )}"
           onclick="
             inviteBuyerToRelationship(
-              '${b.id}',
-              '${safeName}'
+              this.dataset.buyerId,
+              this.dataset.buyerName
             )
           "
         >
 
           <div class="m-name">
-            ${name}
+            ${relationshipEscapeHtml(
+              name
+            )}
           </div>
 
           <div class="m-loc">
 
-            ${b.location || ""}
+            ${relationshipEscapeHtml(
+              buyer.location || ""
+            )}
 
             ${
-              b.profiles?.phone
+              buyer.profiles?.phone
                 ? " · " +
-                  b.profiles.phone
+                  relationshipEscapeHtml(
+                    buyer.profiles.phone
+                  )
                 : ""
             }
 
           </div>
 
         </div>
-
       `;
-
     }).join("");
 }
 
@@ -2253,101 +2622,73 @@ async function inviteBuyerToRelationship(
   buyerId,
   buyerName
 ) {
+  if (
+    !currentUser ||
+    currentUser.role !== "distributor"
+  ) {
+    return;
+  }
 
   const status =
     document.getElementById(
       "invite-buyer-status"
     );
 
+  if (!status) {
+    return;
+  }
+
   status.innerText =
     `Inviting ${buyerName}...`;
-
 
   const {
     error
   } = await sb.rpc(
     "create_trade_relationship",
     {
-      p_buyer_id: buyerId,
+      p_buyer_id:
+        buyerId,
+
       p_distributor_id:
         currentUser.id
     }
   );
 
-
   if (error) {
-
     status.innerText =
       "Error: " + error.message;
 
-  } else {
-
-    status.innerText =
-      `${buyerName} added as a trade relationship!`;
-
-    setTimeout(() => {
-
-      closeInviteBuyerModal();
-
-      loadMyTradeRelationships();
-
-    }, 1200);
-
+    return;
   }
+
+  status.innerText =
+    `${buyerName} added as a trade relationship!`;
+
+  setTimeout(() => {
+    closeInviteBuyerModal();
+    loadMyTradeRelationships();
+  }, 1200);
 }
 
 
 // ==========================================================================
-// DISTRIBUTOR — RELATIONSHIP STATUS
+// RELATIONSHIP STATUS
 // ==========================================================================
-
-const RELATIONSHIP_ACTIONS = {
-
-  pending: [
-    {
-      label: "Activate",
-      newStatus: "active"
-    }
-  ],
-
-  active: [
-    {
-      label: "Pause",
-      newStatus: "paused"
-    },
-    {
-      label: "Release",
-      newStatus: "released"
-    }
-  ],
-
-  paused: [
-    {
-      label: "Resume",
-      newStatus: "active"
-    },
-    {
-      label: "Release",
-      newStatus: "released"
-    }
-  ]
-
-};
-
 
 function renderRelationshipActions(
   relationshipId,
   status
 ) {
-
   const actions =
-    RELATIONSHIP_ACTIONS[status];
+    RELATIONSHIP_ACTIONS[
+      status
+    ];
 
-  if (!actions) return "";
-
+  if (!actions) {
+    return "";
+  }
 
   return `
-
     <div
       style="
         margin-top:10px;
@@ -2357,24 +2698,29 @@ function renderRelationshipActions(
       "
     >
 
-      ${actions.map(a => `
-
+      ${actions.map(action => `
         <button
           class="btn btn-outline"
+          data-relationship-id="${relationshipEscapeAttribute(
+            relationshipId
+          )}"
+          data-new-status="${relationshipEscapeAttribute(
+            action.newStatus
+          )}"
           onclick="
             updateRelationshipStatus(
-              '${relationshipId}',
-              '${a.newStatus}'
+              this.dataset.relationshipId,
+              this.dataset.newStatus
             )
           "
         >
-          ${a.label}
+          ${relationshipEscapeHtml(
+            action.label
+          )}
         </button>
-
       `).join("")}
 
     </div>
-
   `;
 }
 
@@ -2383,39 +2729,37 @@ async function updateRelationshipStatus(
   relationshipId,
   newStatus
 ) {
-
   const timestampFields = {
-
-    active:
-      "activated_at",
-
-    paused:
-      "paused_at",
-
-    released:
-      "released_at",
-
-    terminated:
-      "terminated_at"
-
+    active: "activated_at",
+    paused: "paused_at",
+    released: "released_at",
+    terminated: "terminated_at"
   };
 
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      RELATIONSHIP_STATUS_LABELS,
+      newStatus
+    )
+  ) {
+    return;
+  }
 
   const payload = {
-
-    status:
-      newStatus,
-
-    [timestampFields[newStatus]]:
-      new Date().toISOString()
-
+    status: newStatus
   };
 
+  if (
+    timestampFields[newStatus]
+  ) {
+    payload[
+      timestampFields[newStatus]
+    ] = new Date().toISOString();
+  }
 
   if (
     newStatus === "released"
   ) {
-
     const reason =
       prompt(
         "Reason for releasing this relationship (required):"
@@ -2432,7 +2776,6 @@ async function updateRelationshipStatus(
       reason.trim();
   }
 
-
   if (
     !confirm(
       `Change this relationship's status to "${newStatus}"? This cannot be casually undone.`
@@ -2440,7 +2783,6 @@ async function updateRelationshipStatus(
   ) {
     return;
   }
-
 
   const {
     error
@@ -2454,19 +2796,16 @@ async function updateRelationshipStatus(
       relationshipId
     );
 
-
   if (error) {
-
     alert(
       "Could not update status: " +
       error.message
     );
 
-  } else {
-
-    loadMyTradeRelationships();
-
+    return;
   }
+
+  loadMyTradeRelationships();
 }
 
 
@@ -2481,33 +2820,58 @@ let assigningAgentRelationshipId =
 function openAssignAgentModal(
   relationshipId
 ) {
-
   assigningAgentRelationshipId =
     relationshipId;
 
-  document.getElementById(
-    "assign-agent-search"
-  ).value = "";
+  const search =
+    document.getElementById(
+      "assign-agent-search"
+    );
 
-  document.getElementById(
-    "assign-agent-results"
-  ).innerHTML = "";
+  const results =
+    document.getElementById(
+      "assign-agent-results"
+    );
 
-  document.getElementById(
-    "assign-agent-status"
-  ).innerText = "";
+  const status =
+    document.getElementById(
+      "assign-agent-status"
+    );
 
-  document.getElementById(
-    "assign-agent-modal"
-  ).classList.add("active");
+  const modal =
+    document.getElementById(
+      "assign-agent-modal"
+    );
+
+  if (!modal) {
+    return;
+  }
+
+  if (search) {
+    search.value = "";
+  }
+
+  if (results) {
+    results.innerHTML = "";
+  }
+
+  if (status) {
+    status.innerText = "";
+  }
+
+  modal.classList.add("active");
 }
 
 
 function closeAssignAgentModal() {
+  const modal =
+    document.getElementById(
+      "assign-agent-modal"
+    );
 
-  document.getElementById(
-    "assign-agent-modal"
-  ).classList.remove("active");
+  if (modal) {
+    modal.classList.remove("active");
+  }
 
   assigningAgentRelationshipId =
     null;
@@ -2515,25 +2879,27 @@ function closeAssignAgentModal() {
 
 
 async function searchAgentsForAssignment() {
-
-  const query =
+  const search =
     document.getElementById(
       "assign-agent-search"
-    ).value.trim();
+    );
 
   const resultsEl =
     document.getElementById(
       "assign-agent-results"
     );
 
-
-  if (query.length < 2) {
-
-    resultsEl.innerHTML = "";
-
+  if (!search || !resultsEl) {
     return;
   }
 
+  const query =
+    search.value.trim();
+
+  if (query.length < 2) {
+    resultsEl.innerHTML = "";
+    return;
+  }
 
   const {
     data: agents,
@@ -2545,36 +2911,35 @@ async function searchAgentsForAssignment() {
     )
     .limit(20);
 
-
   if (error) {
-
     console.error(
       "Agent search failed:",
       error.message
     );
 
     resultsEl.innerHTML = "";
-
     return;
   }
 
+  const normalizedQuery =
+    query.toLowerCase();
 
   const filtered =
-    (agents || []).filter(a =>
-      (
-        a.profiles?.full_name || ""
-      )
-        .toLowerCase()
-        .includes(
-          query.toLowerCase()
+    (agents || []).filter(
+      agent =>
+        (
+          agent.profiles?.full_name ||
+          ""
         )
+          .toLowerCase()
+          .includes(
+            normalizedQuery
+          )
     );
-
 
   if (
     filtered.length === 0
   ) {
-
     resultsEl.innerHTML = `
       <div class="loading-text">
         No matching agents found.
@@ -2584,48 +2949,49 @@ async function searchAgentsForAssignment() {
     return;
   }
 
-
   resultsEl.innerHTML =
-    filtered.map(a => {
+    filtered.map(agent => {
 
       const name =
-        a.profiles?.full_name ||
+        agent.profiles?.full_name ||
         "Agent";
 
-      const safeName =
-        String(name)
-          .replace(/\\/g, "\\\\")
-          .replace(/'/g, "\\'");
-
-
       return `
-
         <div
           class="manifest"
           style="
             padding:12px;
             cursor:pointer;
           "
+          data-agent-id="${relationshipEscapeAttribute(
+            agent.id
+          )}"
+          data-agent-name="${relationshipEscapeAttribute(
+            name
+          )}"
           onclick="
             assignAgentToRelationship(
-              '${a.id}',
-              '${safeName}'
+              this.dataset.agentId,
+              this.dataset.agentName
             )
           "
         >
 
           <div class="m-name">
-            ${name}
+            ${relationshipEscapeHtml(
+              name
+            )}
           </div>
 
           <div class="m-loc">
-            ${a.profiles?.phone || ""}
+            ${relationshipEscapeHtml(
+              agent.profiles?.phone ||
+              ""
+            )}
           </div>
 
         </div>
-
       `;
-
     }).join("");
 }
 
@@ -2634,21 +3000,31 @@ async function assignAgentToRelationship(
   agentId,
   agentName
 ) {
+  if (
+    !assigningAgentRelationshipId
+  ) {
+    return;
+  }
 
   const status =
     document.getElementById(
       "assign-agent-status"
     );
 
+  if (!status) {
+    return;
+  }
+
   status.innerText =
     `Assigning ${agentName}...`;
 
-
-  // Preserve existing primary assignment
-  // history.
-
-  await sb
-    .from("relationship_agents")
+  // Preserve assignment history.
+  const {
+    error: unassignError
+  } = await sb
+    .from(
+      "relationship_agents"
+    )
     .update({
       unassigned_at:
         new Date().toISOString()
@@ -2666,6 +3042,13 @@ async function assignAgentToRelationship(
       null
     );
 
+  if (unassignError) {
+    status.innerText =
+      "Error: " +
+      unassignError.message;
+
+    return;
+  }
 
   const {
     error
@@ -2674,7 +3057,6 @@ async function assignAgentToRelationship(
       "relationship_agents"
     )
     .insert({
-
       relationship_id:
         assigningAgentRelationshipId,
 
@@ -2686,29 +3068,23 @@ async function assignAgentToRelationship(
 
       assigned_at:
         new Date().toISOString()
-
     });
 
-
   if (error) {
-
     status.innerText =
-      "Error: " + error.message;
+      "Error: " +
+      error.message;
 
-  } else {
-
-    status.innerText =
-      `${agentName} assigned!`;
-
-    setTimeout(() => {
-
-      closeAssignAgentModal();
-
-      loadMyTradeRelationships();
-
-    }, 1200);
-
+    return;
   }
+
+  status.innerText =
+    `${agentName} assigned!`;
+
+  setTimeout(() => {
+    closeAssignAgentModal();
+    loadMyTradeRelationships();
+  }, 1200);
 }
 
 
@@ -2723,26 +3099,46 @@ let managingPaymentMethodsRelationshipId =
 function openManagePaymentMethodsModal(
   relationshipId
 ) {
-
   managingPaymentMethodsRelationshipId =
     relationshipId;
 
-  document.getElementById(
-    "new-payment-method"
-  ).value = "";
+  const method =
+    document.getElementById(
+      "new-payment-method"
+    );
 
-  document.getElementById(
-    "new-payment-method-limit"
-  ).value = "";
+  const limit =
+    document.getElementById(
+      "new-payment-method-limit"
+    );
 
-  document.getElementById(
-    "manage-payment-status"
-  ).innerText = "";
+  const status =
+    document.getElementById(
+      "manage-payment-status"
+    );
 
-  document.getElementById(
-    "manage-payment-modal"
-  ).classList.add("active");
+  const modal =
+    document.getElementById(
+      "manage-payment-modal"
+    );
 
+  if (!modal) {
+    return;
+  }
+
+  if (method) {
+    method.value = "";
+  }
+
+  if (limit) {
+    limit.value = "";
+  }
+
+  if (status) {
+    status.innerText = "";
+  }
+
+  modal.classList.add("active");
 
   loadExistingPaymentMethodsForModal(
     relationshipId
@@ -2751,10 +3147,14 @@ function openManagePaymentMethodsModal(
 
 
 function closeManagePaymentMethodsModal() {
+  const modal =
+    document.getElementById(
+      "manage-payment-modal"
+    );
 
-  document.getElementById(
-    "manage-payment-modal"
-  ).classList.remove("active");
+  if (modal) {
+    modal.classList.remove("active");
+  }
 
   managingPaymentMethodsRelationshipId =
     null;
@@ -2764,11 +3164,14 @@ function closeManagePaymentMethodsModal() {
 async function loadExistingPaymentMethodsForModal(
   relationshipId
 ) {
-
   const listEl =
     document.getElementById(
       "existing-payment-methods"
     );
+
+  if (!listEl) {
+    return;
+  }
 
   listEl.innerHTML = `
     <div class="loading-text">
@@ -2776,9 +3179,9 @@ async function loadExistingPaymentMethodsForModal(
     </div>
   `;
 
-
   const {
-    data: methods
+    data: methods,
+    error
   } = await sb
     .from(
       "relationship_payment_methods"
@@ -2796,15 +3199,30 @@ async function loadExistingPaymentMethodsForModal(
     )
     .order(
       "created_at",
-      { ascending: false }
+      {
+        ascending: false
+      }
     );
 
+  if (error) {
+    console.error(
+      "Payment methods lookup failed:",
+      error.message
+    );
+
+    listEl.innerHTML = `
+      <div class="loading-text">
+        Could not load payment methods.
+      </div>
+    `;
+
+    return;
+  }
 
   if (
     !methods ||
     methods.length === 0
   ) {
-
     listEl.innerHTML = `
       <div class="loading-text">
         No payment methods added yet.
@@ -2814,10 +3232,8 @@ async function loadExistingPaymentMethodsForModal(
     return;
   }
 
-
   listEl.innerHTML =
-    methods.map(m => `
-
+    methods.map(method => `
       <div
         class="manifest"
         style="padding:10px 14px;"
@@ -2833,11 +3249,13 @@ async function loadExistingPaymentMethodsForModal(
                 font-weight:600;
               "
             >
-              ${m.payment_method}
+              ${relationshipEscapeHtml(
+                method.payment_method
+              )}
             </span>
 
             ${
-              m.is_default
+              method.is_default
                 ? `
                   <span
                     class="stamp-badge"
@@ -2857,7 +3275,7 @@ async function loadExistingPaymentMethodsForModal(
             }
 
             ${
-              !m.is_active
+              !method.is_active
                 ? `
                   <span
                     class="stamp-badge"
@@ -2880,16 +3298,32 @@ async function loadExistingPaymentMethodsForModal(
 
         </div>
 
+        ${
+          method.transaction_limit != null
+            ? `
+              <div class="m-loc">
+                Transaction limit:
+                ${relationshipMoney(
+                  method.transaction_limit
+                )}
+              </div>
+            `
+            : ""
+        }
+
         <div class="action-buttons">
 
           ${
-            !m.is_default
+            !method.is_default
               ? `
                 <button
                   class="btn btn-outline"
+                  data-method-id="${relationshipEscapeAttribute(
+                    method.id
+                  )}"
                   onclick="
                     makePaymentMethodDefault(
-                      '${m.id}'
+                      this.dataset.methodId
                     )
                   "
                 >
@@ -2903,20 +3337,26 @@ async function loadExistingPaymentMethodsForModal(
             class="
               btn
               ${
-                m.is_active
+                method.is_active
                   ? "btn-danger"
                   : "btn-success"
               }
             "
+            data-method-id="${relationshipEscapeAttribute(
+              method.id
+            )}"
+            data-new-active="${
+              !method.is_active
+            }"
             onclick="
               togglePaymentMethodActive(
-                '${m.id}',
-                ${!m.is_active}
+                this.dataset.methodId,
+                this.dataset.newActive === 'true'
               )
             "
           >
             ${
-              m.is_active
+              method.is_active
                 ? "Deactivate"
                 : "Activate"
             }
@@ -2925,41 +3365,65 @@ async function loadExistingPaymentMethodsForModal(
         </div>
 
       </div>
-
     `).join("");
 }
 
 
 async function addPaymentMethod() {
-
   const status =
     document.getElementById(
       "manage-payment-status"
     );
 
+  if (!status) {
+    return;
+  }
+
   const methodName =
     document.getElementById(
       "new-payment-method"
-    ).value.trim();
+    )?.value.trim() || "";
 
   const limitRaw =
     document.getElementById(
       "new-payment-method-limit"
-    ).value;
-
+    )?.value || "";
 
   if (!methodName) {
-
     status.innerText =
       "Enter a payment method name.";
 
     return;
   }
 
+  if (
+    !managingPaymentMethodsRelationshipId
+  ) {
+    status.innerText =
+      "No relationship selected.";
+
+    return;
+  }
 
   status.innerText =
     "Adding...";
 
+  const transactionLimit =
+    limitRaw !== ""
+      ? parseFloat(limitRaw)
+      : null;
+
+  if (
+    transactionLimit != null &&
+    !Number.isFinite(
+      transactionLimit
+    )
+  ) {
+    status.innerText =
+      "Invalid transaction limit.";
+
+    return;
+  }
 
   const {
     error
@@ -2968,7 +3432,6 @@ async function addPaymentMethod() {
       "relationship_payment_methods"
     )
     .insert({
-
       relationship_id:
         managingPaymentMethodsRelationshipId,
 
@@ -2982,44 +3445,56 @@ async function addPaymentMethod() {
         false,
 
       transaction_limit:
-        limitRaw !== ""
-          ? parseFloat(limitRaw)
-          : null
-
+        transactionLimit
     });
 
-
   if (error) {
-
     status.innerText =
-      "Error: " + error.message;
+      "Error: " +
+      error.message;
 
-  } else {
+    return;
+  }
 
-    status.innerText =
-      "Added!";
+  status.innerText =
+    "Added!";
 
+  const methodInput =
     document.getElementById(
       "new-payment-method"
-    ).value = "";
+    );
 
+  const limitInput =
     document.getElementById(
       "new-payment-method-limit"
-    ).value = "";
-
-
-    loadExistingPaymentMethodsForModal(
-      managingPaymentMethodsRelationshipId
     );
+
+  if (methodInput) {
+    methodInput.value = "";
   }
+
+  if (limitInput) {
+    limitInput.value = "";
+  }
+
+  loadExistingPaymentMethodsForModal(
+    managingPaymentMethodsRelationshipId
+  );
 }
 
 
 async function makePaymentMethodDefault(
   methodId
 ) {
+  if (
+    !managingPaymentMethodsRelationshipId
+  ) {
+    return;
+  }
 
-  await sb
+  const {
+    error: clearError
+  } = await sb
     .from(
       "relationship_payment_methods"
     )
@@ -3035,8 +3510,18 @@ async function makePaymentMethodDefault(
       true
     );
 
+  if (clearError) {
+    console.error(
+      "Could not clear default payment method:",
+      clearError.message
+    );
 
-  await sb
+    return;
+  }
+
+  const {
+    error
+  } = await sb
     .from(
       "relationship_payment_methods"
     )
@@ -3048,6 +3533,14 @@ async function makePaymentMethodDefault(
       methodId
     );
 
+  if (error) {
+    console.error(
+      "Could not make payment method default:",
+      error.message
+    );
+
+    return;
+  }
 
   loadExistingPaymentMethodsForModal(
     managingPaymentMethodsRelationshipId
@@ -3059,8 +3552,9 @@ async function togglePaymentMethodActive(
   methodId,
   newActiveState
 ) {
-
-  await sb
+  const {
+    error
+  } = await sb
     .from(
       "relationship_payment_methods"
     )
@@ -3073,6 +3567,14 @@ async function togglePaymentMethodActive(
       methodId
     );
 
+  if (error) {
+    console.error(
+      "Could not update payment method:",
+      error.message
+    );
+
+    return;
+  }
 
   loadExistingPaymentMethodsForModal(
     managingPaymentMethodsRelationshipId
@@ -3091,26 +3593,46 @@ let managingPreferencesRelationshipId =
 function openManagePreferredProductsModal(
   relationshipId
 ) {
-
   managingPreferencesRelationshipId =
     relationshipId;
 
-  document.getElementById(
-    "preference-product-search"
-  ).value = "";
+  const search =
+    document.getElementById(
+      "preference-product-search"
+    );
 
-  document.getElementById(
-    "preference-search-results"
-  ).innerHTML = "";
+  const results =
+    document.getElementById(
+      "preference-search-results"
+    );
 
-  document.getElementById(
-    "manage-preferences-status"
-  ).innerText = "";
+  const status =
+    document.getElementById(
+      "manage-preferences-status"
+    );
 
-  document.getElementById(
-    "manage-preferences-modal"
-  ).classList.add("active");
+  const modal =
+    document.getElementById(
+      "manage-preferences-modal"
+    );
 
+  if (!modal) {
+    return;
+  }
+
+  if (search) {
+    search.value = "";
+  }
+
+  if (results) {
+    results.innerHTML = "";
+  }
+
+  if (status) {
+    status.innerText = "";
+  }
+
+  modal.classList.add("active");
 
   loadExistingPreferredProducts(
     relationshipId
@@ -3119,10 +3641,14 @@ function openManagePreferredProductsModal(
 
 
 function closeManagePreferredProductsModal() {
+  const modal =
+    document.getElementById(
+      "manage-preferences-modal"
+    );
 
-  document.getElementById(
-    "manage-preferences-modal"
-  ).classList.remove("active");
+  if (modal) {
+    modal.classList.remove("active");
+  }
 
   managingPreferencesRelationshipId =
     null;
@@ -3132,11 +3658,14 @@ function closeManagePreferredProductsModal() {
 async function loadExistingPreferredProducts(
   relationshipId
 ) {
-
   const listEl =
     document.getElementById(
       "existing-preferred-products"
     );
+
+  if (!listEl) {
+    return;
+  }
 
   listEl.innerHTML = `
     <div class="loading-text">
@@ -3144,9 +3673,9 @@ async function loadExistingPreferredProducts(
     </div>
   `;
 
-
   const {
-    data: prefs
+    data: prefs,
+    error
   } = await sb
     .from(
       "relationship_product_preferences"
@@ -3165,12 +3694,25 @@ async function loadExistingPreferredProducts(
       true
     );
 
+  if (error) {
+    console.error(
+      "Preferred products lookup failed:",
+      error.message
+    );
+
+    listEl.innerHTML = `
+      <div class="loading-text">
+        Could not load preferred products.
+      </div>
+    `;
+
+    return;
+  }
 
   if (
     !prefs ||
     prefs.length === 0
   ) {
-
     listEl.innerHTML = `
       <div class="loading-text">
         No preferred products marked yet.
@@ -3180,12 +3722,11 @@ async function loadExistingPreferredProducts(
     return;
   }
 
-
   const productIds =
     prefs.map(
-      p => p.product_id
+      preference =>
+        preference.product_id
     );
-
 
   const {
     data: products
@@ -3199,29 +3740,29 @@ async function loadExistingPreferredProducts(
       productIds
     );
 
-
   const productMap = {};
 
-  (products || []).forEach(p => {
-    productMap[p.id] = p;
-  });
-
+  (products || []).forEach(
+    product => {
+      productMap[
+        product.id
+      ] = product;
+    }
+  );
 
   listEl.innerHTML =
-    prefs.map(pref => {
+    prefs.map(preference => {
 
       const product =
         productMap[
-          pref.product_id
+          preference.product_id
         ];
 
       if (!product) {
         return "";
       }
 
-
       return `
-
         <div
           class="manifest"
           style="padding:10px 14px;"
@@ -3237,23 +3778,26 @@ async function loadExistingPreferredProducts(
                   font-weight:600;
                 "
               >
-                ${product.name} ★
+                ${relationshipEscapeHtml(
+                  product.name
+                )} ★
               </span>
 
               <div class="m-loc">
 
                 Public:
-                ₦${(
+                ${relationshipMoney(
                   product.price || 0
-                ).toLocaleString()}
+                )}
 
                 ${
-                  pref.negotiated_unit_price != null
+                  preference.negotiated_unit_price !=
+                  null
                     ? `
                       · Negotiated:
-                      ₦${Number(
-                        pref.negotiated_unit_price
-                      ).toLocaleString()}
+                      ${relationshipMoney(
+                        preference.negotiated_unit_price
+                      )}
                     `
                     : ""
                 }
@@ -3268,14 +3812,18 @@ async function loadExistingPreferredProducts(
 
             <button
               class="btn btn-outline"
+              data-pref-id="${relationshipEscapeAttribute(
+                preference.id
+              )}"
               onclick="
                 setNegotiatedPrice(
-                  '${pref.id}'
+                  this.dataset.prefId
                 )
               "
             >
               ${
-                pref.negotiated_unit_price != null
+                preference.negotiated_unit_price !=
+                null
                   ? "Change"
                   : "Set"
               }
@@ -3284,9 +3832,12 @@ async function loadExistingPreferredProducts(
 
             <button
               class="btn btn-danger"
+              data-pref-id="${relationshipEscapeAttribute(
+                preference.id
+              )}"
               onclick="
                 removeProductPreference(
-                  '${pref.id}'
+                  this.dataset.prefId
                 )
               "
             >
@@ -3296,33 +3847,33 @@ async function loadExistingPreferredProducts(
           </div>
 
         </div>
-
       `;
-
     }).join("");
 }
 
 
 async function searchDistributorProductsForPreference() {
-
-  const query =
+  const search =
     document.getElementById(
       "preference-product-search"
-    ).value.trim();
+    );
 
   const resultsEl =
     document.getElementById(
       "preference-search-results"
     );
 
-
-  if (query.length < 2) {
-
-    resultsEl.innerHTML = "";
-
+  if (!search || !resultsEl) {
     return;
   }
 
+  const query =
+    search.value.trim();
+
+  if (query.length < 2) {
+    resultsEl.innerHTML = "";
+    return;
+  }
 
   const {
     data: products,
@@ -3342,23 +3893,20 @@ async function searchDistributorProductsForPreference() {
     )
     .limit(10);
 
-
   if (error) {
-
     console.error(
       "Product search failed:",
       error.message
     );
 
+    resultsEl.innerHTML = "";
     return;
   }
-
 
   if (
     !products ||
     products.length === 0
   ) {
-
     resultsEl.innerHTML = `
       <div class="loading-text">
         No matching products found.
@@ -3368,41 +3916,46 @@ async function searchDistributorProductsForPreference() {
     return;
   }
 
-
   resultsEl.innerHTML =
-    products.map(p => `
-
+    products.map(product => `
       <div
         class="manifest"
         style="
           padding:10px 14px;
           cursor:pointer;
         "
+        data-product-id="${relationshipEscapeAttribute(
+          product.id
+        )}"
         onclick="
           addProductPreference(
-            '${p.id}'
+            this.dataset.productId
           )
         "
       >
 
         <div class="m-name">
-          ${p.name}
+          ${relationshipEscapeHtml(
+            product.name
+          )}
         </div>
 
         <div class="m-loc">
 
-          ${p.sku || "No SKU"}
+          ${relationshipEscapeHtml(
+            product.sku ||
+            "No SKU"
+          )}
 
           ·
 
-          ₦${(
-            p.price || 0
-          ).toLocaleString()}
+          ${relationshipMoney(
+            product.price || 0
+          )}
 
         </div>
 
       </div>
-
     `).join("");
 }
 
@@ -3410,15 +3963,26 @@ async function searchDistributorProductsForPreference() {
 async function addProductPreference(
   productId
 ) {
-
   const status =
     document.getElementById(
       "manage-preferences-status"
     );
 
+  if (!status) {
+    return;
+  }
+
+  if (
+    !managingPreferencesRelationshipId
+  ) {
+    status.innerText =
+      "No relationship selected.";
+
+    return;
+  }
+
   status.innerText =
     "Adding...";
-
 
   const {
     error
@@ -3427,7 +3991,6 @@ async function addProductPreference(
       "relationship_product_preferences"
     )
     .insert({
-
       relationship_id:
         managingPreferencesRelationshipId,
 
@@ -3436,60 +3999,80 @@ async function addProductPreference(
 
       preferred:
         true
-
     });
 
-
   if (error) {
-
     status.innerText =
-      "Error: " + error.message;
+      "Error: " +
+      error.message;
 
-  } else {
+    return;
+  }
 
-    status.innerText =
-      "Added!";
+  status.innerText =
+    "Added!";
 
+  const search =
     document.getElementById(
       "preference-product-search"
-    ).value = "";
+    );
 
+  const results =
     document.getElementById(
       "preference-search-results"
-    ).innerHTML = "";
-
-
-    loadExistingPreferredProducts(
-      managingPreferencesRelationshipId
     );
+
+  if (search) {
+    search.value = "";
   }
+
+  if (results) {
+    results.innerHTML = "";
+  }
+
+  loadExistingPreferredProducts(
+    managingPreferencesRelationshipId
+  );
 }
 
 
 async function setNegotiatedPrice(
   prefId
 ) {
-
   const priceInput =
     prompt(
       "Enter the negotiated price for this product (₦), or leave blank to clear it:"
     );
 
-
   if (priceInput === null) {
     return;
   }
 
+  const trimmed =
+    priceInput.trim();
 
   const price =
-    priceInput.trim() === ""
+    trimmed === ""
       ? null
-      : parseFloat(
-          priceInput
-        );
+      : parseFloat(trimmed);
 
+  if (
+    price !== null &&
+    (
+      !Number.isFinite(price) ||
+      price < 0
+    )
+  ) {
+    alert(
+      "Enter a valid non-negative price."
+    );
 
-  await sb
+    return;
+  }
+
+  const {
+    error
+  } = await sb
     .from(
       "relationship_product_preferences"
     )
@@ -3502,6 +4085,14 @@ async function setNegotiatedPrice(
       prefId
     );
 
+  if (error) {
+    alert(
+      "Could not update negotiated price: " +
+      error.message
+    );
+
+    return;
+  }
 
   loadExistingPreferredProducts(
     managingPreferencesRelationshipId
@@ -3512,7 +4103,6 @@ async function setNegotiatedPrice(
 async function removeProductPreference(
   prefId
 ) {
-
   if (
     !confirm(
       "Remove this product from preferred?"
@@ -3521,8 +4111,9 @@ async function removeProductPreference(
     return;
   }
 
-
-  await sb
+  const {
+    error
+  } = await sb
     .from(
       "relationship_product_preferences"
     )
@@ -3532,10 +4123,264 @@ async function removeProductPreference(
       prefId
     );
 
+  if (error) {
+    alert(
+      "Could not remove product preference: " +
+      error.message
+    );
+
+    return;
+  }
 
   loadExistingPreferredProducts(
     managingPreferencesRelationshipId
   );
+}
+
+
+// ==========================================================================
+// AGENT — RELATIONSHIP / BUYER REFERRAL FOUNDATION
+// ==========================================================================
+//
+// This section deliberately does NOT let an agent select an arbitrary
+// distributor.
+//
+// The agent's active distributor attachment is the authority for the
+// referral path. The database RPC should verify the agent's attachment and
+// create the relationship using that distributor.
+//
+// Expected RPC contract:
+//
+//   create_agent_referred_buyer_relationship
+//
+// Parameters:
+//   p_buyer_id
+//
+// The server/database resolves the distributor from the authenticated
+// agent's active attachment.
+//
+// This prevents a malicious/modified frontend from doing:
+//
+//   agent → arbitrary distributor_id
+//
+// ==========================================================================
+
+async function createAgentReferredBuyerRelationship(
+  buyerId,
+  buyerName
+) {
+  if (
+    !currentUser ||
+    currentUser.role !== "agent"
+  ) {
+    return;
+  }
+
+  const status =
+    document.getElementById(
+      "agent-refer-buyer-status"
+    );
+
+  if (!status) {
+    return;
+  }
+
+  if (!buyerId) {
+    status.innerText =
+      "Buyer is required.";
+
+    return;
+  }
+
+  status.innerText =
+    `Creating buyer relationship for ${buyerName || "buyer"}...`;
+
+  const {
+    error
+  } = await sb.rpc(
+    "create_agent_referred_buyer_relationship",
+    {
+      p_buyer_id:
+        buyerId
+    }
+  );
+
+  if (error) {
+    status.innerText =
+      "Error: " +
+      error.message;
+
+    return;
+  }
+
+  status.innerText =
+    `${buyerName || "Buyer"} added through your distributor relationship.`;
+
+  loadMyAgentRelationships();
+}
+
+
+// ==========================================================================
+// OPTIONAL AGENT BUYER SEARCH
+// ==========================================================================
+//
+// The UI may call this function from an agent referral modal.
+//
+// The function only searches buyers. It does NOT expose distributor
+// selection. Distributor resolution belongs to the RPC/database layer.
+// ==========================================================================
+
+async function searchBuyersForAgentReferral() {
+  const search =
+    document.getElementById(
+      "agent-refer-buyer-search"
+    );
+
+  const resultsEl =
+    document.getElementById(
+      "agent-refer-buyer-results"
+    );
+
+  if (!search || !resultsEl) {
+    return;
+  }
+
+  const query =
+    search.value.trim();
+
+  if (query.length < 2) {
+    resultsEl.innerHTML = "";
+    return;
+  }
+
+  const {
+    data: buyers,
+    error
+  } = await sb
+    .from("buyer_profiles")
+    .select(
+      "id, name, location, profiles(full_name, phone)"
+    )
+    .or(
+      `name.ilike.%${query}%`
+    )
+    .limit(10);
+
+  if (error) {
+    console.error(
+      "Agent buyer search failed:",
+      error.message
+    );
+
+    resultsEl.innerHTML = "";
+    return;
+  }
+
+  if (
+    !buyers ||
+    buyers.length === 0
+  ) {
+    resultsEl.innerHTML = `
+      <div class="loading-text">
+        No matching buyers found.
+      </div>
+    `;
+
+    return;
+  }
+
+  resultsEl.innerHTML =
+    buyers.map(buyer => {
+
+      const name =
+        buyer.name ||
+        buyer.profiles?.full_name ||
+        "Buyer";
+
+      return `
+        <div
+          class="manifest"
+          style="
+            padding:12px;
+            cursor:pointer;
+          "
+          data-buyer-id="${relationshipEscapeAttribute(
+            buyer.id
+          )}"
+          data-buyer-name="${relationshipEscapeAttribute(
+            name
+          )}"
+          onclick="
+            createAgentReferredBuyerRelationship(
+              this.dataset.buyerId,
+              this.dataset.buyerName
+            )
+          "
+        >
+
+          <div class="m-name">
+            ${relationshipEscapeHtml(
+              name
+            )}
+          </div>
+
+          <div class="m-loc">
+
+            ${relationshipEscapeHtml(
+              buyer.location || ""
+            )}
+
+            ${
+              buyer.profiles?.phone
+                ? " · " +
+                  relationshipEscapeHtml(
+                    buyer.profiles.phone
+                  )
+                : ""
+            }
+
+          </div>
+
+        </div>
+      `;
+    }).join("");
+}
+
+
+// ==========================================================================
+// INITIALIZATION
+// ==========================================================================
+//
+// Safe to call after auth.js has established currentUser.
+// Also safe to call again when the application changes view.
+// ==========================================================================
+
+async function initRelationshipLayer() {
+  if (
+    typeof sb === "undefined" ||
+    !sb ||
+    !currentUser
+  ) {
+    return;
+  }
+
+  if (
+    currentUser.role === "buyer"
+  ) {
+    loadMyTradeRelationship();
+  }
+
+  if (
+    currentUser.role === "distributor"
+  ) {
+    loadMyTradeRelationships();
+  }
+
+  if (
+    currentUser.role === "agent"
+  ) {
+    loadMyAgentRelationships();
+  }
 }
 
 
