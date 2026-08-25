@@ -1,1116 +1,2300 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>ShelfMatch — Onitsha · Nnewi · Awka · Asaba</title>
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#12151C">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@500;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<style>
-  :root{
-    --ink:#12151C; --ink-2:#1B1F29;
-    --paper:#EFE9DE; --paper-dim:#E2DBCC;
-    --brass:#C88A34; --brass-bright:#E3A94F;
-    --stamp:#A63D2F; --stamp-bright:#C24632;
-    --ok:#3F7A4E;
-    --line: rgba(239,233,222,0.14);
-    --line-dark: rgba(18,21,28,0.12);
-  }
-  *{box-sizing:border-box; margin:0; padding:0;}
-  html,body{ background:var(--ink); color:var(--paper); min-height:100vh; font-family:'Inter',-apple-system,sans-serif; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
-  ::selection{ background:var(--brass); color:var(--ink); }
-  h1,h2,h3,.display{ font-family:'Roboto Slab', Georgia, serif; font-weight:700; letter-spacing:-0.01em; }
-  .mono{ font-family:'JetBrains Mono','Courier New',monospace; letter-spacing:0.02em; }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>GoodsbarnX — Onitsha • Nnewi • Awka • Asaba • Enugu • Owerri • Abakiliki • Agbor • Warri • Aba</title>
 
-  #app{ max-width:480px; margin:0 auto; min-height:100vh; position:relative; background:var(--ink); }
-  .status-bar{ height:env(safe-area-inset-top, 0px); background:var(--ink); }
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
-  header.top{
-    padding:22px 20px 16px; display:flex; align-items:center; justify-content:space-between;
-    border-bottom:1px solid var(--line); position:sticky; top:0; z-index:40;
-    background:linear-gradient(180deg, var(--ink) 80%, rgba(18,21,28,0.96)); backdrop-filter:blur(6px);
-  }
-  .brand{ display:flex; align-items:center; gap:10px; }
-  .brand-name{ font-family:'Roboto Slab',serif; font-size:18px; font-weight:700; letter-spacing:-0.01em;}
-  .brand-sub{ font-size:10px; color:var(--brass-bright); text-transform:uppercase; letter-spacing:0.14em; margin-top:1px;}
-  .locale-pill{
-    font-size:10.5px; padding:6px 10px; border-radius:20px;
-    background:rgba(239,233,222,0.08); border:1px solid var(--line); color:var(--paper);
-    display:flex; align-items:center; gap:6px; white-space:nowrap;
-  }
-  .locale-dot{ width:6px; height:6px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 3px rgba(63,122,78,0.25);}
-  .logout-btn{ font-size:10.5px; color:rgba(239,233,222,0.45); text-decoration:underline; padding:6px 4px; }
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@600;700&family=Roboto+Slab:wght@700&display=swap"
+    rel="stylesheet"
+  />
 
-  main{ padding:20px 20px 100px; }
-
-  .coming-soon-tag{
-    display:inline-block; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;
-    background:rgba(200,138,52,0.15); color:var(--brass-bright); padding:3px 9px; border-radius:20px; margin-left:8px; vertical-align:middle;
-  }
-
-  /* ---------- Hero ---------- */
-  .hero{
-    position:relative; border:1px solid var(--line); border-radius:18px;
-    background: radial-gradient(120% 140% at 0% 0%, #232838 0%, #171B24 55%, #12151C 100%);
-    padding:24px 20px 22px; overflow:hidden; margin-bottom:22px;
-  }
-  .hero-eyebrow{ font-size:11px; text-transform:uppercase; letter-spacing:0.16em; color:var(--brass-bright); font-weight:600; margin-bottom:10px; }
-  .hero-headline{ font-size:24px; line-height:1.18; margin-bottom:14px; }
-  .hero-headline em{ color:var(--brass-bright); font-style:normal; }
-
-  .clock-seal{ display:flex; align-items:center; gap:14px; background:rgba(239,233,222,0.05); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
-  .seal-ring{ position:relative; width:56px; height:56px; flex-shrink:0; }
-  .seal-ring svg{ transform:rotate(-90deg); }
-  .seal-ring .bg{ stroke:rgba(239,233,222,0.1); }
-  .seal-ring .fg{ stroke:var(--brass-bright); stroke-linecap:round; }
-  .seal-ring .num{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:15px; color:var(--paper); }
-  .clock-copy .clock-title{ font-size:13px; font-weight:600; color:var(--paper); margin-bottom:2px;}
-  .clock-copy .clock-sub{ font-size:12px; color:rgba(239,233,222,0.55); }
-
-  .trust-strip{ display:flex; gap:10px; margin-top:16px; }
-  .trust-item{ flex:1; text-align:center; background:rgba(239,233,222,0.04); border:1px solid var(--line); border-radius:12px; padding:10px 6px; }
-  .trust-item .n{ font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:700; color:var(--brass-bright); }
-  .trust-item .t{ font-size:9.5px; color:rgba(239,233,222,0.45); margin-top:2px; text-transform:uppercase; letter-spacing:0.05em;}
-
-  /* ---------- Section labels ---------- */
-  .section-label{ display:flex; align-items:center; gap:8px; font-size:11px; text-transform:uppercase; letter-spacing:0.14em; color:rgba(239,233,222,0.45); font-weight:600; margin:26px 0 12px; }
-  .section-label::after{ content:""; flex:1; height:1px; background:var(--line); }
-
-  /* ---------- Search + filters ---------- */
-  .search-bar-wrap{ display:flex; align-items:center; gap:10px; background:var(--ink-2); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:10px; }
-  .search-bar-wrap span{ flex-shrink:0; }
-  .search-bar-wrap input{ background:none; border:none; outline:none; color:var(--paper); font-size:14px; flex:1; font-family:'Inter',sans-serif; }
-  .search-bar-wrap input::placeholder{ color:rgba(239,233,222,0.35); }
-
-  .filter-pills{ display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; }
-  .filter-pills::-webkit-scrollbar{ display:none; }
-  .filter-pill{
-    flex-shrink:0; font-family:'JetBrains Mono',monospace; font-size:11.5px; font-weight:600;
-    padding:7px 14px; border-radius:20px; background:var(--ink-2); border:1px solid var(--line); color:rgba(239,233,222,0.7); white-space:nowrap;
-  }
-  .filter-pill.active{ background:var(--brass); color:var(--ink); border-color:var(--brass); font-weight:700; }
-
-  /* ---------- Manifest cards ---------- */
-  .manifest{ background:var(--paper); color:var(--ink); border-radius:16px; padding:16px 16px 14px; margin-bottom:12px; position:relative; box-shadow:0 6px 18px rgba(0,0,0,0.25); }
-  .manifest-top{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;}
-  .m-name{ font-family:'Roboto Slab',serif; font-weight:700; font-size:15.5px; }
-  .m-loc{ font-size:11.5px; color:rgba(18,21,28,0.55); margin-top:2px; }
-  .m-verified{
-    display:inline-flex; align-items:center; gap:4px;
-    font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em;
-    color:#fff; background:var(--ok); padding:3px 7px; border-radius:6px; margin-top:6px;
-  }
-  .m-verified.market-board{ background:#2E6B8C; }
-  .m-verified.self-attested{
-    background:none; border:1.3px solid var(--brass-dark, #9A6A22); color:#9A6A22;
-  }
-  .stamp-badge{
-    font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;
-    border:2px solid var(--stamp); color:var(--stamp); padding:4px 8px; border-radius:6px; transform:rotate(-4deg); white-space:nowrap;
-  }
-  .m-meta{ display:flex; justify-content:flex-end; align-items:center; gap:8px; border-top:1px dashed var(--line-dark); padding-top:11px; margin-top:2px; }
-  .btn-inquire{ background:var(--stamp); color:#fff; border:none; border-radius:10px; padding:9px 16px; font-size:12.5px; font-weight:700; box-shadow:0 3px 8px rgba(166,61,47,0.35); }
-  .btn-inquire:active{ transform:scale(0.96); }
-  .btn-whatsapp{ background:#25D366; color:#fff; border:none; border-radius:10px; padding:9px 14px; font-size:12.5px; font-weight:700; }
-  .btn-whatsapp:active{ transform:scale(0.96); }
-  .dispute-row{ margin-top:8px; display:flex; justify-content:space-between; align-items:center; }
-  .dispute-link{ font-size:11px; color:rgba(18,21,28,0.4); text-decoration:underline; }
-  .dispute-count{ font-size:10.5px; color:var(--stamp); font-weight:600; }
-  .dispute-none{ font-size:10.5px; color:var(--ok); font-weight:600; }
-  .territory-row{ display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px dashed var(--line-dark); }
-  .territory-row:last-child{ border-bottom:none; }
-  .territory-name{ font-family:'Roboto Slab',serif; font-weight:700; font-size:13.5px; }
-  .territory-status{ font-size:10.5px; font-weight:600; padding:3px 9px; border-radius:20px; }
-  .territory-status.verified{ background:rgba(63,122,78,0.15); color:var(--ok); }
-  .territory-status.pending{ background:rgba(200,138,52,0.15); color:var(--brass-dark, #9A6A22); }
-
-  .lock-banner{ background:rgba(63,122,78,0.12); border:1px solid rgba(63,122,78,0.3); border-radius:14px; padding:14px 16px; margin-bottom:16px; }
-  .lock-banner .lb-title{ font-family:'Roboto Slab',serif; font-weight:700; font-size:14px; color:var(--paper); margin-bottom:4px; }
-  .lock-banner .lb-sub{ font-size:12px; color:rgba(239,233,222,0.6); line-height:1.5; margin-bottom:10px; }
-  .lock-banner button{ background:none; border:1.3px solid var(--brass); color:var(--brass-bright); border-radius:8px; padding:7px 12px; font-size:11.5px; font-weight:600; }
-
-  .distributor-tools{ background:var(--ink-2); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:16px; }
-  .distributor-tools .dt-title{ font-family:'Roboto Slab',serif; font-weight:700; font-size:14px; color:var(--paper); margin-bottom:4px; }
-  .distributor-tools .dt-sub{ font-size:12px; color:rgba(239,233,222,0.5); line-height:1.5; margin-bottom:10px; }
-  .distributor-tools button{ background:var(--brass); color:var(--ink); border:none; border-radius:8px; padding:8px 14px; font-size:12px; font-weight:700; }
-
-  .loading-text{ color:rgba(239,233,222,0.5); font-size:13px; font-family:'JetBrains Mono',monospace; padding:8px 0; }
-
-  /* ---------- Inquiries screen ---------- */
-  .inq-item{ display:flex; justify-content:space-between; align-items:center; }
-  .inq-name{ font-family:'Roboto Slab',serif; font-weight:700; font-size:15.5px; }
-  .inq-sub{ font-size:11.5px; color:rgba(18,21,28,0.55); margin-top:2px; }
-
-  /* ---------- Coming soon shell ---------- */
-  .coming-soon-shell{ text-align:center; padding:60px 20px; color:rgba(239,233,222,0.5); }
-  .coming-soon-shell .cs-icon{ font-size:34px; margin-bottom:14px; }
-  .coming-soon-shell h3{ color:var(--paper); font-size:17px; margin-bottom:8px; }
-  .coming-soon-shell p{ font-size:13px; line-height:1.6; max-width:280px; margin:0 auto; }
-
-  /* ---------- Modal (inquiry form) ---------- */
-  .sheet-overlay{ position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:100; display:none; align-items:flex-end; justify-content:center; }
-  .sheet-overlay.active{ display:flex; }
-  .sheet{ background:var(--paper); color:var(--ink); width:100%; max-width:480px; border-radius:22px 22px 0 0; padding:22px 20px calc(24px + env(safe-area-inset-bottom,0px)); max-height:88vh; overflow-y:auto; }
-  .sheet-handle{ width:36px; height:4px; background:var(--line-dark); border-radius:3px; margin:0 auto 16px; }
-  .sheet h3{ font-size:18px; margin-bottom:4px; }
-  .sheet .sub{ font-size:12.5px; color:rgba(18,21,28,0.55); margin-bottom:18px; }
-  .field{ margin-bottom:14px; }
-  .field label{ font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:rgba(18,21,28,0.6); display:block; margin-bottom:6px;}
-  .field input{ width:100%; border:1.5px solid var(--line-dark); border-radius:10px; padding:11px 12px; font-size:14px; font-family:'Inter',sans-serif; background:#fff; color:var(--ink); box-sizing:border-box; }
-  .tier-row{ display:flex; gap:8px; }
-  .tier-opt{
-    flex:1; text-align:center; border:1.5px solid var(--line-dark); border-radius:10px; padding:10px 4px;
-    font-size:11.5px; font-weight:600; color:rgba(18,21,28,0.6);
-  }
-  .tier-opt.sel{ border-color:var(--stamp); background:rgba(166,61,47,0.06); color:var(--stamp); }
-  .submit-btn{ width:100%; background:var(--stamp); color:#fff; border:none; border-radius:12px; padding:15px; font-size:14.5px; font-weight:700; margin-top:6px; }
-  .cancel-btn{ width:100%; background:none; border:1.5px solid var(--line-dark); color:rgba(18,21,28,0.55); border-radius:12px; padding:13px; font-size:13.5px; font-weight:600; margin-top:8px; }
-  .status-msg{ margin-top:11px; font-size:12.5px; color:var(--stamp); text-align:center; }
-  .queue-badge { display:none; margin: 0 0 12px; font-size:11px; color:var(--brass-bright); background:rgba(200,138,52,0.12); border:1px solid rgba(200,138,52,0.3); padding:8px 12px; border-radius:100px; text-align:center; }
-
-  /* ---------- Bottom nav ---------- */
-  nav.bottom{
-    position:fixed; left:50%; transform:translateX(-50%); bottom:0; width:100%; max-width:480px;
-    background:rgba(18,21,28,0.94); backdrop-filter:blur(10px); border-top:1px solid var(--line);
-    display:flex; padding:10px 8px calc(10px + env(safe-area-inset-bottom,0px)); z-index:50;
-  }
-  .nav-item{ flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; color:rgba(239,233,222,0.4); font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; }
-  .nav-item .ic{ font-size:19px; }
-  .nav-item.active{ color:var(--brass-bright); }
-
-  .screen{ display:none; }
-  .screen.active{ display:block; animation:fadein .25s ease; }
-  @keyframes fadein{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
-
-  /* ---------- Agent relationship layer ---------- */
-  .agent-panel{ margin-top:16px; }
-  .agent-status-grid{ display:grid; grid-template-columns:1fr; gap:10px; margin-bottom:12px; }
-  .agent-action-row{ display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
-  .agent-action-row button{ flex:1; min-width:130px; }
-  .agent-state{ font-size:11px; line-height:1.5; color:rgba(239,233,222,0.6); margin-top:5px; }
-  .agent-referral-note{ font-size:11.5px; line-height:1.5; color:rgba(18,21,28,0.6); margin-bottom:14px; }
-  .agent-search-results{ max-height:320px; overflow-y:auto; }
-
-  /* ---------- Auth screen ---------- */
-  .auth-shell{
-    max-width:480px; margin:0 auto; min-height:100vh; background:var(--ink);
-    display:flex; flex-direction:column; justify-content:center; padding:32px 24px;
-  }
-  .auth-shell.hidden{ display:none; }
-  .auth-brand{ text-align:center; margin-bottom:36px; }
-  .auth-brand svg{ margin-bottom:14px; }
-  .auth-brand h1{ font-size:24px; color:var(--paper); }
-  .auth-brand p{ font-size:12.5px; color:rgba(239,233,222,0.5); margin-top:6px; }
-  .auth-box{ background:var(--ink-2); border:1px solid var(--line); border-radius:16px; padding:22px; }
-  .role-picker{ display:flex; gap:8px; margin-bottom:18px; }
-  .role-pick{ flex:1; text-align:center; padding:10px 4px; border-radius:10px; border:1.5px solid var(--line); font-size:11.5px; font-weight:600; color:rgba(239,233,222,0.6); }
-  .role-pick.sel{ border-color:var(--brass); background:rgba(200,138,52,0.1); color:var(--brass-bright); }
-  .auth-box input{ width:100%; padding:12px; margin-bottom:10px; border:1px solid var(--line); border-radius:10px; background:var(--ink); color:var(--paper); font-size:14px; font-family:'Inter',sans-serif; box-sizing:border-box; }
-  .auth-box input::placeholder{ color:rgba(239,233,222,0.35); }
-  .auth-submit{ width:100%; background:var(--stamp); color:#fff; border:none; border-radius:10px; padding:13px; font-size:14px; font-weight:700; margin-top:6px; }
-  .auth-switch{ text-align:center; margin-top:16px; font-size:12.5px; color:rgba(239,233,222,0.5); }
-  .auth-switch span{ color:var(--brass-bright); font-weight:600; }
-  .auth-guest{ text-align:center; margin-top:20px; font-size:12px; color:rgba(239,233,222,0.35); text-decoration:underline; }
-  .auth-error{ font-size:12.5px; color:var(--stamp-bright); text-align:center; margin-top:10px; }
-</style>
+  <!-- CSS -->
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/components.css" />
 </head>
+
 <body>
 
-<div class="auth-shell" id="auth-shell">
-  <div class="auth-brand">
-    <svg width="40" height="40" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin:0 auto;display:block;">
-      <rect x="2" y="6" width="16" height="16" rx="4" fill="#E3A94F"/>
-      <rect x="16" y="12" width="16" height="16" rx="4" fill="#A63D2F"/>
-    </svg>
-    <h1>ShelfMatch</h1>
-    <p>Onitsha · Nnewi · Awka · Asaba</p>
-  </div>
+  <!-- ================================================================
+       AUTH: SIGN UP
+       ================================================================ -->
 
-  <div class="auth-box">
-    <div id="signup-role-picker" class="role-picker">
-      <div class="role-pick sel" data-role="buyer" onclick="selectRole(this)">Buyer</div>
-      <div class="role-pick" data-role="distributor" onclick="selectRole(this)">Distributor</div>
-      <div class="role-pick" data-role="agent" onclick="selectRole(this)">Supplier Agent</div>
+  <div id="auth-shell" class="auth-shell">
+
+    <div class="auth-brand">
+      <h1>GoodsbarnX</h1>
+      <p>
+        Onitsha • Nnewi • Awka • Asaba • Enugu • Owerri • Abakiliki •
+        Agbor • Warri • Aba
+      </p>
     </div>
-    <input type="text" id="auth-name" placeholder="Full name">
-    <input type="tel" id="auth-phone" placeholder="Phone number">
-    <input type="email" id="auth-email" placeholder="Email">
-    <input type="password" id="auth-password" placeholder="Password">
-    <input type="text" id="auth-company" placeholder="Company you work for" style="display:none;">
-    <button class="auth-submit" onclick="handleSignup()">Create account</button>
-    <div class="auth-error" id="auth-error"></div>
-  </div>
 
-  <div class="auth-switch">Already have an account? <span onclick="showLogin()">Log in</span></div>
-  <div class="auth-guest" onclick="continueAsGuest()">Continue browsing without an account</div>
-</div>
+    <div class="auth-box">
 
-<div class="auth-shell hidden" id="login-shell">
-  <div class="auth-brand">
-    <svg width="40" height="40" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin:0 auto;display:block;">
-      <rect x="2" y="6" width="16" height="16" rx="4" fill="#E3A94F"/>
-      <rect x="16" y="12" width="16" height="16" rx="4" fill="#A63D2F"/>
-    </svg>
-    <h1>Welcome back</h1>
-    <p>Log in to ShelfMatch</p>
-  </div>
+      <div class="role-picker" id="signup-role-picker">
 
-  <div class="auth-box">
-    <input type="email" id="login-email" placeholder="Email">
-    <input type="password" id="login-password" placeholder="Password">
-    <button class="auth-submit" onclick="handleLogin()">Log in</button>
-    <div class="auth-error" id="login-error"></div>
-  </div>
+        <div
+          class="role-pick sel"
+          data-role="buyer"
+          onclick="selectRole(this)"
+        >
+          Buyer
+        </div>
 
-  <div class="auth-switch">New here? <span onclick="showSignup()">Create an account</span></div>
-  <div class="auth-guest" onclick="continueAsGuest()">Continue browsing without an account</div>
-</div>
+        <div
+          class="role-pick"
+          data-role="distributor"
+          onclick="selectRole(this)"
+        >
+          Distributor
+        </div>
 
-<script src="js/agent.js"></script>
+        <div
+          class="role-pick"
+          data-role="agent"
+          onclick="selectRole(this)"
+        >
+          Supplier Agent
+        </div>
 
-<script>
-  const SUPABASE_URL = "https://zcxecnxirfdfvywnvcjp.supabase.co";
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjeGVjbnhpcmZkZnZ5d252Y2pwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxMDIyMTMsImV4cCI6MjEwMDY3ODIxM30.ooKObFp6Mj_gKlVLZXnVyeDAdfdjzDJwqx2buimmBtI";
-  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-  let selectedSignupRole = "buyer";
-  let currentUser = null;
-
-  function selectRole(el) {
-    document.querySelectorAll("#signup-role-picker .role-pick").forEach(r => r.classList.remove("sel"));
-    el.classList.add("sel");
-    selectedSignupRole = el.dataset.role;
-    document.getElementById("auth-company").style.display = selectedSignupRole === "agent" ? "block" : "none";
-  }
-  function showLogin() { document.getElementById("auth-shell").classList.add("hidden"); document.getElementById("login-shell").classList.remove("hidden"); }
-  function showSignup() { document.getElementById("login-shell").classList.add("hidden"); document.getElementById("auth-shell").classList.remove("hidden"); }
-  function continueAsGuest() { document.getElementById("auth-shell").classList.add("hidden"); document.getElementById("login-shell").classList.add("hidden"); document.getElementById("app").style.display = "block"; }
-
-  async function loadCurrentUser() {
-    const { data: { user } } = await sb.auth.getUser();
-    if (!user) { currentUser = null; return; }
-    const { data: profile } = await sb.from("profiles").select("*").eq("id", user.id).single();
-    currentUser = { id: user.id, ...profile };
-    const logoutHolder = document.getElementById("logout-btn-holder");
-    if (logoutHolder) logoutHolder.innerHTML = '<span class="logout-btn" onclick="handleLogout()">Log out</span>';
-
-    if (currentUser.role === "distributor") {
-      showDistributorTools();
-      checkPendingAttachments();
-    } else if (currentUser.role === "buyer") {
-      checkBuyerLock();
-    } else if (currentUser.role === "agent") {
-      initAgentScreen();
-    }
-  }
-
-  async function handleLogout() { await sb.auth.signOut(); location.reload(); }
-
-  async function handleSignup() {
-    const name = document.getElementById("auth-name").value.trim();
-    const phone = document.getElementById("auth-phone").value.trim();
-    const email = document.getElementById("auth-email").value.trim();
-    const password = document.getElementById("auth-password").value;
-    const errorEl = document.getElementById("auth-error");
-    errorEl.innerText = "";
-    if (!name || !phone || !email || !password) { errorEl.innerText = "Please fill in every field."; return; }
-    const { data, error } = await sb.auth.signUp({ email, password });
-    if (error) { errorEl.innerText = error.message; return; }
-    const userId = data.user.id;
-    const { error: profileError } = await sb.from("profiles").insert({ id:userId, full_name:name, phone, role:selectedSignupRole });
-    if (profileError) { errorEl.innerText = profileError.message; return; }
-    if (selectedSignupRole === "distributor") {
-      await sb.from("distributor_profiles").insert({ id:userId, business_name:name });
-    } else if (selectedSignupRole === "buyer") {
-      await sb.from("buyer_profiles").insert({ id:userId });
-    } else if (selectedSignupRole === "agent") {
-      const companyName = document.getElementById("auth-company").value.trim();
-      let companyId = null;
-      if (companyName) {
-        const { data: existingCompany } = await sb.from("companies").select("id").ilike("name", companyName).maybeSingle();
-        if (existingCompany) companyId = existingCompany.id;
-        else { const { data:newCompany } = await sb.from("companies").insert({ name:companyName }).select("id").single(); companyId = newCompany?.id || null; }
-      }
-      await sb.from("agent_profiles").insert({ id:userId, company_id:companyId, employment_confirmed:false });
-    }
-    await loadCurrentUser();
-    document.getElementById("auth-shell").classList.add("hidden");
-    document.getElementById("app").style.display = "block";
-  }
-
-  async function handleLogin() {
-    const email = document.getElementById("login-email").value.trim();
-    const password = document.getElementById("login-password").value;
-    const errorEl = document.getElementById("login-error");
-    errorEl.innerText = "";
-    if (!email || !password) { errorEl.innerText = "Please fill in both fields."; return; }
-    const { error } = await sb.auth.signInWithPassword({ email, password });
-    if (error) { errorEl.innerText = error.message; return; }
-    await loadCurrentUser();
-    document.getElementById("login-shell").classList.add("hidden");
-    document.getElementById("app").style.display = "block";
-  }
-
-  (async () => {
-    const { data:{ session } } = await sb.auth.getSession();
-    if (session) { await loadCurrentUser(); document.getElementById("auth-shell").classList.add("hidden"); document.getElementById("login-shell").classList.add("hidden"); document.getElementById("app").style.display = "block"; }
-  })();
-</script>
-
-<div id="app" style="display:none;">
-  <div class="status-bar"></div>
-
-  <header class="top">
-    <div class="brand">
-      <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="2" y="6" width="16" height="16" rx="4" fill="#E3A94F"/>
-        <rect x="16" y="12" width="16" height="16" rx="4" fill="#A63D2F"/>
-      </svg>
-      <div>
-        <div class="brand-name">ShelfMatch</div>
-        <div class="brand-sub">Stock meets buyer</div>
       </div>
-    </div>
-    <div style="display:flex; align-items:center; gap:8px;">
-      <div class="locale-pill"><span class="locale-dot"></span>4 markets</div>
-      <div id="logout-btn-holder"></div>
-    </div>
-  </header>
 
-  <main>
-    <!-- ============ HOME ============ -->
-    <div class="screen active" id="screen-home">
+      <input
+        type="text"
+        id="auth-name"
+        placeholder="Full name"
+      />
+
+      <input
+        type="tel"
+        id="auth-phone"
+        placeholder="Phone number"
+      />
+
+      <div id="auth-company" style="display:none;">
+        <input
+          type="text"
+          id="auth-company-input"
+          placeholder="Company name"
+        />
+      </div>
+
+      <input
+        type="email"
+        id="auth-email"
+        placeholder="Email address"
+      />
+
+      <input
+        type="password"
+        id="auth-password"
+        placeholder="Password"
+      />
+
+      <input
+        type="password"
+        id="auth-password-confirm"
+        placeholder="Confirm password"
+      />
+
+      <button
+        class="auth-submit"
+        onclick="handleSignup()"
+      >
+        Create account
+      </button>
+
+      <div
+        class="auth-error"
+        id="auth-error"
+      ></div>
+
+    </div>
+
+    <div class="auth-switch">
+      Already have an account?
+      <span onclick="showLogin()">Log in</span>
+    </div>
+
+    <div
+      class="auth-guest"
+      onclick="continueAsGuest()"
+    >
+      Continue browsing without an account
+    </div>
+
+  </div>
+
+
+  <!-- ================================================================
+       AUTH: LOG IN
+       ================================================================ -->
+
+  <div
+    id="login-shell"
+    class="auth-shell hidden"
+  >
+
+    <div class="auth-brand">
+
+      <h1>Welcome back</h1>
+
+      <p>
+        Log in to GoodsbarnX
+      </p>
+
+    </div>
+
+    <div class="auth-box">
+
+      <input
+        type="email"
+        id="login-email"
+        placeholder="Email address"
+      />
+
+      <div style="position:relative;">
+
+        <input
+          type="password"
+          id="login-password"
+          placeholder="Password"
+        />
+
+        <span
+          class="password-toggle"
+          onclick="toggleLoginPassword()"
+        >
+          Show
+        </span>
+
+      </div>
+
+      <button
+        class="auth-submit"
+        onclick="handleLogin()"
+      >
+        Log in
+      </button>
+
+      <div
+        class="auth-error"
+        id="login-error"
+      ></div>
+
+    </div>
+
+    <div
+      class="auth-switch"
+      style="margin-top:10px;"
+    >
+      <span onclick="openForgotPasswordModal()">
+        Forgot password?
+      </span>
+    </div>
+
+    <div class="auth-switch">
+      New here?
+      <span onclick="showSignup()">
+        Create an account
+      </span>
+    </div>
+
+    <div
+      class="auth-guest"
+      onclick="continueAsGuest()"
+    >
+      Continue browsing without an account
+    </div>
+
+  </div>
+
+
+  <!-- ================================================================
+       MAIN APP
+       ================================================================ -->
+
+  <div
+    id="app"
+    style="display: none;"
+  >
+
+    <div class="status-bar"></div>
+
+    <header class="top">
+
+      <div class="brand">
+
+        <div class="brand-name">
+          GoodsbarnX
+        </div>
+
+        <div class="brand-sub">
+          Stock meets buyer
+        </div>
+
+      </div>
+
+      <span id="logout-btn-holder"></span>
+
+    </header>
+
+
+    <!-- ==============================================================
+         MARKET SCREEN
+         ============================================================== -->
+
+    <main
+      class="screen active"
+      id="screen-market"
+    >
+
+      <div id="onboarding-banner"></div>
+
       <div class="hero">
-        <div class="hero-eyebrow">ShelfMatch Network</div>
-        <h1 class="hero-headline">Real inquiries.<br><em>Real distributors and buyers.</em></h1>
+
+        <div class="hero-eyebrow">
+          GoodsbarnX Network
+        </div>
+
+        <div class="hero-headline">
+          Real inquiries.<br>
+          <em>Real distributors and buyers.</em>
+        </div>
+
         <div class="clock-seal">
+
           <div class="seal-ring">
-            <svg width="56" height="56">
-              <circle class="bg" cx="28" cy="28" r="24" stroke-width="4" fill="none"/>
-              <circle class="fg" cx="28" cy="28" r="24" stroke-width="4" fill="none" stroke-dasharray="150.8" stroke-dashoffset="0"/>
+
+            <svg
+              width="56"
+              height="56"
+              viewBox="0 0 56 56"
+            >
+
+              <circle
+                class="bg"
+                cx="28"
+                cy="28"
+                r="24"
+                fill="none"
+                stroke-width="4"
+              />
+
+              <circle
+                class="fg"
+                cx="28"
+                cy="28"
+                r="24"
+                fill="none"
+                stroke-width="4"
+                stroke-dasharray="150"
+                stroke-dashoffset="30"
+              />
+
             </svg>
-            <div class="num" id="inquiry-count-ring">–</div>
+
+            <div
+              class="num"
+              id="inquiry-count-ring"
+            >
+              –
+            </div>
+
           </div>
+
           <div class="clock-copy">
-            <div class="clock-title">Total inquiries sent</div>
-            <div class="clock-sub">Real connections made through ShelfMatch so far</div>
+
+            <div class="clock-title">
+              Total inquiries sent
+            </div>
+
+            <div class="clock-sub">
+              Real connections made through GoodsbarnX so far
+            </div>
+
           </div>
+
         </div>
+
         <div class="trust-strip">
-          <div class="trust-item"><div class="n" id="stat-distributors">–</div><div class="t">Distributors</div></div>
-          <div class="trust-item"><div class="n" id="stat-buyers">–</div><div class="t">Buyers</div></div>
-          <div class="trust-item"><div class="n">4</div><div class="t">Markets live</div></div>
+
+          <div class="trust-item">
+
+            <div
+              class="n"
+              id="stat-distributors"
+            >
+              –
+            </div>
+
+            <div class="t">
+              Distributors
+            </div>
+
+          </div>
+
+          <div class="trust-item">
+
+            <div
+              class="n"
+              id="stat-buyers"
+            >
+              –
+            </div>
+
+            <div class="t">
+              Buyers
+            </div>
+
+          </div>
+
+          <div class="trust-item">
+
+            <div class="n">
+              4
+            </div>
+
+            <div class="t">
+              Markets live
+            </div>
+
+          </div>
+
         </div>
+
       </div>
+
 
       <div id="lock-banner-holder"></div>
+
       <div id="distributor-tools-holder"></div>
 
-      <div id="agent-tools-holder" class="agent-panel"></div>
-      <div id="agent-relationships-panel" class="agent-panel" style="display:none;">
-        <div class="section-label">Agent relationships</div>
-        <div id="agent-relationships-list"></div>
+
+      <!-- SEARCH -->
+
+      <div class="search-bar-wrap">
+
+        <span>🔍</span>
+
+        <input
+          type="text"
+          id="search-input"
+          placeholder="Search by name, location, category…"
+          oninput="applyFilters(); toggleSearchClear();"
+        />
+
+        <span
+          class="search-clear"
+          id="search-clear"
+          onclick="clearSearch()"
+        >
+          ✕
+        </span>
+
       </div>
 
-      <div class="search-bar-wrap"><span>🔍</span><input type="text" id="search-input" placeholder="Search by name, location, category…" oninput="applyFilters()"></div>
-      <div class="queue-badge" id="queue-badge"></div>
 
-      <div class="section-label">Territory trust status</div>
-      <div class="manifest" style="padding:14px 16px;">
-        <div class="territory-row"><span class="territory-name">Onitsha</span><span class="territory-status verified">Association-verified network</span></div>
-        <div class="territory-row"><span class="territory-name">Nnewi</span><span class="territory-status pending">Self-attested for now</span></div>
-        <div class="territory-row"><span class="territory-name">Awka</span><span class="territory-status pending">Self-attested for now</span></div>
-        <div class="territory-row"><span class="territory-name">Asaba</span><span class="territory-status pending">Self-attested for now</span></div>
+      <!-- FILTERS -->
+
+      <div class="adv-filters">
+
+        <select
+          id="filter-location"
+          class="adv-filter-select"
+          onchange="applyFilters()"
+        >
+
+          <option value="">
+            📍 All Locations
+          </option>
+
+          <option value="Onitsha">Onitsha</option>
+          <option value="Nnewi">Nnewi</option>
+          <option value="Awka">Awka</option>
+          <option value="Asaba">Asaba</option>
+          <option value="Enugu">Enugu</option>
+          <option value="Owerri">Owerri</option>
+          <option value="Abakiliki">Abakiliki</option>
+          <option value="Agbor">Agbor</option>
+          <option value="Warri">Warri</option>
+          <option value="Aba">Aba</option>
+
+        </select>
+
+
+        <select
+          id="filter-tier"
+          class="adv-filter-select"
+          onchange="applyFilters()"
+        >
+
+          <option value="">
+            ⭐ All Trust Tiers
+          </option>
+
+          <option value="association">
+            Association Verified
+          </option>
+
+          <option value="market board">
+            Market Board
+          </option>
+
+          <option value="self-attested">
+            Self-Attested
+          </option>
+
+        </select>
+
       </div>
 
-<div class="section-label">Browse Market Verticals</div>
 
-<div class="category-grid">
+      <!-- MARKET VERTICALS -->
 
-  <div class="category-card active"
-       onclick="selectCategory('All',this)">
-       🏪
-       <span>All</span>
-  </div>
-
-  <div class="category-card"
-       onclick="selectCategory('Auto Parts',this)">
-       ⚙️
-       <span>Auto Parts</span>
-  </div>
-
-  <div class="category-card"
-       onclick="selectCategory('Electronics',this)">
-       📱
-       <span>Electronics</span>
-  </div>
-
-  <div class="category-card"
-       onclick="selectCategory('Pharma',this)">
-       💊
-       <span>Pharma</span>
-  </div>
-
-  <div class="category-card"
-       onclick="selectCategory('Textiles',this)">
-       🧵
-       <span>Textiles</span>
-  </div>
-
-  <div class="category-card"
-       onclick="selectCategory('Building',this)">
-       🧱
-       <span>Building</span>
-  </div>
-
-  <div class="category-card"
-       onclick="selectCategory('Motorcycle',this)">
-       🏍️
-       <span>Motorcycle</span>
-  </div>
-
-  <div class="category-card"
-       onclick="selectCategory('General',this)">
-       🛒
-       <span>General</span>
-  </div>
-
-  <div class="category-card"
-       onclick="selectCategory('Raw Material',this)">
-       🏭
-       <span>Raw Material</span>
-  </div>
-
-</div>
-
-      <div class="section-label">Distributors <span class="mono" id="distributor-count"></span></div>
-      <div id="distributor-list"><div class="loading-text">Loading distributors…</div></div>
-
-      <div class="section-label">Buyers <span class="mono" id="buyer-count"></span></div>
-      <div id="buyer-list"><div class="loading-text">Loading buyers…</div></div>
-    </div>
-
-    <!-- ============ INQUIRIES (real local history) ============ -->
-    <div class="screen" id="screen-inquiries">
-      <div class="section-label">Your inquiries</div>
-      <div id="history-list"></div>
-    </div>
-
-    <!-- ============ TRUST — coming soon ============ -->
-    <div class="screen" id="screen-trust">
-      <div class="section-label">Trust &amp; verification <span class="coming-soon-tag">Coming soon</span></div>
-      <div class="coming-soon-shell">
-        <div class="cs-icon">🛡️</div>
-        <h3>Verification is on the way</h3>
-        <p>We're building trade association checks, physical shop verification, and public dispute history. For now, reach out directly — we personally vet every listing before it goes live.</p>
+      <div class="section-label">
+        Browse Market Verticals
       </div>
-    </div>
 
-    <!-- ============ ONBOARD — real registration ============ -->
-    <div class="screen" id="screen-onboard">
-      <div class="section-label">Join ShelfMatch</div>
-      <div class="manifest">
-        <div class="m-name" style="margin-bottom:6px;">Create your account</div>
-        <div style="font-size:12.5px; color:rgba(18,21,28,0.65); line-height:1.55; margin-bottom:14px;">
-          Distributors and buyers now join ShelfMatch with a real account, right from the start screen — your listing appears on the Market tab as soon as you sign up.
+      <div class="category-grid">
+
+        <div
+          class="category-card active"
+          onclick="selectCategory('All',this)"
+        >
+          🏪
+          <span>All</span>
         </div>
-        <button class="btn-inquire" style="width:100%; box-sizing:border-box;" onclick="location.reload()">Go to sign up</button>
+
+        <div class="category-card" onclick="selectCategory('Auto Parts',this)">
+          ⚙️
+          <span>Auto Parts</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Motorcycle',this)">
+          🏍
+          <span>Motorcycle</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Tyres',this)">
+          🚗
+          <span>Tyres</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Batteries',this)">
+          🔋
+          <span>Batteries</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Lubricants',this)">
+          🛢
+          <span>Lubricants</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Electronics',this)">
+          📱
+          <span>Electronics</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Pharma',this)">
+          💊
+          <span>Pharma</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Textiles',this)">
+          🧵
+          <span>Textiles</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Building Materials',this)">
+          🧱
+          <span>Building</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('General Goods',this)">
+          🛒
+          <span>General</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Raw Materials',this)">
+          🏭
+          <span>Raw Material</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Food & Beverages',this)">
+          🥫
+          <span>Food & Bev</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Agriculture',this)">
+          🌾
+          <span>Agriculture</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Cosmetics',this)">
+          🧴
+          <span>Cosmetics</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Baby Products',this)">
+          👶
+          <span>Baby</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Frozen Foods',this)">
+          🐟
+          <span>Frozen</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Poultry',this)">
+          🐓
+          <span>Poultry</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Computers',this)">
+          💻
+          <span>Computers</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Electrical',this)">
+          🔌
+          <span>Electrical</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Plumbing',this)">
+          🚿
+          <span>Plumbing</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Furniture',this)">
+          🪑
+          <span>Furniture</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Home Appliances',this)">
+          🏠
+          <span>Appliances</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Packaging',this)">
+          📦
+          <span>Packaging</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Logistics',this)">
+          🚚
+          <span>Logistics</span>
+        </div>
+
+        <div class="category-card" onclick="selectCategory('Iron & Industrial Materials',this)">
+          🗜️
+          <span>Iron & Industrial Materials</span>
+        </div>
+
       </div>
 
-      <div class="section-label">Guided onboarding <span class="coming-soon-tag">Coming soon</span></div>
-      <div class="coming-soon-shell" style="padding:30px 20px;">
-        <div class="cs-icon">🧭</div>
-        <h3 style="font-size:15px;">Supplier agent &amp; handshake flows</h3>
-        <p style="font-size:12.5px;">Multi-party verification between agents, companies, and distributors is in development.</p>
+
+      <!-- DISTRIBUTORS -->
+
+      <div class="section-label">
+        Distributors
+        <span class="mono" id="distributor-count">0</span>
       </div>
+
+      <div id="distributor-list">
+        <div class="loading-text">
+          Loading distributors...
+        </div>
+      </div>
+
+
+      <!-- BUYERS -->
+
+      <div class="section-label">
+        Buyers
+        <span class="mono" id="buyer-count">0</span>
+      </div>
+
+      <div id="buyer-list">
+        <div class="loading-text">
+          Loading buyers...
+        </div>
+      </div>
+
+    </main>
+
+
+    <!-- ==============================================================
+         INQUIRIES SCREEN
+         ============================================================== -->
+
+    <div class="screen" id="screen-inquiries">
+
+      <div class="section-label">
+        Your inquiries
+      </div>
+
+      <div id="history-list"></div>
+
     </div>
-  </main>
+
+
+    <!-- ==============================================================
+         TRUST SCREEN
+         ============================================================== -->
+
+    <div class="screen" id="screen-trust">
+
+      <div class="section-label">
+        Trust &amp; Transparency
+      </div>
+
+      <div
+        id="trust-summary"
+        class="trust-strip"
+        style="margin-bottom:16px;"
+      ></div>
+
+      <div class="section-label">
+        Verified Distributors
+      </div>
+
+      <div id="verified-distributors-list"></div>
+
+      <div class="section-label">
+        Recent Approved Disputes
+      </div>
+
+      <div id="disputes-list"></div>
+
+    </div>
+
+
+    <!-- ==============================================================
+         PROFILE SCREEN
+         ============================================================== -->
+
+    <div class="screen" id="screen-profile">
+
+      <div class="section-label">
+        Your Profile
+      </div>
+
+      <div
+        id="profile-saved-banner"
+        style="
+          display:none;
+          background:var(--ok);
+          color:white;
+          padding:8px;
+          border-radius:8px;
+          text-align:center;
+          margin-bottom:12px;
+        "
+      >
+        Profile saved successfully!
+      </div>
+
+      <div id="my-relationship-card"></div>
+
+      <div id="my-payment-methods"></div>
+
+      <div id="my-preferred-products"></div>
+
+      <div id="my-relationship-disputes"></div>
+
+      <div id="my-relationship-history"></div>
+
+      <div id="my-relationships-list"></div>
+
+      <div id="profile-form">
+
+        <div class="field" id="profile-business-name-field">
+
+          <label>
+            Business Name
+          </label>
+
+          <input
+            type="text"
+            id="profile-business-name"
+            placeholder="Your business name"
+          />
+
+        </div>
+
+
+        <div
+          class="field"
+          id="profile-name-field"
+          style="display:none;"
+        >
+
+          <label>
+            Your Name
+          </label>
+
+          <input
+            type="text"
+            id="profile-name"
+            placeholder="Your full name"
+          />
+
+        </div>
+
+
+        <div class="field" id="profile-category-field">
+
+          <label>
+            Category
+          </label>
+
+          <select id="profile-category">
+
+            <option value="">
+              Select category
+            </option>
+
+            <option value="Auto Parts">Auto Parts</option>
+            <option value="Motorcycle">Motorcycle</option>
+            <option value="Tyres">Tyres</option>
+            <option value="Batteries">Batteries</option>
+            <option value="Lubricants">Lubricants</option>
+            <option value="Electronics">Electronics</option>
+            <option value="Pharma">Pharma</option>
+            <option value="Textiles">Textiles</option>
+            <option value="Building Materials">Building Materials</option>
+            <option value="General Goods">General Goods</option>
+            <option value="Raw Materials">Raw Materials</option>
+            <option value="Food & Beverages">Food & Beverages</option>
+            <option value="Agriculture">Agriculture</option>
+            <option value="Cosmetics">Cosmetics</option>
+            <option value="Baby Products">Baby Products</option>
+            <option value="Frozen Foods">Frozen Foods</option>
+            <option value="Poultry">Poultry</option>
+            <option value="Computers">Computers</option>
+            <option value="Electrical">Electrical</option>
+            <option value="Plumbing">Plumbing</option>
+            <option value="Furniture">Furniture</option>
+            <option value="Home Appliances">Home Appliances</option>
+            <option value="Packaging">Packaging</option>
+            <option value="Logistics">Logistics</option>
+            <option value="Iron & Industrial Materials">Iron & Industrial Materials</option>
+
+          </select>
+
+        </div>
+
+
+        <div class="field">
+
+          <label>
+            Location
+          </label>
+
+          <select id="profile-location">
+
+            <option value="">
+              Select location
+            </option>
+
+            <option value="Onitsha">Onitsha</option>
+            <option value="Nnewi">Nnewi</option>
+            <option value="Awka">Awka</option>
+            <option value="Asaba">Asaba</option>
+            <option value="Enugu">Enugu</option>
+            <option value="Owerri">Owerri</option>
+            <option value="Abakiliki">Abakiliki</option>
+            <option value="Agbor">Agbor</option>
+            <option value="Warri">Warri</option>
+            <option value="Aba">Aba</option>
+
+          </select>
+
+        </div>
+
+
+        <div class="field">
+
+          <label>
+            Market
+          </label>
+
+          <input
+            type="text"
+            id="profile-market"
+            placeholder="Which market?"
+          />
+
+        </div>
+
+
+        <div class="field">
+
+          <label>
+            Shop Address
+          </label>
+
+          <input
+            type="text"
+            id="profile-shop-address"
+            placeholder="Street address or landmark"
+          />
+
+        </div>
+
+
+        <div class="field">
+
+          <label>
+            Description
+          </label>
+
+          <textarea
+            id="profile-description"
+            rows="3"
+            placeholder="Brief description"
+          ></textarea>
+
+        </div>
+
+
+        <div
+          class="field"
+          id="profile-looking-for-field"
+          style="display:none;"
+        >
+
+          <label>
+            I'm looking for
+          </label>
+
+          <select id="profile-looking-for">
+
+            <option value="">
+              Select interest
+            </option>
+
+            <option value="Auto Parts">Auto Parts</option>
+            <option value="Motorcycle">Motorcycle</option>
+            <option value="Tyres">Tyres</option>
+            <option value="Batteries">Batteries</option>
+            <option value="Lubricants">Lubricants</option>
+            <option value="Electronics">Electronics</option>
+            <option value="Pharma">Pharma</option>
+            <option value="Textiles">Textiles</option>
+            <option value="Building Materials">Building Materials</option>
+            <option value="General Goods">General Goods</option>
+            <option value="Raw Materials">Raw Materials</option>
+            <option value="Food & Beverages">Food & Beverages</option>
+            <option value="Agriculture">Agriculture</option>
+            <option value="Cosmetics">Cosmetics</option>
+            <option value="Baby Products">Baby Products</option>
+            <option value="Frozen Foods">Frozen Foods</option>
+            <option value="Poultry">Poultry</option>
+            <option value="Computers">Computers</option>
+            <option value="Electrical">Electrical</option>
+            <option value="Plumbing">Plumbing</option>
+            <option value="Furniture">Furniture</option>
+            <option value="Home Appliances">Home Appliances</option>
+            <option value="Packaging">Packaging</option>
+            <option value="Logistics">Logistics</option>
+            <option value="Iron & Industrial Materials">Iron & Industrial Materials</option>
+
+          </select>
+
+        </div>
+
+
+        <button
+          class="submit-btn"
+          onclick="saveProfile()"
+        >
+          Save Profile
+        </button>
+
+        <div
+          class="status-msg"
+          id="profile-status"
+        ></div>
+
+      </div>
+
+    </div>
+
+
+    <!-- ==============================================================
+         UPGRADE SCREEN
+         ============================================================== -->
+
+    <div class="screen" id="screen-upgrade">
+
+      <div class="section-label">
+        Choose Your Plan
+      </div>
+
+      <div
+        id="plan-cards"
+        style="
+          display:flex;
+          flex-direction:column;
+          gap:16px;
+          margin-bottom:16px;
+        "
+      ></div>
+
+      <div class="section-label">
+        Current Plan
+      </div>
+
+      <div
+        id="current-plan-info"
+        class="manifest"
+        style="padding:14px;"
+      ></div>
+
+      <div
+        id="upgrade-status"
+        class="status-msg"
+      ></div>
+
+    </div>
+
+
+    <!-- ==============================================================
+         PRODUCTS SCREEN
+         ============================================================== -->
+
+    <div class="screen" id="screen-products">
+
+      <div class="section-label">
+        Your Products
+      </div>
+
+      <div id="products-management-list"></div>
+
+      <button
+        class="submit-btn"
+        style="margin-top:16px;"
+        onclick="openAddProductModal()"
+      >
+        + Add New Product
+      </button>
+
+      <div
+        id="products-management-status"
+        class="status-msg"
+      ></div>
+
+    </div>
+
+
+    <!-- ==============================================================
+         STAFF SCREEN
+         ============================================================== -->
+
+    <div class="screen" id="screen-staff">
+
+      <div class="section-label">
+        Team Management
+      </div>
+
+      <div id="staff-list">
+        <div class="loading-text">
+          Loading staff...
+        </div>
+      </div>
+
+      <button
+        class="submit-btn"
+        style="margin-top:16px;"
+        onclick="openInviteStaffModal()"
+      >
+        + Invite Staff Member
+      </button>
+
+      <div
+        id="staff-status"
+        class="status-msg"
+      ></div>
+
+    </div>
+
+
+    <!-- ==============================================================
+         AGENT SCREEN
+         ============================================================== -->
+
+    <div class="screen" id="screen-agent">
+
+      <!-- ============================================================
+           AGENT → DISTRIBUTOR ATTACHMENT
+           ============================================================ -->
+
+      <div class="section-label">
+        My Distributor
+      </div>
+
+      <div id="agent-distributor-context">
+
+        <div class="loading-text">
+          Loading distributor relationship...
+        </div>
+
+      </div>
+
+
+      <!--
+        This action is intentionally separate from buyer referral.
+
+        An agent must first establish/obtain a distributor attachment.
+        agent.js controls whether this button is available and what state
+        it represents.
+      -->
+
+      <button
+        id="agent-request-distributor-btn"
+        class="submit-btn"
+        style="margin:12px 0 10px;"
+        onclick="openAgentDistributorRequestModal()"
+      >
+        + Request Distributor Attachment
+      </button>
+
+
+      <div
+        id="agent-distributor-request-status"
+        class="status-msg"
+        style="margin-bottom:16px;"
+      ></div>
+
+
+      <!-- ============================================================
+           AGENT → BUYER REFERRAL
+           ============================================================ -->
+
+      <button
+        id="agent-refer-buyer-btn"
+        class="submit-btn"
+        style="margin:12px 0 18px;"
+        onclick="openAgentReferralModal()"
+      >
+        + Refer a Buyer
+      </button>
+
+
+      <!-- ============================================================
+           AGENT RELATIONSHIPS
+           ============================================================ -->
+
+      <div class="section-label">
+        My Relationships
+      </div>
+
+      <div id="agent-relationships-list">
+
+        <div class="loading-text">
+          Loading relationships...
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- ==============================================================
+         CART SCREEN
+         ============================================================== -->
+
+    <div class="screen" id="screen-cart">
+
+      <div class="section-label">
+        Your Cart
+      </div>
+
+      <div id="cart-content"></div>
+
+    </div>
+
+
+    <!-- ==============================================================
+         BOTTOM NAV
+         ============================================================== -->
+
+    <nav class="bottom">
+
+      <div
+        class="nav-item active"
+        id="nav-market"
+        onclick="showScreen('market')"
+      >
+        <span class="ic">🏬</span>
+        Market
+      </div>
+
+
+      <div
+        class="nav-item"
+        id="nav-cart"
+        onclick="showScreen('cart')"
+      >
+
+        <span class="ic">
+          🛒
+        </span>
+
+        <span
+          class="nav-badge"
+          id="cart-badge"
+        >
+          0
+        </span>
+
+        Cart
+
+      </div>
+
+
+      <div
+        class="nav-item"
+        id="nav-trust"
+        onclick="showScreen('trust')"
+      >
+        <span class="ic">🛡️</span>
+        Trust
+      </div>
+
+
+      <div
+        class="nav-item"
+        id="nav-profile"
+        onclick="showScreen('profile')"
+      >
+        <span class="ic">👤</span>
+        Profile
+      </div>
+
+
+      <div
+        class="nav-item"
+        id="nav-products"
+        onclick="showScreen('products')"
+        style="display:none;"
+      >
+        <span class="ic">📦</span>
+        Products
+      </div>
+
+
+      <div
+        class="nav-item"
+        id="nav-staff"
+        onclick="showScreen('staff')"
+        style="display:none;"
+      >
+        <span class="ic">👥</span>
+        Staff
+      </div>
+
+
+      <div
+        class="nav-item"
+        id="nav-agent"
+        onclick="showScreen('agent')"
+        style="display:none;"
+      >
+        <span class="ic">🤝</span>
+        Agent
+      </div>
+
+
+      <div
+        class="nav-item"
+        id="nav-upgrade"
+        onclick="showScreen('upgrade')"
+      >
+        <span class="ic">⭐</span>
+        Upgrade
+      </div>
+
+    </nav>
+
+  </div>
+
+
+  <!-- ================================================================
+       MODALS
+       ================================================================ -->
+
+
+  <!-- INQUIRY MODAL -->
 
   <div class="sheet-overlay" id="inquiry-modal">
-    <div class="sheet" onclick="event.stopPropagation()">
+
+    <div class="sheet">
+
       <div class="sheet-handle"></div>
-      <h3 id="modal-title">Contact</h3>
-      <div class="sub">Send your details — they'll be in touch directly.</div>
-      <div class="field"><label>Your name</label><input type="text" id="inquiry-name"></div>
-      <div class="field"><label>Your phone</label><input type="text" id="inquiry-phone"></div>
-      <div class="field"><label>Your email (for confirmation)</label><input type="email" id="inquiry-email"></div>
-      <div class="field"><label>What are you looking for</label><input type="text" id="inquiry-item" placeholder="e.g. Brake pads, Toyota Camry"></div>
-      <div class="field">
-        <label>Order scale</label>
-        <div class="tier-row" id="tier-row">
-          <div class="tier-opt" data-tier="Single piece" onclick="selectTier(this)">Single piece</div>
-          <div class="tier-opt" data-tier="Carton" onclick="selectTier(this)">Carton</div>
-          <div class="tier-opt" data-tier="Container" onclick="selectTier(this)">Container</div>
-        </div>
+
+      <h3 id="modal-title">
+        Contact
+      </h3>
+
+      <div class="sub">
+        Send your details — they'll be in touch directly.
       </div>
-      <div class="field"><label>Quantity</label><input type="text" id="inquiry-quantity" placeholder="e.g. 6 cartons"></div>
-      <button class="submit-btn" onclick="submitInquiry()">Send inquiry now</button>
-      <button class="cancel-btn" onclick="closeModal()">Cancel</button>
-      <div class="status-msg" id="status-msg"></div>
+
+      <div class="field">
+        <label>Your name</label>
+        <input type="text" id="inquiry-name" />
+      </div>
+
+      <div class="field">
+        <label>Your phone</label>
+        <input type="tel" id="inquiry-phone" />
+      </div>
+
+      <div class="field">
+        <label>Your email</label>
+        <input type="email" id="inquiry-email" />
+      </div>
+
+      <div class="field">
+        <label>What are you looking for</label>
+        <input type="text" id="inquiry-item" />
+      </div>
+
+      <div class="field">
+
+        <label>
+          Order scale
+        </label>
+
+        <div class="tier-row">
+
+          <div
+            class="tier-opt"
+            data-tier="single"
+            onclick="selectTier(this)"
+          >
+            Single piece
+          </div>
+
+          <div
+            class="tier-opt"
+            data-tier="carton"
+            onclick="selectTier(this)"
+          >
+            Carton
+          </div>
+
+          <div
+            class="tier-opt"
+            data-tier="container"
+            onclick="selectTier(this)"
+          >
+            Container
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="field">
+        <label>Quantity</label>
+        <input type="text" id="inquiry-quantity" />
+      </div>
+
+      <button
+        class="submit-btn"
+        onclick="submitInquiry()"
+      >
+        Send inquiry now
+      </button>
+
+      <button
+        class="cancel-btn"
+        onclick="closeModal()"
+      >
+        Cancel
+      </button>
+
+      <div
+        class="status-msg"
+        id="status-msg"
+      ></div>
+
     </div>
+
   </div>
+
+
+  <!-- DISPUTE MODAL -->
 
   <div class="sheet-overlay" id="dispute-modal">
-    <div class="sheet" onclick="event.stopPropagation()">
-      <div class="sheet-handle"></div>
-      <h3>Report an issue</h3>
-      <div class="sub">About <span id="dispute-target-name"></span>. Reviewed before it's made public.</div>
-      <div class="field"><label>Your name</label><input type="text" id="dispute-submitted-by"></div>
-      <div class="field"><label>Your phone</label><input type="text" id="dispute-phone"></div>
-      <div class="field"><label>What happened</label><input type="text" id="dispute-description" placeholder="Describe the issue briefly"></div>
-      <button class="submit-btn" onclick="submitDispute()">Submit for review</button>
-      <button class="cancel-btn" onclick="closeDisputeModal()">Cancel</button>
-      <div class="status-msg" id="dispute-status-msg"></div>
-    </div>
-  </div>
 
-  <div class="sheet-overlay" id="add-buyer-modal">
-    <div class="sheet" onclick="event.stopPropagation()">
-      <div class="sheet-handle"></div>
-      <h3>Add Buyer</h3>
-      <div class="sub">Distributors and accepted supplier agents can invite an existing buyer. The buyer must accept before the connection becomes active.</div>
-      <div class="field"><label>Buyer's phone number</label><input type="tel" id="add-buyer-phone" placeholder="Must match their GoodsbarnX account"></div>
-      <button class="submit-btn" onclick="submitAddBuyer()">Send connection request</button>
-      <button class="cancel-btn" onclick="closeAddBuyerModal()">Cancel</button>
-      <div class="status-msg" id="add-buyer-status-msg"></div>
-    </div>
-  </div>
+    <div class="sheet">
 
-  <div class="sheet-overlay" id="consent-modal">
-    <div class="sheet" onclick="event.stopPropagation()">
       <div class="sheet-handle"></div>
-      <h3>Connection request</h3>
-      <div class="sub" id="consent-sub"></div>
-      <div class="modal-actions">
-        <button class="submit-btn" style="flex:1;" onclick="acceptLock()">Accept</button>
-        <button class="cancel-btn" style="flex:1;" onclick="declineLock()">Not now</button>
+
+      <h3>
+        Report an issue
+      </h3>
+
+      <div class="sub">
+        About
+        <span id="dispute-target-name"></span>.
       </div>
-      <div class="status-msg" id="consent-status-msg"></div>
+
+      <div class="field">
+        <label>Your name</label>
+        <input type="text" id="dispute-submitted-by" />
+      </div>
+
+      <div class="field">
+        <label>Your phone</label>
+        <input type="tel" id="dispute-phone" />
+      </div>
+
+      <div class="field">
+        <label>What happened</label>
+        <input type="text" id="dispute-description" />
+      </div>
+
+      <button
+        class="submit-btn"
+        onclick="submitDispute()"
+      >
+        Submit for review
+      </button>
+
+      <button
+        class="cancel-btn"
+        onclick="closeDisputeModal()"
+      >
+        Cancel
+      </button>
+
+      <div
+        class="status-msg"
+        id="dispute-status-msg"
+      ></div>
+
     </div>
+
   </div>
 
-  <div class="sheet-overlay" id="agent-attachment-modal">
-    <div class="sheet" onclick="event.stopPropagation()">
+
+  <!-- STOREFRONT MODAL -->
+
+  <div class="sheet-overlay" id="storefront-modal">
+
+    <div class="sheet">
+
       <div class="sheet-handle"></div>
-      <h3>Attach to a distributor</h3>
-      <div class="sub">Your request stays pending until the distributor accepts it.</div>
-      <div class="field"><label>Distributor's exact business name</label><input type="text" id="agent-attachment-distributor-name" placeholder="Business name"></div>
-      <button class="submit-btn" onclick="submitAgentAttachmentRequest()">Send attachment request</button>
-      <button class="cancel-btn" onclick="closeAgentAttachmentModal()">Cancel</button>
-      <div class="status-msg" id="agent-attachment-status"></div>
+
+      <div id="storefront-content"></div>
+
+      <button
+        class="cancel-btn"
+        onclick="closeStorefrontModal()"
+      >
+        Close
+      </button>
+
     </div>
+
   </div>
 
-  <div class="sheet-overlay" id="agent-referral-modal">
-    <div class="sheet" onclick="event.stopPropagation()">
+
+  <!-- ADD PRODUCT MODAL -->
+
+  <div class="sheet-overlay" id="add-product-modal">
+
+    <div class="sheet">
+
       <div class="sheet-handle"></div>
-      <h3>Refer an existing buyer</h3>
-      <div class="sub">Only buyers already registered on GoodsbarnX can be referred through this path.</div>
-      <div class="agent-referral-note" id="agent-referral-context"></div>
-      <div class="field"><label>Search buyer</label><input type="text" id="agent-referral-search" placeholder="Buyer name or account name" oninput="searchBuyersForAgentReferral()"></div>
-      <div id="agent-referral-results" class="agent-search-results"></div>
-      <button class="cancel-btn" onclick="closeAgentReferralModal()">Cancel</button>
-      <div class="status-msg" id="agent-referral-status"></div>
+
+      <h3>
+        Add Product
+      </h3>
+
+      <div class="sub">
+        Fill in the details. Category-specific fields will appear.
+      </div>
+
+      <div class="field">
+
+        <label>
+          Product Image
+        </label>
+
+        <input
+          type="file"
+          id="prod-image-input"
+          accept="image/*"
+          onchange="previewProductImage()"
+          style="padding:8px;"
+        />
+
+        <div
+          class="image-preview"
+          id="prod-image-preview"
+        ></div>
+
+      </div>
+
+      <div class="field">
+        <label>Product Name *</label>
+        <input type="text" id="prod-name" />
+      </div>
+
+      <div class="field">
+
+        <label>
+          Category *
+        </label>
+
+        <select
+          id="prod-category"
+          onchange="showCategoryFields()"
+        >
+
+          <option value="">Select category</option>
+          <option value="Auto Parts">Auto Parts</option>
+          <option value="Motorcycle">Motorcycle</option>
+          <option value="Tyres">Tyres</option>
+          <option value="Batteries">Batteries</option>
+          <option value="Lubricants">Lubricants</option>
+          <option value="Electronics">Electronics</option>
+          <option value="Pharma">Pharma</option>
+          <option value="Textiles">Textiles</option>
+          <option value="Building Materials">Building Materials</option>
+          <option value="General Goods">General Goods</option>
+          <option value="Raw Materials">Raw Materials</option>
+          <option value="Food & Beverages">Food & Beverages</option>
+          <option value="Agriculture">Agriculture</option>
+          <option value="Cosmetics">Cosmetics</option>
+          <option value="Baby Products">Baby Products</option>
+          <option value="Frozen Foods">Frozen Foods</option>
+          <option value="Poultry">Poultry</option>
+          <option value="Computers">Computers</option>
+          <option value="Electrical">Electrical</option>
+          <option value="Plumbing">Plumbing</option>
+          <option value="Furniture">Furniture</option>
+          <option value="Home Appliances">Home Appliances</option>
+          <option value="Packaging">Packaging</option>
+          <option value="Logistics">Logistics</option>
+          <option value="Iron & Industrial Materials">
+            Iron & Industrial Materials
+          </option>
+
+        </select>
+
+      </div>
+
+      <div id="category-specific-fields"></div>
+
+      <div class="field">
+        <label>SKU</label>
+        <input type="text" id="prod-sku" />
+      </div>
+
+      <div class="field">
+        <label>Brand</label>
+        <input type="text" id="prod-brand" />
+      </div>
+
+      <div class="field">
+        <label>MOQ</label>
+        <input type="number" id="prod-moq" value="1" />
+      </div>
+
+      <div class="field">
+        <label>Stock</label>
+        <input type="number" id="prod-stock" value="0" />
+      </div>
+
+      <div class="field">
+        <label>Price (₦)</label>
+        <input type="number" step="0.01" id="prod-price" />
+      </div>
+
+      <div class="field">
+
+        <label>
+          Negotiable
+        </label>
+
+        <select id="prod-negotiable">
+          <option value="false">No</option>
+          <option value="true">Yes</option>
+        </select>
+
+      </div>
+
+      <div class="field">
+
+        <label>
+          Bulk Discount
+        </label>
+
+        <select id="prod-bulk-discount">
+          <option value="false">No</option>
+          <option value="true">Yes</option>
+        </select>
+
+      </div>
+
+      <div class="field">
+        <label>Lead Time</label>
+        <input
+          type="text"
+          id="prod-lead-time"
+          placeholder="e.g., 2-3 days"
+        />
+      </div>
+
+      <div class="field">
+        <label>Trade Terms</label>
+        <input type="text" id="prod-trade-terms" />
+      </div>
+
+      <div class="field">
+
+        <label>
+          Delivery
+        </label>
+
+        <select id="prod-delivery">
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+
+      </div>
+
+      <div class="field">
+
+        <label>
+          Pickup
+        </label>
+
+        <select id="prod-pickup">
+          <option value="false">No</option>
+          <option value="true">Yes</option>
+        </select>
+
+      </div>
+
+      <div class="field">
+        <label>Description</label>
+        <textarea id="prod-desc" rows="2"></textarea>
+      </div>
+
+      <button
+        class="submit-btn"
+        onclick="addProduct()"
+      >
+        Save Product
+      </button>
+
+      <button
+        class="cancel-btn"
+        onclick="closeAddProductModal()"
+      >
+        Cancel
+      </button>
+
+      <div
+        class="status-msg"
+        id="add-product-status"
+      ></div>
+
     </div>
+
   </div>
 
-  <nav class="bottom">
-    <div class="nav-item active" id="nav-home" onclick="showScreen('home')"><span class="ic">🏬</span>Market</div>
-    <div class="nav-item" id="nav-inquiries" onclick="showScreen('inquiries')"><span class="ic">📋</span>Inquiries</div>
-    <div class="nav-item" id="nav-trust" onclick="showScreen('trust')"><span class="ic">🛡️</span>Trust</div>
-    <div class="nav-item" id="nav-onboard" onclick="showScreen('onboard')"><span class="ic">➕</span>Onboard</div>
-  </nav>
-</div>
 
-<script>
-  // ---------- Distributor: add a buyer ----------
-  function showDistributorTools() {
-    const holder = document.getElementById("distributor-tools-holder");
-    holder.innerHTML = `
-      <div class="distributor-tools">
-        <div class="dt-title">Bring your own buyer</div>
-        <div class="dt-sub">Connect a buyer you already know. They'll confirm before anything is locked.</div>
-        <button onclick="openAddBuyerModal()">Add a buyer</button>
-      </div>`;
-  }
+  <!-- INVITE STAFF MODAL -->
 
-  function openAddBuyerModal() {
-    document.getElementById("add-buyer-phone").value = "";
-    document.getElementById("add-buyer-status-msg").innerText = "";
-    document.getElementById("add-buyer-modal").classList.add("active");
-  }
-  function closeAddBuyerModal() { document.getElementById("add-buyer-modal").classList.remove("active"); }
+  <div class="sheet-overlay" id="invite-staff-modal">
 
-  async function submitAddBuyer() {
-    const phone = document.getElementById("add-buyer-phone").value;
-    const statusEl = document.getElementById("add-buyer-status-msg");
-    if (!phone) { statusEl.innerText = "Please enter a phone number."; return; }
+    <div class="sheet">
 
-    const { data: matchingProfile } = await sb.from("profiles").select("id, role").eq("phone", phone).eq("role", "buyer").single();
+      <div class="sheet-handle"></div>
 
-    if (!matchingProfile) {
-      statusEl.innerText = "No buyer account found with that phone number yet. They'll need to sign up first.";
-      return;
-    }
+      <h3>
+        Invite a team member
+      </h3>
 
-    const { error } = await sb.from("buyer_locks").insert({
-      buyer_id: matchingProfile.id,
-      distributor_id: currentUser.id,
-      status: "pending_consent",
-    });
+      <div class="sub">
+        They'll receive an email to set up their account.
+      </div>
 
-    if (error) {
-      statusEl.innerText = "Could not send request. They may already be connected elsewhere.";
-      return;
-    }
+      <div class="field">
+        <label>Staff email</label>
+        <input type="email" id="staff-email" />
+      </div>
 
-    statusEl.innerText = "Sent! They'll see this request next time they open ShelfMatch.";
-    setTimeout(closeAddBuyerModal, 1800);
-  }
+      <div class="field">
 
-  // ---------- Buyer: check for a lock and show consent/banner ----------
-  let pendingLockId = "";
-  async function checkBuyerLock() {
-    const { data: pendingLock, error: pendingError } = await sb
-      .from("buyer_locks")
-      .select("id, distributor_id, distributor_profiles(business_name)")
-      .eq("buyer_id", currentUser.id)
-      .eq("status", "pending_consent")
-      .maybeSingle();
+        <label>
+          Role
+        </label>
 
-    if (pendingLock) {
-      pendingLockId = pendingLock.id;
-      const distName = pendingLock.distributor_profiles ? pendingLock.distributor_profiles.business_name : "A distributor";
-      document.getElementById("consent-sub").innerText = distName + " wants to connect you as their buyer. You'll be primarily connected to them, but can still browse everyone else.";
-      document.getElementById("consent-modal").classList.add("active");
-      return;
-    }
+        <select id="staff-role">
 
-    const { data: lock } = await sb
-      .from("buyer_locks")
-      .select("id, status, distributor_id, distributor_profiles(business_name)")
-      .eq("buyer_id", currentUser.id)
-      .in("status", ["active", "release_requested"])
-      .maybeSingle();
+          <option value="responder">
+            Responder
+          </option>
 
-    if (!lock) return;
+          <option value="manager">
+            Manager
+          </option>
 
-    const holder = document.getElementById("lock-banner-holder");
-    const distName = lock.distributor_profiles ? lock.distributor_profiles.business_name : "a distributor";
+        </select>
 
-    if (lock.status === "active") {
-      holder.innerHTML = `
-        <div class="lock-banner">
-          <div class="lb-title">Connected to ${distName}</div>
-          <div class="lb-sub">You can browse everyone, but you're primarily connected to this distributor.</div>
-          <button onclick="requestRelease('${lock.id}')">Request open-market access</button>
-        </div>`;
-    } else if (lock.status === "release_requested") {
-      holder.innerHTML = `
-        <div class="lock-banner">
-          <div class="lb-title">Release requested</div>
-          <div class="lb-sub">Waiting on ${distName} to approve your open-market access. You'll keep your connection to them either way.</div>
-        </div>`;
-    }
-  }
+      </div>
 
-  async function requestRelease(lockId) {
-    await sb.from("buyer_locks").update({ status: "release_requested" }).eq("id", lockId);
-    checkBuyerLock();
-  }
+      <button
+        class="submit-btn"
+        onclick="sendStaffInvite()"
+      >
+        Send invitation
+      </button>
 
-  async function acceptLock() {
-    await sb.from("buyer_locks").update({ status: "active" }).eq("id", pendingLockId);
-    document.getElementById("consent-modal").classList.remove("active");
-    checkBuyerLock();
-  }
-  async function declineLock() {
-    await sb.from("buyer_locks").delete().eq("id", pendingLockId);
-    document.getElementById("consent-modal").classList.remove("active");
-  }
+      <button
+        class="cancel-btn"
+        onclick="closeInviteStaffModal()"
+      >
+        Cancel
+      </button>
 
-  let allDistributors = [];
-  let allBuyers = [];
-  let activeCategory = "All";
-  let selectedContactName = "";
-  let selectedContactType = "";
+      <div
+        class="status-msg"
+        id="invite-staff-status"
+      ></div>
 
-  const BACKEND = "https://shelfmatch-backend-5mjl.vercel.app/api";
-  const SECRET = "shelfmatch-2026-secure";
+    </div>
 
-  function showScreen(name) {
-    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
-    document.getElementById("screen-" + name).classList.add("active");
-    document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
-    document.getElementById("nav-" + name).classList.add("active");
-    if (name === "inquiries") renderHistory();
-    window.scrollTo(0, 0);
-  }
+  </div>
 
-  // ---------- Home: real data ----------
-  function renderDistributors(list) {
-    const c = document.getElementById("distributor-list");
-    c.innerHTML = "";
-    if (list.length === 0) { c.innerHTML = '<div class="loading-text">No distributors yet. Be the first to register on the Onboard tab.</div>'; return; }
-    list.forEach(d => {
-      const tier = d.verification_tier || "";
-      let verifiedBadge = "";
-      if (tier.toLowerCase() === "association") verifiedBadge = '<div class="m-verified">✓ Association Verified</div>';
-      else if (tier.toLowerCase() === "market board") verifiedBadge = '<div class="m-verified market-board">✓ Market Board Verified</div>';
-      else if (tier.toLowerCase() === "self-attested") verifiedBadge = '<div class="m-verified self-attested">Self-Attested (Pending)</div>';
-      const phone = d.profiles ? d.profiles.phone : "";
-      const card = document.createElement("div");
-      card.className = "manifest";
-      card.innerHTML = `
-        <div class="manifest-top">
-          <div>
-            <div class="m-name">${d.business_name}</div>
-            <div class="m-loc">${d.location || ""}</div>
-            ${verifiedBadge}
-          </div>
-          <div class="stamp-badge">${d.category ? d.category.toUpperCase() : "LISTED"}</div>
-        </div>
-        <div class="m-meta">
-          ${phone ? `<button class="btn-whatsapp" onclick="openWhatsApp('${phone}','${d.business_name}')">WhatsApp</button>` : ''}
-          <button class="btn-inquire" onclick="openModal('${d.id}','${d.business_name}','distributor')">Inquire</button>
-        </div>
-        <div class="dispute-row" id="dispute-count-${d.id}">
-          <span class="dispute-link" onclick="openDisputeModal('${d.id}','${d.business_name}')">Report an issue</span>
-        </div>`;
-      c.appendChild(card);
-    });
-  }
 
-  function renderBuyers(list) {
-    const c = document.getElementById("buyer-list");
-    c.innerHTML = "";
-    if (list.length === 0) { c.innerHTML = '<div class="loading-text">No buyers yet. Be the first to register on the Onboard tab.</div>'; return; }
-    list.forEach(b => {
-      const name = b.profiles ? b.profiles.full_name : "Buyer";
-      const phone = b.profiles ? b.profiles.phone : "";
-      const card = document.createElement("div");
-      card.className = "manifest";
-      card.innerHTML = `
-        <div class="manifest-top">
-          <div>
-            <div class="m-name">${name}</div>
-            <div class="m-loc">${b.location || ""}</div>
-          </div>
-          <div class="stamp-badge" style="border-color:var(--brass); color:var(--brass);">${b.looking_for ? b.looking_for.toUpperCase() : "BUYER"}</div>
-        </div>
-        <div class="m-meta">
-          ${phone ? `<button class="btn-whatsapp" onclick="openWhatsApp('${phone}','${name}')">WhatsApp</button>` : ''}
-          <button class="btn-inquire" onclick="openModal('${b.id}','${name}','buyer')">Inquire</button>
-        </div>`;
-      c.appendChild(card);
-    });
-  }
+  <!-- FORGOT PASSWORD MODAL -->
 
-  function buildFilterPills() {
-    const categories = new Set();
-    allDistributors.forEach(d => { if (d.category) categories.add(d.category.trim()); });
-    allBuyers.forEach(b => { if (b.looking_for) categories.add(b.looking_for.trim()); });
-    const wrap = document.getElementById("filter-pills");
-    wrap.innerHTML = "";
-    const allPill = document.createElement("div");
-    allPill.className = "filter-pill active";
-    allPill.innerText = "All";
-    allPill.onclick = () => selectCategory("All", allPill);
-    wrap.appendChild(allPill);
-    categories.forEach(cat => {
-      const p = document.createElement("div");
-      p.className = "filter-pill";
-      p.innerText = cat;
-      p.onclick = () => selectCategory(cat, p);
-      wrap.appendChild(p);
-    });
-  }
+  <div class="sheet-overlay" id="forgot-password-modal">
 
-  function selectCategory(category, element){
+    <div class="sheet">
 
-    activeCategory = category;
+      <div class="sheet-handle"></div>
 
-    document.querySelectorAll(".category-card")
-        .forEach(card => card.classList.remove("active"));
+      <h3>
+        Reset your password
+      </h3>
 
-    element.classList.add("active");
+      <div class="sub">
+        Enter your account email — we'll send a reset link.
+      </div>
 
-    applyFilters();
-}
+      <div class="field">
+        <label>Email address</label>
+        <input type="email" id="forgot-password-email" />
+      </div>
 
-  function applyFilters() {
-    const q = document.getElementById("search-input").value.trim().toLowerCase();
-    const fd = allDistributors.filter(d => {
-      const mc = activeCategory === "All" || (d.category && d.category.trim() === activeCategory);
-      const ms = !q || (d.business_name||"").toLowerCase().includes(q) || (d.location||"").toLowerCase().includes(q) || (d.category||"").toLowerCase().includes(q);
-      return mc && ms;
-    });
-    const fb = allBuyers.filter(b => {
-      const bName = b.profiles ? b.profiles.full_name : "";
-      const mc = activeCategory === "All" || (b.looking_for && b.looking_for.trim() === activeCategory);
-      const ms = !q || (bName||"").toLowerCase().includes(q) || (b.location||"").toLowerCase().includes(q) || (b.looking_for||"").toLowerCase().includes(q);
-      return mc && ms;
-    });
-    renderDistributors(fd);
-    renderBuyers(fb);
-    document.getElementById("distributor-count").innerText = fd.length;
-    document.getElementById("buyer-count").innerText = fb.length;
-  }
+      <button
+        class="submit-btn"
+        onclick="sendPasswordReset()"
+      >
+        Send reset link
+      </button>
 
-  async function loadDistributorsAndBuyers() {
-    const { data: distributors, error: distError } = await sb
-      .from("distributor_profiles")
-      .select("id, business_name, location, category, verification_tier, profiles(phone)");
+      <button
+        class="cancel-btn"
+        onclick="closeForgotPasswordModal()"
+      >
+        Cancel
+      </button>
 
-    if (distError) {
-      document.getElementById("distributor-list").innerHTML = '<div class="loading-text">Could not load distributors.</div>';
-    } else {
-      allDistributors = distributors || [];
-      document.getElementById("distributor-count").innerText = allDistributors.length;
-      document.getElementById("stat-distributors").innerText = allDistributors.length;
-      renderDistributors(allDistributors);
-      buildFilterPills();
-    }
+      <div
+        class="status-msg"
+        id="forgot-password-status"
+      ></div>
 
-    const { data: buyers, error: buyerError } = await sb
-      .from("buyer_profiles")
-      .select("id, location, looking_for, profiles(full_name, phone)");
+    </div>
 
-    if (buyerError) {
-      document.getElementById("buyer-list").innerHTML = '<div class="loading-text">Could not load buyers.</div>';
-    } else {
-      allBuyers = buyers || [];
-      document.getElementById("buyer-count").innerText = allBuyers.length;
-      document.getElementById("stat-buyers").innerText = allBuyers.length;
-      renderBuyers(allBuyers);
-      buildFilterPills();
-    }
-  }
+  </div>
 
-  loadDistributorsAndBuyers();
 
-  sb.from("inquiries").select("*", { count: "exact", head: true }).then(({ count }) => {
-    document.getElementById("inquiry-count-ring").innerText = count != null ? count : "–";
-  });
+  <!-- RESET PASSWORD MODAL -->
 
-  // ---------- Contact modal ----------
-  function openWhatsApp(phone, name) {
-    const cleanPhone = (phone || "").replace(/[^0-9]/g, "");
-    const message = encodeURIComponent("Hi " + name + ", I found you on ShelfMatch and I'm interested in connecting.");
-    window.open("https://wa.me/" + cleanPhone + "?text=" + message, "_blank");
-  }
+  <div class="sheet-overlay" id="reset-password-modal">
 
-  let selectedContactId = "";
-  function openModal(id, name, type) {
-    selectedContactId = id;
-    selectedContactName = name;
-    selectedContactType = type;
-    document.getElementById("modal-title").innerText = "Contact " + name;
-    document.getElementById("status-msg").innerText = "";
-    document.getElementById("inquiry-modal").classList.add("active");
-  }
-  function closeModal() { document.getElementById("inquiry-modal").classList.remove("active"); }
+    <div class="sheet">
 
-  let disputeTargetId = "";
-  let disputeTargetName = "";
-  function openDisputeModal(distributorId, distributorName) {
-    disputeTargetId = distributorId;
-    disputeTargetName = distributorName;
-    document.getElementById("dispute-target-name").innerText = distributorName;
-    document.getElementById("dispute-status-msg").innerText = "";
-    document.getElementById("dispute-modal").classList.add("active");
-  }
-  function closeDisputeModal() { document.getElementById("dispute-modal").classList.remove("active"); }
+      <div class="sheet-handle"></div>
 
-  function submitDispute() {
-    const submittedBy = document.getElementById("dispute-submitted-by").value;
-    const phone = document.getElementById("dispute-phone").value;
-    const description = document.getElementById("dispute-description").value;
-    if (!submittedBy || !phone || !description) {
-      document.getElementById("dispute-status-msg").innerText = "Please fill in all fields.";
-      return;
-    }
-    sb.from("disputes").insert({
-      distributor_id: disputeTargetId,
-      submitted_by: submittedBy,
-      submitted_phone: phone,
-      description: description,
-      status: "Pending",
-    }).then(({ error }) => {
-      if (error) {
-        document.getElementById("dispute-status-msg").innerText = "Something went wrong. Try again.";
-        return;
-      }
-      document.getElementById("dispute-status-msg").innerText = "Submitted for review. Thank you.";
-      document.getElementById("dispute-submitted-by").value = "";
-      document.getElementById("dispute-phone").value = "";
-      document.getElementById("dispute-description").value = "";
-      setTimeout(closeDisputeModal, 1800);
-    });
-  }
+      <h3>
+        Set a new password
+      </h3>
 
-  sb.from("disputes").select("distributor_id").eq("status", "Approved").then(({ data }) => {
-    const disputes = data || [];
-    const counts = {};
-    disputes.forEach(d => {
-      counts[d.distributor_id] = (counts[d.distributor_id] || 0) + 1;
-    });
-    Object.keys(counts).forEach(distributorId => {
-      const el = document.getElementById("dispute-count-" + distributorId);
-      if (el) {
-        const countSpan = document.createElement("span");
-        countSpan.className = "dispute-count";
-        countSpan.innerText = counts[distributorId] + " dispute" + (counts[distributorId] > 1 ? "s" : "") + " on record";
-        el.appendChild(countSpan);
-      }
-    });
-  });
+      <div class="sub">
+        You clicked a valid reset link. Choose a new password below.
+      </div>
 
-  let selectedTier = "";
-  function selectTier(el) {
-    document.querySelectorAll(".tier-opt").forEach(o => o.classList.remove("sel"));
-    el.classList.add("sel");
-    selectedTier = el.dataset.tier;
-  }
+      <div class="field">
+        <label>New password</label>
+        <input type="password" id="new-password" />
+      </div>
 
-  function submitInquiry() {
-    const name = document.getElementById("inquiry-name").value;
-    const phone = document.getElementById("inquiry-phone").value;
-    const email = document.getElementById("inquiry-email").value;
-    const item = document.getElementById("inquiry-item").value;
-    const quantity = document.getElementById("inquiry-quantity").value;
-    if (!name || !phone) { document.getElementById("status-msg").innerText = "Please fill in name and phone."; return; }
+      <div class="field">
+        <label>Confirm new password</label>
+        <input type="password" id="new-password-confirm" />
+      </div>
 
-    const payload = {
-      inquirer_name: name,
-      inquirer_phone: phone,
-      inquirer_email: email || null,
-      item: item || null,
-      order_scale: selectedTier || null,
-      quantity: quantity || null,
-      distributor_id: selectedContactType === "distributor" ? selectedContactId : null,
-      buyer_id: selectedContactType === "buyer" ? selectedContactId : null,
-      contact_type: selectedContactType,
-    };
+      <button
+        class="submit-btn"
+        onclick="submitNewPassword()"
+      >
+        Save new password
+      </button>
 
-    if (!navigator.onLine) {
-      queueInquiry(payload, selectedContactName, selectedContactType);
-      document.getElementById("status-msg").innerText = "No connection — saved, will send automatically.";
-      clearForm(); setTimeout(closeModal, 2000); return;
-    }
+      <div
+        class="status-msg"
+        id="reset-password-status"
+      ></div>
 
-    sb.from("inquiries").insert(payload).then(({ error }) => {
-      if (error) {
-        queueInquiry(payload, selectedContactName, selectedContactType);
-        document.getElementById("status-msg").innerText = "Connection issue — saved, will send automatically.";
-        clearForm(); setTimeout(closeModal, 2000);
-        return;
-      }
-      saveInquiryToHistory(selectedContactName, selectedContactType);
-      fetch(BACKEND + "/notify-inquiry", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          secret: SECRET,
-          name, phone, email, item, orderScale: selectedTier, quantity,
-          contactedName: selectedContactName,
-          contactType: selectedContactType,
-        }),
-      }).catch(() => {});
-      document.getElementById("status-msg").innerText = "Sent! We'll be in touch.";
-      clearForm(); setTimeout(closeModal, 1500);
-    });
-  }
-  function clearForm() {
-    document.getElementById("inquiry-name").value = "";
-    document.getElementById("inquiry-phone").value = "";
-    document.getElementById("inquiry-email").value = "";
-    document.getElementById("inquiry-item").value = "";
-    document.getElementById("inquiry-quantity").value = "";
-    document.querySelectorAll(".tier-opt").forEach(o => o.classList.remove("sel"));
-    selectedTier = "";
-  }
+    </div>
 
-  // ---------- Offline queue ----------
-  function queueInquiry(payload, name, type) {
-    try {
-      const q = JSON.parse(localStorage.getItem("shelfmatch_queue") || "[]");
-      q.push({ payload, contactName: name, contactType: type });
-      localStorage.setItem("shelfmatch_queue", JSON.stringify(q));
-      updateQueueBadge();
-    } catch (e) { console.error(e); }
-  }
-  function processQueue() {
-    let q = [];
-    try { q = JSON.parse(localStorage.getItem("shelfmatch_queue") || "[]"); } catch (e) { q = []; }
-    if (q.length === 0) return;
-    const remaining = [];
-    q.forEach(item => {
-      sb.from("inquiries").insert(item.payload).then(({ error }) => {
-        if (error) {
-          remaining.push(item);
-        } else {
-          saveInquiryToHistory(item.contactName, item.contactType);
-          fetch(BACKEND + "/notify-inquiry", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              secret: SECRET,
-              name: item.payload.inquirer_name,
-              phone: item.payload.inquirer_phone,
-              email: item.payload.inquirer_email,
-              item: item.payload.item,
-              orderScale: item.payload.order_scale,
-              quantity: item.payload.quantity,
-              contactedName: item.contactName,
-              contactType: item.contactType,
-            }),
-          }).catch(() => {});
-        }
-        localStorage.setItem("shelfmatch_queue", JSON.stringify(remaining));
-        updateQueueBadge();
-      });
-    });
-  }
-  function updateQueueBadge() {
-    let q = [];
-    try { q = JSON.parse(localStorage.getItem("shelfmatch_queue") || "[]"); } catch (e) { q = []; }
-    const badge = document.getElementById("queue-badge");
-    if (q.length > 0) { badge.style.display = "block"; badge.innerText = q.length + " inquiry" + (q.length > 1 ? "ies" : "") + " waiting to send"; }
-    else { badge.style.display = "none"; }
-  }
-  window.addEventListener("online", processQueue);
-  window.addEventListener("load", () => { updateQueueBadge(); if (navigator.onLine) processQueue(); });
+  </div>
 
-  // ---------- History (Inquiries tab) ----------
-  function saveInquiryToHistory(name, type) {
-    try {
-      const h = JSON.parse(localStorage.getItem("shelfmatch_history") || "[]");
-      h.unshift({ name, type, date: new Date().toLocaleString() });
-      localStorage.setItem("shelfmatch_history", JSON.stringify(h.slice(0, 50)));
-    } catch (e) { console.error(e); }
-  }
-  function renderHistory() {
-    const list = document.getElementById("history-list");
-    let h = [];
-    try { h = JSON.parse(localStorage.getItem("shelfmatch_history") || "[]"); } catch (e) { h = []; }
-    if (h.length === 0) {
-      list.innerHTML = '<div class="loading-text">No inquiries sent yet on this device.</div>';
-      return;
-    }
-    list.innerHTML = h.map(item => `
-      <div class="manifest">
-        <div class="inq-item">
-          <div><div class="inq-name">${item.name}</div><div class="inq-sub">${item.type === 'distributor' ? 'Contacted distributor' : 'Contacted buyer'} · ${item.date}</div></div>
-          <div class="stamp-badge">SENT</div>
-        </div>
-      </div>`).join("");
-  }
 
-  if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/sw.js"); }
-</script>
+  <!-- EDIT TERMS MODAL -->
+
+  <div class="sheet-overlay" id="edit-terms-modal">
+
+    <div class="sheet">
+
+      <div class="sheet-handle"></div>
+
+      <h3>
+        Edit Trade Terms
+      </h3>
+
+      <div class="sub">
+        For
+        <span id="edit-terms-buyer-name"></span>.
+        Previous terms are automatically preserved in history.
+      </div>
+
+      <div class="field">
+        <label>Discount (%)</label>
+        <input
+          type="number"
+          step="0.1"
+          min="0"
+          max="100"
+          id="terms-discount"
+          placeholder="e.g. 5"
+        />
+      </div>
+
+      <div class="field">
+
+        <label>
+          Credit Enabled
+        </label>
+
+        <select id="terms-credit-enabled">
+          <option value="false">No</option>
+          <option value="true">Yes</option>
+        </select>
+
+      </div>
+
+      <div class="field">
+        <label>Credit Limit (₦)</label>
+        <input
+          type="number"
+          step="1"
+          min="0"
+          id="terms-credit-limit"
+          placeholder="e.g. 500000"
+        />
+      </div>
+
+      <div class="field">
+        <label>Credit Days</label>
+        <input
+          type="number"
+          step="1"
+          min="0"
+          id="terms-credit-days"
+          placeholder="e.g. 14"
+        />
+      </div>
+
+      <button
+        class="submit-btn"
+        onclick="saveRelationshipTerms()"
+      >
+        Save Terms
+      </button>
+
+      <button
+        class="cancel-btn"
+        onclick="closeEditTermsModal()"
+      >
+        Cancel
+      </button>
+
+      <div
+        class="status-msg"
+        id="edit-terms-status"
+      ></div>
+
+    </div>
+
+  </div>
+
+
+  <!-- INVITE BUYER MODAL -->
+
+  <div class="sheet-overlay" id="invite-buyer-modal">
+
+    <div class="sheet">
+
+      <div class="sheet-handle"></div>
+
+      <h3>
+        Invite a Buyer
+      </h3>
+
+      <div class="sub">
+        Search by name, then tap a buyer to add them as a trade relationship.
+      </div>
+
+      <div class="field">
+
+        <label>
+          Search buyers
+        </label>
+
+        <input
+          type="text"
+          id="invite-buyer-search"
+          oninput="searchBuyersForInvite()"
+          placeholder="Type a buyer's name..."
+        />
+
+      </div>
+
+      <div id="invite-buyer-results"></div>
+
+      <button
+        class="cancel-btn"
+        onclick="closeInviteBuyerModal()"
+      >
+        Cancel
+      </button>
+
+      <div
+        class="status-msg"
+        id="invite-buyer-status"
+      ></div>
+
+    </div>
+
+  </div>
+
+
+  <!-- ASSIGN AGENT MODAL -->
+
+  <div class="sheet-overlay" id="assign-agent-modal">
+
+    <div class="sheet">
+
+      <div class="sheet-handle"></div>
+
+      <h3>
+        Assign an Agent
+      </h3>
+
+      <div class="sub">
+        Search by name, then tap an agent to assign them to this relationship.
+      </div>
+
+      <div class="field">
+
+        <label>
+          Search agents
+        </label>
+
+        <input
+          type="text"
+          id="assign-agent-search"
+          oninput="searchAgentsForAssignment()"
+          placeholder="Type an agent's name..."
+        />
+
+      </div>
+
+      <div id="assign-agent-results"></div>
+
+      <button
+        class="cancel-btn"
+        onclick="closeAssignAgentModal()"
+      >
+        Cancel
+      </button>
+
+      <div
+        class="status-msg"
+        id="assign-agent-status"
+      ></div>
+
+    </div>
+
+  </div>
+
+
+  <!-- ================================================================
+       AGENT → DISTRIBUTOR REQUEST MODAL
+       ================================================================ -->
+
+  <div
+    class="sheet-overlay"
+    id="agent-distributor-request-modal"
+  >
+
+    <div class="sheet">
+
+      <div class="sheet-handle"></div>
+
+      <h3>
+        Request Distributor Attachment
+      </h3>
+
+      <div class="sub">
+        Search for the distributor you work with and send an attachment
+        request. The distributor must approve the request before you can
+        operate for them.
+      </div>
+
+
+      <div class="field">
+
+        <label>
+          Search distributors
+        </label>
+
+        <input
+          type="text"
+          id="agent-distributor-search"
+          oninput="searchDistributorsForAgentRequest()"
+          placeholder="Type distributor or business name..."
+        />
+
+      </div>
+
+
+      <div id="agent-distributor-request-results"></div>
+
+
+      <button
+        class="cancel-btn"
+        onclick="closeAgentDistributorRequestModal()"
+      >
+        Cancel
+      </button>
+
+
+      <div
+        class="status-msg"
+        id="agent-distributor-request-modal-status"
+      ></div>
+
+    </div>
+
+  </div>
+
+
+  <!-- ================================================================
+       AGENT REFERRAL MODAL
+       ================================================================ -->
+
+  <div
+    class="sheet-overlay"
+    id="agent-referral-modal"
+  >
+
+    <div class="sheet">
+
+      <div class="sheet-handle"></div>
+
+      <h3>
+        Refer a Buyer
+      </h3>
+
+      <div class="sub">
+        Find an existing buyer and refer them to your attached distributor.
+      </div>
+
+      <div class="field">
+
+        <label>
+          Search buyers
+        </label>
+
+        <input
+          type="text"
+          id="agent-referral-search"
+          oninput="searchBuyersForAgentReferral()"
+          placeholder="Type buyer name..."
+        />
+
+      </div>
+
+      <div id="agent-referral-results"></div>
+
+      <button
+        class="cancel-btn"
+        onclick="closeAgentReferralModal()"
+      >
+        Cancel
+      </button>
+
+      <div
+        class="status-msg"
+        id="agent-referral-status"
+      ></div>
+
+    </div>
+
+  </div>
+
+
+  <!-- MANAGE PAYMENT MODAL -->
+
+  <div class="sheet-overlay" id="manage-payment-modal">
+
+    <div class="sheet">
+
+      <div class="sheet-handle"></div>
+
+      <h3>
+        Payment Methods
+      </h3>
+
+      <div class="sub">
+        Manage approved payment methods for this relationship.
+      </div>
+
+      <div
+        id="existing-payment-methods"
+        style="margin-bottom:16px;"
+      ></div>
+
+      <div class="field">
+        <label>Add new method</label>
+        <input
+          type="text"
+          id="new-payment-method"
+          placeholder="e.g. Bank Transfer"
+        />
+      </div>
+
+      <div class="field">
+        <label>Transaction Limit (₦, optional)</label>
+        <input
+          type="number"
+          step="1"
+          min="0"
+          id="new-payment-method-limit"
+          placeholder="e.g. 500000"
+        />
+      </div>
+
+      <button
+        class="submit-btn"
+        onclick="addPaymentMethod()"
+      >
+        Add Method
+      </button>
+
+      <button
+        class="cancel-btn"
+        onclick="closeManagePaymentMethodsModal()"
+      >
+        Close
+      </button>
+
+      <div
+        class="status-msg"
+        id="manage-payment-status"
+      ></div>
+
+    </div>
+
+  </div>
+
+
+  <!-- MANAGE PREFERENCES MODAL -->
+
+  <div class="sheet-overlay" id="manage-preferences-modal">
+
+    <div class="sheet">
+
+      <div class="sheet-handle"></div>
+
+      <h3>
+        Preferred Products
+      </h3>
+
+      <div class="sub">
+        Mark products this buyer usually orders, with optional negotiated pricing.
+      </div>
+
+      <div
+        id="existing-preferred-products"
+        style="margin-bottom:16px;"
+      ></div>
+
+      <div class="field">
+
+        <label>
+          Search your products
+        </label>
+
+        <input
+          type="text"
+          id="preference-product-search"
+          oninput="searchDistributorProductsForPreference()"
+          placeholder="Type a product name..."
+        />
+
+      </div>
+
+      <div id="preference-search-results"></div>
+
+      <button
+        class="cancel-btn"
+        onclick="closeManagePreferredProductsModal()"
+      >
+        Close
+      </button>
+
+      <div
+        class="status-msg"
+        id="manage-preferences-status"
+      ></div>
+
+    </div>
+
+  </div>
+
+
+  <!-- ================================================================
+       EXTERNAL LIBRARIES
+       ================================================================ -->
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script src="https://js.paystack.co/v2/inline.js"></script>
+
+
+  <!-- ================================================================
+       GOODSBARNX JAVASCRIPT MODULE ORDER
+       ================================================================ -->
+
+  <!-- config.js
+       Creates the global Supabase client: sb -->
+  <script src="js/config.js"></script>
+
+
+  <!-- ui.js
+       Global UI helpers / screen navigation -->
+  <script src="js/ui.js"></script>
+
+
+  <!-- auth.js
+       Authentication and current-user state -->
+  <script src="js/auth.js"></script>
+
+
+  <!-- market.js
+       Market/distributor/buyer discovery -->
+  <script src="js/market.js"></script>
+
+
+  <!-- inquiries.js
+       Buyer/distributor inquiry workflow -->
+  <script src="js/inquiries.js"></script>
+
+
+  <!-- storefront.js
+       Distributor storefront -->
+  <script src="js/storefront.js"></script>
+
+
+  <!-- cart.js
+       Buyer cart -->
+  <script src="js/cart.js"></script>
+
+
+  <!-- products.js
+       Distributor product management -->
+  <script src="js/products.js"></script>
+
+
+  <!-- trust.js
+       Trust and dispute layer -->
+  <script src="js/trust.js"></script>
+
+
+  <!-- profile.js
+       User profile -->
+  <script src="js/profile.js"></script>
+
+
+  <!-- relationship.js
+       Buyer ↔ Distributor relationship commerce layer -->
+  <script src="js/relationship.js"></script>
+
+
+  <!-- ================================================================
+       agent.js
+       Supplier-agent relationship/referral layer.
+
+       IMPORTANT:
+       agent.js remains a separate file in:
+           frontend/js/agent.js
+
+       It is loaded AFTER relationship.js because the agent layer uses
+       the relationship layer and its database model.
+
+       Do NOT paste agent.js into this HTML file.
+       ================================================================ -->
+  <script src="js/agent.js"></script>
+
+
+  <!-- upgrade.js
+       Plans / upgrades -->
+  <script src="js/upgrade.js"></script>
+
+
+  <!-- staff.js
+       Distributor staff management -->
+  <script src="js/staff.js"></script>
+
+
+  <!-- app.js
+       LAST:
+       global application state and initialization -->
+  <script src="js/app.js"></script>
+
 </body>
 </html>
