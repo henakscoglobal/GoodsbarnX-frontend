@@ -1141,7 +1141,7 @@
 
 
     <!-- ==============================================================
-         AGENT SCREEN — STEP 2
+         AGENT SCREEN — ATTACHMENT + REFERRAL
          ============================================================== -->
 
     <div
@@ -1149,10 +1149,12 @@
       id="screen-agent"
     >
 
-      <!-- Distributor attached to this agent -->
+      <!-- ============================================================
+           DISTRIBUTOR CONNECTION
+           ============================================================ -->
 
       <div class="section-label">
-        My Distributor
+        Distributor Connection
       </div>
 
       <div id="agent-distributor-context">
@@ -1164,18 +1166,30 @@
       </div>
 
 
-      <!-- Agent referral action -->
+      <!-- ============================================================
+           ATTACHMENT ACTION
+           Rendered by agent.js according to relationship state.
+           ============================================================ -->
 
-      <button
-        class="submit-btn"
-        style="margin:12px 0 18px;"
-        onclick="openAgentReferralModal()"
-      >
-        + Refer a Buyer
-      </button>
+      <div
+        id="agent-attachment-action"
+        style="margin-bottom:18px;"
+      ></div>
 
 
-      <!-- Agent relationships -->
+      <!-- ============================================================
+           REFERRAL ACTION
+           Rendered by agent.js only when an accepted attachment exists.
+           ============================================================ -->
+
+      <div
+        id="agent-referral-action"
+      ></div>
+
+
+      <!-- ============================================================
+           AGENT RELATIONSHIPS
+           ============================================================== -->
 
       <div class="section-label">
         My Relationships
@@ -2301,6 +2315,69 @@
 
 
   <!-- ================================================================
+       AGENT DISTRIBUTOR ATTACHMENT MODAL — STEP 1
+       ================================================================ -->
+
+  <div
+    class="sheet-overlay"
+    id="agent-attachment-modal"
+  >
+
+    <div class="sheet">
+
+      <div class="sheet-handle"></div>
+
+      <h3>
+        Connect to a Distributor
+      </h3>
+
+      <div class="sub">
+        Request to become a supplier agent for a distributor.
+        The distributor must accept your request before you can
+        refer buyers to them.
+      </div>
+
+
+      <div class="field">
+
+        <label>
+          Search distributors
+        </label>
+
+        <input
+          type="text"
+          id="agent-distributor-search"
+          oninput="searchDistributorsForAgentAttachment()"
+          placeholder="Type distributor name..."
+        />
+
+      </div>
+
+
+      <div
+        id="agent-distributor-results"
+      ></div>
+
+
+      <button
+        class="cancel-btn"
+        onclick="closeAgentAttachmentModal()"
+      >
+        Cancel
+      </button>
+
+
+      <div
+        class="status-msg"
+        id="agent-attachment-status"
+      ></div>
+
+    </div>
+
+  </div>
+
+
+  <!-- ================================================================
        AGENT REFERRAL MODAL — STEP 2
        ================================================================ -->
 
@@ -2600,8 +2677,8 @@
 
   <!--
     agent.js
-    STEP 2:
-    Supplier-agent relationship/referral layer.
+    STEP 1 + STEP 2:
+    Supplier-agent attachment and relationship/referral layer.
 
     IMPORTANT:
     agent.js comes AFTER relationship.js because it uses the
