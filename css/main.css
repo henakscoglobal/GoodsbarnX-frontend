@@ -168,66 +168,73 @@ main {
   text-align: center;
 }
 
-/* ---------- KPI ROW (Momentum Dashboard) ---------- */
+/* ==========================================================================
+   KPI ROW — v2 redesign
+   Was: .kpi-item / .kpi-divider / .live-status (timestamp text + "Live"
+   label both sat at 0.2-0.25 opacity, wrapped to a second row under 640px
+   and lost hierarchy). Now: .kpi-cluster groups the three stats, dividers
+   removed (redundant with the gap + baseline alignment), live indicator is
+   a standalone pill (.live-chip) that never wraps.
+   ========================================================================== */
 .kpi-row {
   display: flex;
   align-items: center;
-  gap: 20px;
-  padding: 4px 0 16px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0 16px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 20px;
-  flex-wrap: wrap;
+}
+
+.kpi-cluster {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
 }
 
 .kpi-item {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .kpi-number {
-  font-family: var(--font-sans);
-  font-weight: 600;
-  font-size: 26px;
-  letter-spacing: -0.02em;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.01em;
   color: var(--paper);
   line-height: 1;
 }
 
 .kpi-number.live {
-  color: #10B981;
+  color: var(--ok);
 }
 
 .kpi-label {
-  font-size: 12.5px;
-  font-weight: 400;
-  color: rgba(239, 233, 222, 0.35);
-  letter-spacing: 0.2px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: rgba(239, 233, 222, 0.4);
+  letter-spacing: 0.03em;
 }
 
-.kpi-divider {
-  width: 1px;
-  height: 28px;
-  background: var(--line);
-  opacity: 0.3;
-}
-
-/* ---------- LIVE STATUS (Replaces Refresh) ---------- */
-.live-status {
+.live-chip {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-family: var(--font-sans);
-  margin-left: auto;
+  gap: 6px;
+  background: rgba(63, 122, 78, 0.14);
+  border: 1px solid rgba(63, 122, 78, 0.4);
+  border-radius: 100px;
+  padding: 6px 10px 6px 8px;
+  flex-shrink: 0;
 }
 
 .live-dot {
-  width: 7px;
-  height: 7px;
-  background: #10B981;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
+  background: var(--ok);
   animation: pulse-dot 2s ease-in-out infinite;
-  flex-shrink: 0;
 }
 
 @keyframes pulse-dot {
@@ -236,32 +243,26 @@ main {
     transform: scale(1);
   }
   50% { 
-    opacity: 0.25;
+    opacity: 0.3;
     transform: scale(0.8);
   }
 }
 
-.live-timestamp {
-  font-size: 11.5px;
-  color: rgba(239, 233, 222, 0.25);
-  font-weight: 400;
-}
-
-.live-divider {
-  color: var(--line);
-  opacity: 0.2;
-  font-weight: 300;
-}
-
-.live-badge {
-  font-size: 9.5px;
-  color: rgba(239, 233, 222, 0.2);
-  font-weight: 600;
-  letter-spacing: 0.8px;
+.live-chip span {
+  font-size: 10px;
+  font-weight: 700;
+  color: #6FCB89;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
-/* ---------- Hero ---------- */
+/* ==========================================================================
+   HERO — v2 redesign
+   Was: .hero-headline (generic copy leading) → .clock-seal (proof-of-life
+   number secondary, 56px ring). Now: .hero-main puts the seal ring first
+   (64px, larger), .hero-copy supports it instead of competing with it.
+   ========================================================================== */
 
 .hero {
   position: relative;
@@ -279,34 +280,19 @@ main {
   letter-spacing: 0.16em;
   color: var(--brass-bright);
   font-weight: 600;
-  margin-bottom: 10px;
+  margin-bottom: 16px;
 }
 
-.hero-headline {
-  font-size: 24px;
-  line-height: 1.18;
-  margin-bottom: 14px;
-}
-
-.hero-headline em {
-  color: var(--brass-bright);
-  font-style: normal;
-}
-
-.clock-seal {
+.hero-main {
   display: flex;
   align-items: center;
-  gap: 14px;
-  background: rgba(239, 233, 222, 0.05);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 14px 16px;
+  gap: 16px;
 }
 
 .seal-ring {
   position: relative;
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   flex-shrink: 0;
 }
 
@@ -331,20 +317,33 @@ main {
   justify-content: center;
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 17px;
   color: var(--paper);
 }
 
-.clock-copy .clock-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--paper);
-  margin-bottom: 2px;
+.hero-copy {
+  flex: 1;
+  min-width: 0;
 }
 
-.clock-copy .clock-sub {
+.hero-headline {
+  font-family: var(--font-serif);
+  font-size: 19px;
+  line-height: 1.2;
+  color: var(--paper);
+  margin-bottom: 4px;
+}
+
+.hero-sub {
   font-size: 12px;
   color: rgba(239, 233, 222, 0.55);
+  line-height: 1.4;
+}
+
+.hero-sub em {
+  color: var(--brass-bright);
+  font-style: normal;
+  font-weight: 600;
 }
 
 .trust-strip {
@@ -643,26 +642,19 @@ nav.bottom {
     gap: 12px;
     padding: 4px 0 12px;
   }
-  
+
+  .kpi-cluster {
+    gap: 12px;
+  }
+
   .kpi-number {
-    font-size: 20px;
+    font-size: 18px;
   }
-  
+
   .kpi-label {
-    font-size: 11px;
+    font-size: 10px;
   }
-  
-  .kpi-divider {
-    display: none;
-  }
-  
-  .live-status {
-    margin-left: 0;
-    width: 100%;
-    justify-content: flex-end;
-    padding-top: 4px;
-  }
-  
+
   .hero-headline {
     font-size: 20px;
   }
