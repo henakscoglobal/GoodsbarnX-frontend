@@ -1,4 +1,46 @@
-// ==========================================================================
+// DEBUGGING - Remove after fixing
+console.log('=== relationship.js loaded ===');
+console.log('window.sb exists:', !!window.sb);
+console.log('currentUser:', currentUser);
+console.log('currentUser role:', currentUser?.role);
+
+// Override loadMyTradeRelationships with debug version
+const originalLoadMyTradeRelationships = loadMyTradeRelationships;
+
+loadMyTradeRelationships = async function() {
+  console.log('=== loadMyTradeRelationships called ===');
+  console.log('Container exists:', !!document.getElementById("my-relationships-list"));
+  console.log('currentUser:', currentUser);
+  console.log('window.sb:', window.sb);
+  
+  const container = document.getElementById("my-relationships-list");
+  
+  if (!container) {
+    console.error('❌ Container #my-relationships-list not found');
+    return;
+  }
+  
+  if (!currentUser) {
+    console.error('❌ No currentUser');
+    container.innerHTML = '<div class="error">No user logged in</div>';
+    return;
+  }
+  
+  if (currentUser.role !== "distributor") {
+    console.error('❌ User is not distributor. Role:', currentUser.role);
+    container.innerHTML = `<div class="error">User role is "${currentUser.role}", not "distributor"</div>`;
+    return;
+  }
+  
+  if (!window.sb) {
+    console.error('❌ Supabase client not initialized');
+    container.innerHTML = '<div class="error">Supabase not initialized</div>';
+    return;
+  }
+  
+  console.log('✅ All checks passed, calling original function');
+  return originalLoadMyTradeRelationships.apply(this, arguments);
+};// ==========================================================================
 // GoodsbarnX — relationship.js
 // Buyer / Distributor / Agent relationship commerce layer.
 //
