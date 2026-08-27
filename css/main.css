@@ -17,6 +17,20 @@
   --line-dark: rgba(18, 21, 28, 0.12);
   --brass-dark: #9A6A22;
   --shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  
+  /* Elite additions */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --transition-fast: 0.15s ease;
+  --transition-med: 0.25s ease;
+  --transition-slow: 0.4s ease;
+  --shadow-elevated: 0 8px 32px rgba(0, 0, 0, 0.35);
+  --shadow-subtle: 0 2px 8px rgba(0, 0, 0, 0.12);
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: 'Roboto Slab', Georgia, serif;
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
 }
 
 * {
@@ -48,6 +62,25 @@ h1, h2, h3, .display {
 .mono {
   font-family: 'JetBrains Mono', 'Courier New', monospace;
   letter-spacing: 0.02em;
+}
+
+/* ---------- Premium Scrollbar ---------- */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--ink-2);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--brass-dark);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--brass);
 }
 
 /* ---------- App shell ---------- */
@@ -108,7 +141,7 @@ header.top {
 }
 
 main {
-  padding: 20px 20px 100px;
+  padding: 16px 20px 100px;
 }
 
 /* ---------- Screens ---------- */
@@ -133,6 +166,99 @@ main {
   font-family: 'JetBrains Mono', monospace;
   padding: 8px 0;
   text-align: center;
+}
+
+/* ---------- KPI ROW (Momentum Dashboard) ---------- */
+.kpi-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 4px 0 16px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.kpi-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.kpi-number {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  color: var(--paper);
+  line-height: 1;
+}
+
+.kpi-number.live {
+  color: #10B981;
+}
+
+.kpi-label {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: rgba(239, 233, 222, 0.35);
+  letter-spacing: 0.2px;
+}
+
+.kpi-divider {
+  width: 1px;
+  height: 28px;
+  background: var(--line);
+  opacity: 0.3;
+}
+
+/* ---------- LIVE STATUS (Replaces Refresh) ---------- */
+.live-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-sans);
+  margin-left: auto;
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  background: #10B981;
+  border-radius: 50%;
+  animation: pulse-dot 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { 
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% { 
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+}
+
+.live-timestamp {
+  font-size: 11.5px;
+  color: rgba(239, 233, 222, 0.25);
+  font-weight: 400;
+}
+
+.live-divider {
+  color: var(--line);
+  opacity: 0.2;
+  font-weight: 300;
+}
+
+.live-badge {
+  font-size: 9.5px;
+  color: rgba(239, 233, 222, 0.2);
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
 }
 
 /* ---------- Hero ---------- */
@@ -251,7 +377,42 @@ main {
   letter-spacing: 0.05em;
 }
 
-/* ---------- Section labels ---------- */
+/* ---------- Section Header (Premium) ---------- */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  margin-top: 4px;
+}
+
+.section-header .title {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--paper);
+  letter-spacing: -0.01em;
+}
+
+.section-header .action {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgba(239, 233, 222, 0.25);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+  letter-spacing: 0.3px;
+}
+
+.section-header .action:hover {
+  color: var(--brass-bright);
+}
+
+.section-header .action-icon {
+  font-size: 14px;
+  margin-right: 4px;
+}
+
+/* ---------- Section labels (legacy, kept for compatibility) ---------- */
 
 .section-label {
   display: flex;
@@ -270,6 +431,11 @@ main {
   flex: 1;
   height: 1px;
   background: var(--line);
+}
+
+/* ---------- Spacer ---------- */
+.section-spacer {
+  height: 16px;
 }
 
 /* ---------- Bottom nav ---------- */
@@ -469,4 +635,87 @@ nav.bottom {
   border-radius: 12px;
   padding: 14px;
   margin-bottom: 16px;
+}
+
+/* ---------- Responsive Refinements ---------- */
+@media (max-width: 640px) {
+  .kpi-row {
+    gap: 12px;
+    padding: 4px 0 12px;
+  }
+  
+  .kpi-number {
+    font-size: 20px;
+  }
+  
+  .kpi-label {
+    font-size: 11px;
+  }
+  
+  .kpi-divider {
+    display: none;
+  }
+  
+  .live-status {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
+    padding-top: 4px;
+  }
+  
+  .hero-headline {
+    font-size: 20px;
+  }
+  
+  .section-header .title {
+    font-size: 14px;
+  }
+}
+
+/* ---------- Utility Classes ---------- */
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.gap-16 { gap: 16px; }
+.gap-24 { gap: 24px; }
+
+.mt-8 { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.mt-24 { margin-top: 24px; }
+
+.mb-8 { margin-bottom: 8px; }
+.mb-12 { margin-bottom: 12px; }
+.mb-16 { margin-bottom: 16px; }
+.mb-24 { margin-bottom: 24px; }
+
+.text-muted {
+  color: rgba(239, 233, 222, 0.35);
+}
+
+.text-brass {
+  color: var(--brass-bright);
+}
+
+.radius-lg {
+  border-radius: var(--radius-lg);
+}
+
+.radius-md {
+  border-radius: var(--radius-md);
 }
