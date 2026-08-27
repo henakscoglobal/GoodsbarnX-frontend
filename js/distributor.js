@@ -1,5 +1,5 @@
 // ==========================================================================
-// GoodsbarnX — distributor.js (EMERGENCY FIX)
+// GoodsbarnX — distributor.js (FINAL FIX)
 // Distributor control / relationship management layer.
 // ==========================================================================
 
@@ -7,11 +7,7 @@
 
   "use strict";
 
-  console.log('\n=== 🔍 DEBUG: distributor.js loaded (EMERGENCY FIX) ===');
-  console.log('Time:', new Date().toISOString());
-  console.log('window.sb exists:', !!window.sb);
-  console.log('currentUser:', typeof currentUser !== 'undefined' ? currentUser : 'undefined');
-  console.log('Element #distributor-tools-holder exists:', !!document.getElementById('distributor-tools-holder'));
+  console.log('\n=== distributor.js loaded (FINAL FIX) ===');
 
   // =========================================================================
   // STATE
@@ -26,7 +22,7 @@
     loading: false,
     processingAgentId: null,
     retryCount: 0,
-    maxRetries: 3
+    maxRetries: 10
   };
 
 
@@ -85,134 +81,111 @@
   }
 
 
-  function isDistributorRole(profile) {
-    if (!profile) {
-      return false;
-    }
-    return String(profile.role || "").toLowerCase() === "distributor";
-  }
-
-
   // =========================================================================
-  // GET CURRENT USER - EMERGENCY FIX
+  // GET CURRENT USER - WORKS WITH auth.js
   // =========================================================================
 
-  async function getCurrentUserWithRetry() {
-    console.log('\n🔍 DEBUG: getCurrentUserWithRetry called (EMERGENCY FIX)');
+  async function getCurrentDistributor() {
+    console.log('🔍 DEBUG: getCurrentDistributor called');
     
-    // Method 1: Check global currentUser
+    // Method 1: Use global currentUser (set by auth.js loadCurrentUser)
     if (typeof currentUser !== 'undefined' && currentUser && currentUser.id) {
-      console.log('✅ DEBUG: Using global currentUser:', { id: currentUser.id, role: currentUser.role, email: currentUser.email });
+      console.log('✅ DEBUG: Using global currentUser:', { 
+        id: currentUser.id, 
+        role: currentUser.role,
+        email: currentUser.email,
+        full_name: currentUser.full_name
+      });
       DistributorState.distributorId = currentUser.id;
       return currentUser;
     }
-    
+
     // Method 2: Check window.currentUser
     if (typeof window.currentUser !== 'undefined' && window.currentUser && window.currentUser.id) {
-      console.log('✅ DEBUG: Using window.currentUser:', { id: window.currentUser.id, role: window.currentUser.role });
+      console.log('✅ DEBUG: Using window.currentUser');
       currentUser = window.currentUser;
       DistributorState.distributorId = currentUser.id;
       return currentUser;
     }
-    
-    // Method 3: Check localStorage
-    try {
-      console.log('🔍 DEBUG: Checking localStorage...');
-      
-      // Check Supabase session
-      const supabaseSession = localStorage.getItem('supabase.auth.token');
-      if (supabaseSession) {
-        console.log('✅ DEBUG: Found Supabase session token');
-        const parsed = JSON.parse(supabaseSession);
-        
-        if (parsed?.currentSession?.user) {
-          const user = parsed.currentSession.user;
-          console.log('✅ DEBUG: Found user in Supabase session:', { id: user.id, email: user.email });
-          currentUser = user;
-          DistributorState.distributorId = user.id;
-          return user;
-        }
-      }
-      
-      // Check for custom user storage
-      const userData = localStorage.getItem('goodsbarnx_user');
-      if (userData) {
-        const user = JSON.parse(userData);
-        console.log('✅ DEBUG: Found user in localStorage:', { id: user.id, role: user.role });
-        currentUser = user;
-        DistributorState.distributorId = user.id;
-        return user;
-      }
-      
-      // Check all localStorage keys for user data
-      const allKeys = Object.keys(localStorage);
-      console.log('🔍 DEBUG: All localStorage keys:', allKeys);
-      
-      for (const key of allKeys) {
-        if (key.includes('user') || key.includes('auth') || key.includes('session')) {
-          const value = localStorage.getItem(key);
-          console.log(`🔍 DEBUG: Key "${key}":`, value);
-          
-          try {
-            const parsedValue = JSON.parse(value);
-            if (parsedValue?.user?.id || parsedValue?.currentSession?.user?.id) {
-              const user = parsedValue.user || parsedValue.currentSession.user;
-              console.log('✅ DEBUG: Found user in key:', key, { id: user.id });
-              currentUser = user;
-              DistributorState.distributorId = user.id;
-              return user;
-            }
-          } catch (e) {
-            // Not JSON, skip
-          }
-        }
-      }
-      
-    } catch (error) {
-      console.error('❌ DEBUG: localStorage check failed:', error);
-    }
-    
-    // Method 4: Try Supabase auth
-    if (window.sb && window.sb.auth) {
+
+    // Method 3: Try to load current user using auth.js function
+    if (typeof loadCurrentUser === 'function') {
+      console.log('🔍 DEBUG: Calling loadCurrentUser()...');
       try {
-        console.log('🔍 DEBUG: Trying Supabase auth...');
+        await loadCurrentUser();
         
-        // Try getUser
-        const { data: { user: authUser }, error: userError } = await window.sb.auth.getUser();
-        if (authUser) {
-          console.log('✅ DEBUG: Got user from getUser():', { id: authUser.id, email: authUser.email });
-          currentUser = authUser;
-          DistributorState.distributorId = authUser.id;
-          return authUser;
+        if (typeof currentUser !== 'undefined' && currentUser && currentUser.id) {
+          console.log('✅ DEBUG: Loaded user via loadCurrentUser():', currentUser);
+          DistributorState.distributorId = currentUser.id;
+          return currentUser;
+        }
+      } catch (error) {
+        console.warn('⚠️ DEBUG: loadCurrentUser() failed:', error);
+      }
+    }
+
+    // Method 4: Direct Supabase auth
+    if (window.sb && window.sb.auth) {
+      console.log('🔍 DEBUG: Trying Supabase auth directly...');
+      
+      try {
+        // Try getUser first
+        const { data: { user }, error: userError } = await window.sb.auth.getUser();
+        
+        if (!userError && user) {
+          console.log('✅ DEBUG: Got user from getUser():', { id: user.id, email: user.email });
+          
+          // Try to get profile
+          try {
+            const { data: profile } = await window.sb
+              .from("profiles")
+              .select("*")
+              .eq("id", user.id)
+              .single();
+            
+            const fullUser = { id: user.id, ...profile };
+            console.log('✅ DEBUG: Full user with profile:', fullUser);
+            currentUser = fullUser;
+            DistributorState.distributorId = user.id;
+            return fullUser;
+          } catch (profileError) {
+            console.warn('⚠️ DEBUG: Profile fetch failed:', profileError);
+            currentUser = user;
+            DistributorState.distributorId = user.id;
+            return user;
+          }
         }
         
         // Try getSession
         const { data: { session }, error: sessionError } = await window.sb.auth.getSession();
-        if (session?.user) {
+        
+        if (!sessionError && session?.user) {
           console.log('✅ DEBUG: Got user from getSession():', { id: session.user.id });
-          currentUser = session.user;
-          DistributorState.distributorId = session.user.id;
-          return session.user;
+          
+          try {
+            const { data: profile } = await window.sb
+              .from("profiles")
+              .select("*")
+              .eq("id", session.user.id)
+              .single();
+            
+            const fullUser = { id: session.user.id, ...profile };
+            currentUser = fullUser;
+            DistributorState.distributorId = session.user.id;
+            return fullUser;
+          } catch (profileError) {
+            currentUser = session.user;
+            DistributorState.distributorId = session.user.id;
+            return session.user;
+          }
         }
         
       } catch (error) {
-        console.error('❌ DEBUG: Supabase auth check failed:', error);
+        console.error('❌ DEBUG: Supabase auth failed:', error);
       }
     }
-    
-    // No user found
-    console.error('❌ DEBUG: No user found in any method');
-    console.log('🔍 DEBUG: Auth shell visible?', 
-      document.getElementById('auth-shell') ? 
-      !document.getElementById('auth-shell').classList.contains('hidden') : 
-      'No auth-shell element'
-    );
-    console.log('🔍 DEBUG: App element display:', 
-      document.getElementById('app') ? 
-      document.getElementById('app').style.display : 
-      'No app element'
-    );
-    
+
+    console.error('❌ DEBUG: No user found');
     return null;
   }
 
@@ -229,7 +202,7 @@
     }
 
     if (!window.sb) {
-      console.error('❌ DEBUG: window.sb not available in getProfiles');
+      console.error('❌ DEBUG: window.sb not available');
       return {};
     }
 
@@ -266,6 +239,16 @@
       profile.full_name ||
       (profile.id ? `User ${profile.id.slice(0, 8)}` : "Unknown user")
     );
+  }
+
+
+  function isDistributorRole(user) {
+    if (!user) {
+      return false;
+    }
+    
+    const role = user.role || user.user_metadata?.role || '';
+    return String(role).toLowerCase() === 'distributor';
   }
 
 
@@ -336,7 +319,6 @@
     const count = document.getElementById("distributor-pending-agent-count");
 
     if (!list || !window.sb || !DistributorState.distributorId) {
-      console.log('⚠️ DEBUG: Cannot load pending agents - missing requirements');
       return;
     }
 
@@ -462,6 +444,71 @@
 
 
   // =========================================================================
+  // LOAD DISTRIBUTOR BUYER RELATIONSHIPS
+  // =========================================================================
+
+  async function loadDistributorBuyers() {
+    const list = document.getElementById("distributor-buyers");
+    const count = document.getElementById("distributor-buyer-count");
+
+    if (!list || !window.sb || !DistributorState.distributorId) {
+      return;
+    }
+
+    list.innerHTML = '<div class="loading-text">Loading buyers...</div>';
+
+    try {
+      const { data, error } = await window.sb
+        .from("trade_relationships")
+        .select("id, buyer_id, distributor_id, status, is_primary, created_by, created_at")
+        .eq("distributor_id", DistributorState.distributorId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      DistributorState.buyers = data || [];
+
+      if (count) {
+        count.textContent = DistributorState.buyers.length;
+      }
+
+      if (!DistributorState.buyers.length) {
+        list.innerHTML = '<div style="padding:12px; border-radius:10px; background:var(--soft,#f6f6f6); font-size:13px; opacity:.75;">No buyer relationships yet.</div>';
+        return;
+      }
+
+      const buyerIds = DistributorState.buyers.map(relationship => relationship.buyer_id);
+      const profiles = await getProfiles(buyerIds);
+
+      list.innerHTML = DistributorState.buyers.map(relationship => {
+        const profile = profiles[relationship.buyer_id];
+        const name = profileDisplayName(profile, relationship.buyer_id);
+        const status = relationship.status || "unknown";
+
+        return `
+          <div style="padding:12px; border:1px solid var(--line,#ddd); border-radius:10px; margin-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; gap:10px;">
+              <div>
+                <strong>${escapeHTML(name)}</strong>
+                <div style="font-size:12px; opacity:.7; margin-top:4px;">Relationship created ${escapeHTML(formatDate(relationship.created_at))}</div>
+              </div>
+              <span style="font-size:11px; padding:4px 7px; border-radius:999px; background:var(--soft,#f3f4f6); text-transform:capitalize;">${escapeHTML(status)}</span>
+            </div>
+            ${relationship.is_primary ? '<div style="margin-top:8px; font-size:11px; opacity:.7;">Primary relationship</div>' : ""}
+          </div>
+        `;
+      }).join("");
+
+    } catch (error) {
+      console.error("Load buyers failed:", error);
+      list.innerHTML = `<div style="padding:12px; border-radius:10px; background:var(--soft,#f6f6f6); color:var(--danger,#b42318); font-size:13px;">Unable to load buyer relationships.</div>`;
+    }
+  }
+
+
+  // =========================================================================
   // APPROVE / DECLINE AGENT
   // =========================================================================
 
@@ -547,71 +594,6 @@
 
 
   // =========================================================================
-  // LOAD DISTRIBUTOR BUYER RELATIONSHIPS
-  // =========================================================================
-
-  async function loadDistributorBuyers() {
-    const list = document.getElementById("distributor-buyers");
-    const count = document.getElementById("distributor-buyer-count");
-
-    if (!list || !window.sb || !DistributorState.distributorId) {
-      return;
-    }
-
-    list.innerHTML = '<div class="loading-text">Loading buyers...</div>';
-
-    try {
-      const { data, error } = await window.sb
-        .from("trade_relationships")
-        .select("id, buyer_id, distributor_id, status, is_primary, created_by, created_at")
-        .eq("distributor_id", DistributorState.distributorId)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        throw error;
-      }
-
-      DistributorState.buyers = data || [];
-
-      if (count) {
-        count.textContent = DistributorState.buyers.length;
-      }
-
-      if (!DistributorState.buyers.length) {
-        list.innerHTML = '<div style="padding:12px; border-radius:10px; background:var(--soft,#f6f6f6); font-size:13px; opacity:.75;">No buyer relationships yet.</div>';
-        return;
-      }
-
-      const buyerIds = DistributorState.buyers.map(relationship => relationship.buyer_id);
-      const profiles = await getProfiles(buyerIds);
-
-      list.innerHTML = DistributorState.buyers.map(relationship => {
-        const profile = profiles[relationship.buyer_id];
-        const name = profileDisplayName(profile, relationship.buyer_id);
-        const status = relationship.status || "unknown";
-
-        return `
-          <div style="padding:12px; border:1px solid var(--line,#ddd); border-radius:10px; margin-bottom:8px;">
-            <div style="display:flex; justify-content:space-between; gap:10px;">
-              <div>
-                <strong>${escapeHTML(name)}</strong>
-                <div style="font-size:12px; opacity:.7; margin-top:4px;">Relationship created ${escapeHTML(formatDate(relationship.created_at))}</div>
-              </div>
-              <span style="font-size:11px; padding:4px 7px; border-radius:999px; background:var(--soft,#f3f4f6); text-transform:capitalize;">${escapeHTML(status)}</span>
-            </div>
-            ${relationship.is_primary ? '<div style="margin-top:8px; font-size:11px; opacity:.7;">Primary relationship</div>' : ""}
-          </div>
-        `;
-      }).join("");
-
-    } catch (error) {
-      console.error("Load buyers failed:", error);
-      list.innerHTML = `<div style="padding:12px; border-radius:10px; background:var(--soft,#f6f6f6); color:var(--danger,#b42318); font-size:13px;">Unable to load buyer relationships.</div>`;
-    }
-  }
-
-
-  // =========================================================================
   // REFRESH
   // =========================================================================
 
@@ -639,84 +621,57 @@
 
 
   // =========================================================================
-  // INITIALIZATION - EMERGENCY FIX
+  // INITIALIZATION - FINAL FIX
   // =========================================================================
 
   async function initDistributor() {
-    console.log('\n=== 🔍 DEBUG: initDistributor called (EMERGENCY FIX) ===');
+    console.log('\n=== initDistributor called ===');
 
     if (DistributorState.initialized) {
-      console.log('⚠️ DEBUG: Already initialized');
-      return;
-    }
-
-    // Check if user is on login page
-    const authShell = document.getElementById('auth-shell');
-    if (authShell && !authShell.classList.contains('hidden')) {
-      console.log('⚠️ DEBUG: Auth shell visible, user not logged in');
-      return;
-    }
-
-    // Check if app is hidden
-    const appElement = document.getElementById('app');
-    if (appElement && appElement.style.display === 'none') {
-      console.log('⚠️ DEBUG: App hidden, user not logged in');
+      console.log('Already initialized');
       return;
     }
 
     try {
-      const user = await getCurrentUserWithRetry();
+      // Get current user
+      const user = await getCurrentDistributor();
 
       if (!user) {
-        console.log('⚠️ DEBUG: No user found, showing login prompt');
+        console.log('No user found, will retry');
         
-        const holder = getHolder();
-        if (holder) {
-          holder.innerHTML = `
-            <div style="margin:16px 0; padding:20px; border-radius:12px; background:#fff3cd; color:#856404; text-align:center;">
-              <div style="font-size:16px; font-weight:600; margin-bottom:10px;">
-                Please Log In
+        // Retry logic
+        if (DistributorState.retryCount < DistributorState.maxRetries) {
+          DistributorState.retryCount++;
+          console.log(`Retry attempt ${DistributorState.retryCount}/${DistributorState.maxRetries}`);
+          
+          setTimeout(() => {
+            initDistributor();
+          }, 2000); // Wait 2 seconds between retries
+        } else {
+          console.log('Max retries reached, showing message');
+          const holder = getHolder();
+          if (holder) {
+            holder.innerHTML = `
+              <div style="margin:16px 0; padding:20px; border-radius:12px; background:#f8d7da; color:#721c24; text-align:center;">
+                <div style="font-size:16px; font-weight:600; margin-bottom:10px;">
+                  Please Log In
+                </div>
+                <div style="font-size:14px; margin-bottom:15px;">
+                  You need to be logged in as a distributor to view this section.
+                </div>
+                <button onclick="location.reload()" style="padding:10px 20px; background:#007bff; color:white; border:none; border-radius:5px; cursor:pointer; font-size:14px;">
+                  Reload Page
+                </button>
               </div>
-              <div style="font-size:14px; margin-bottom:15px;">
-                You need to be logged in as a distributor to view this section.
-              </div>
-              <button onclick="location.reload()" style="padding:10px 20px; background:#007bff; color:white; border:none; border-radius:5px; cursor:pointer; font-size:14px;">
-                Reload Page
-              </button>
-            </div>
-          `;
+            `;
+          }
         }
         return;
       }
 
-      console.log('✅ DEBUG: User found:', { id: user.id, email: user.email });
-
-      // Determine role
-      let role = null;
-      
-      // Check currentUser
-      if (typeof currentUser !== 'undefined' && currentUser && currentUser.role) {
-        role = currentUser.role;
-        console.log('🔍 DEBUG: Role from currentUser:', role);
-      }
-      
-      // Check user object
-      if (!role && user.role) {
-        role = user.role;
-        console.log('🔍 DEBUG: Role from user object:', role);
-      }
-      
-      // Check user_metadata
-      if (!role && user.user_metadata?.role) {
-        role = user.user_metadata.role;
-        console.log('🔍 DEBUG: Role from user_metadata:', role);
-      }
-
-      console.log('🔍 DEBUG: Final role determined:', role);
-
-      // If we have a role and it's not distributor, hide the panel
-      if (role && role.toLowerCase() !== 'distributor') {
-        console.log('⚠️ DEBUG: User is not a distributor, hiding panel');
+      // Check if user is distributor
+      if (!isDistributorRole(user)) {
+        console.log('User is not a distributor, hiding panel');
         const holder = getHolder();
         if (holder) {
           holder.innerHTML = '';
@@ -724,27 +679,8 @@
         return;
       }
 
-      // If no role found, try database
-      if (!role) {
-        console.log('🔍 DEBUG: No role found, checking database...');
-        const profiles = await getProfiles([user.id]);
-        const profile = profiles[user.id];
-        
-        console.log('🔍 DEBUG: Profile from DB:', profile);
-        
-        if (profile && profile.role && profile.role.toLowerCase() !== 'distributor') {
-          console.log('⚠️ DEBUG: Not a distributor (from DB), hiding panel');
-          const holder = getHolder();
-          if (holder) {
-            holder.innerHTML = '';
-          }
-          return;
-        }
-      }
-
-      // Proceed with initialization
-      console.log('✅ DEBUG: Proceeding with distributor initialization');
-      
+      // Initialize
+      console.log('✅ User is distributor, initializing');
       DistributorState.initialized = true;
       DistributorState.distributorId = user.id;
       DistributorState.retryCount = 0;
@@ -752,30 +688,17 @@
       renderDistributorPanel();
       await refreshDistributorDashboard();
 
-      console.log('✅ DEBUG: Distributor initialization complete');
+      console.log('✅ Distributor initialization complete');
 
     } catch (error) {
-      console.error('❌ DEBUG: initDistributor failed:', error);
+      console.error('Distributor initialization failed:', error);
       
-      // Show error with retry
-      const holder = getHolder();
-      if (holder) {
-        holder.innerHTML = `
-          <div style="margin:16px 0; padding:20px; border-radius:12px; background:#f8d7da; color:#721c24; text-align:center;">
-            <div style="font-size:16px; font-weight:600; margin-bottom:10px;">
-              Unable to Load Distributor Controls
-            </div>
-            <div style="font-size:14px; margin-bottom:15px;">
-              ${escapeHTML(error.message || 'Unknown error')}
-            </div>
-            <button onclick="initDistributor()" style="padding:10px 20px; background:#dc3545; color:white; border:none; border-radius:5px; cursor:pointer; font-size:14px; margin-right:10px;">
-              Retry
-            </button>
-            <button onclick="location.reload()" style="padding:10px 20px; background:#6c757d; color:white; border:none; border-radius:5px; cursor:pointer; font-size:14px;">
-              Reload Page
-            </button>
-          </div>
-        `;
+      // Retry on error
+      if (DistributorState.retryCount < DistributorState.maxRetries) {
+        DistributorState.retryCount++;
+        setTimeout(() => {
+          initDistributor();
+        }, 2000);
       }
     }
   }
@@ -787,34 +710,31 @@
 
   function attachAuthListener() {
     if (!window.sb || !window.sb.auth) {
-      console.error('❌ DEBUG: Cannot attach auth listener');
       return;
     }
 
-    console.log('✅ DEBUG: Attaching auth listener');
-
     window.sb.auth.onAuthStateChange(function (event, session) {
-      console.log('🔍 DEBUG: Auth state changed:', event);
+      console.log('Auth state changed:', event);
 
-      if (!session) {
-        console.log('⚠️ DEBUG: No session, resetting state');
+      if (event === 'SIGNED_IN' && session) {
+        console.log('User signed in, re-initializing distributor');
+        DistributorState.initialized = false;
+        setTimeout(() => {
+          initDistributor();
+        }, 1000);
+      }
+
+      if (event === 'SIGNED_OUT') {
+        console.log('User signed out, clearing distributor');
         DistributorState.initialized = false;
         DistributorState.distributorId = null;
         DistributorState.retryCount = 0;
         
         const holder = getHolder();
         if (holder) {
-          holder.innerHTML = "";
+          holder.innerHTML = '';
         }
-        return;
       }
-
-      console.log('✅ DEBUG: Session found, re-initializing');
-      
-      setTimeout(function () {
-        DistributorState.initialized = false;
-        initDistributor();
-      }, 0);
     });
   }
 
@@ -834,27 +754,23 @@
   // =========================================================================
 
   function boot() {
-    console.log('\n=== 🔍 DEBUG: distributor.js boot called (EMERGENCY FIX) ===');
-    console.log('Document readyState:', document.readyState);
+    console.log('Booting distributor module');
 
     attachAuthListener();
 
-    // Wait a bit for everything to load
-    setTimeout(function () {
-      console.log('🔍 DEBUG: Calling initDistributor from boot');
+    // Wait for app initialization
+    setTimeout(() => {
       initDistributor();
-    }, 1000); // Wait 1 second for auth to initialize
+    }, 1500);
   }
 
 
   if (document.readyState === "loading") {
-    console.log('🔍 DEBUG: Document loading, waiting for DOMContentLoaded');
     document.addEventListener("DOMContentLoaded", boot);
   } else {
-    console.log('🔍 DEBUG: Document already loaded, calling boot directly');
     boot();
   }
 
-  console.log('=== 🔍 DEBUG: distributor.js loaded and ready (EMERGENCY FIX) ===');
+  console.log('=== distributor.js ready ===');
 
 })();
