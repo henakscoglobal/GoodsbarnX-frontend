@@ -250,6 +250,10 @@
   padding: 0 4px;
 }
 
+.search-clear.visible {
+  display: block;
+}
+
 /* ---------- Smart Filters (Anchored) ---------- */
 
 .adv-filters {
