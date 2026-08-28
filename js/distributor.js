@@ -248,7 +248,7 @@
 
 
   // =========================================================================
-  // DISTRIBUTOR PANEL
+  // UPDATED: DISTRIBUTOR PANEL - REDESIGNED
   // =========================================================================
 
   function renderDistributorPanel() {
@@ -258,42 +258,71 @@
       return;
     }
 
+    // Check if user is distributor
+    if (!currentUser || currentUser.role !== 'distributor') {
+      holder.innerHTML = `
+        <div class="lock-banner">
+          <div class="lb-title">🔒 Distributor Tools</div>
+          <div class="lb-sub">Upgrade to a distributor account to access these tools.</div>
+          <button onclick="showScreen('upgrade')">Upgrade Now</button>
+        </div>
+      `;
+      return;
+    }
+
+    // Show redesigned distributor tools
     holder.innerHTML = `
-      <div class="distributor-control-panel" style="margin:16px 0; padding:16px; border:1px solid var(--line,#ddd); border-radius:14px; background:var(--card,#fff);">
+      <div class="distributor-tools" style="margin-bottom: 16px;">
+        <div class="dt-title">📊 Distributor Dashboard</div>
+        <div class="dt-sub">
+          Manage your products, track inquiries, and grow your network.
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+          <button onclick="showScreen('products')">📦 Manage Products</button>
+          <button onclick="openInviteBuyerModal()">👤 Invite Buyer</button>
+          <button onclick="showScreen('staff')">👥 Manage Staff</button>
+          <button onclick="showScreen('profile')">⚙️ Settings</button>
+        </div>
+      </div>
+
+      <div class="distributor-control-panel" style="margin:0 0 16px 0; padding:16px; border:1px solid var(--line); border-radius:14px; background:var(--ink-2);">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px;">
           <div>
-            <div class="section-label" style="margin:0;">Distributor Control</div>
-            <div style="font-size:13px; opacity:.72; margin-top:4px;">Manage your agents and buyer relationships.</div>
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:rgba(239,233,222,0.3); margin:0;">Agent Management</div>
+            <div style="font-size:13px; color:rgba(239,233,222,0.5); margin-top:4px;">Approve or decline agent attachment requests.</div>
           </div>
-          <button type="button" class="cancel-btn" onclick="refreshDistributorDashboard()" style="margin:0;">Refresh</button>
+          <button type="button" class="btn btn-outline" onclick="refreshDistributorDashboard()" style="margin:0; padding:6px 12px; font-size:11px;">↻ Refresh</button>
         </div>
 
-        <div id="distributor-management-status" class="status-msg"></div>
+        <div id="distributor-management-status" class="status-msg" style="margin-bottom:8px;"></div>
 
+        <!-- Pending Agents -->
         <div style="margin-top:12px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <strong>Agent Requests</strong>
-            <span class="mono" id="distributor-pending-agent-count">0</span>
+            <span style="font-size:13px; font-weight:600; color:var(--paper);">Agent Requests</span>
+            <span class="mono" id="distributor-pending-agent-count" style="font-size:14px; font-weight:700; color:var(--brass-bright);">0</span>
           </div>
           <div id="distributor-pending-agents">
             <div class="loading-text">Loading agent requests...</div>
           </div>
         </div>
 
+        <!-- Accepted Agents -->
         <div style="margin-top:20px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <strong>My Agents</strong>
-            <span class="mono" id="distributor-accepted-agent-count">0</span>
+            <span style="font-size:13px; font-weight:600; color:var(--paper);">My Agents</span>
+            <span class="mono" id="distributor-accepted-agent-count" style="font-size:14px; font-weight:700; color:var(--ok);">0</span>
           </div>
           <div id="distributor-accepted-agents">
             <div class="loading-text">Loading agents...</div>
           </div>
         </div>
 
+        <!-- Buyers -->
         <div style="margin-top:20px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <strong>My Buyers</strong>
-            <span class="mono" id="distributor-buyer-count">0</span>
+            <span style="font-size:13px; font-weight:600; color:var(--paper);">My Buyers</span>
+            <span class="mono" id="distributor-buyer-count" style="font-size:14px; font-weight:700; color:var(--ok);">0</span>
           </div>
           <div id="distributor-buyers">
             <div class="loading-text">Loading buyers...</div>
@@ -334,10 +363,16 @@
 
       if (count) {
         count.textContent = DistributorState.pendingAgents.length;
+        
+        // Also update the attention badge
+        const badge = document.getElementById('agent-requests-count');
+        if (badge) {
+          badge.textContent = DistributorState.pendingAgents.length;
+        }
       }
 
       if (!DistributorState.pendingAgents.length) {
-        list.innerHTML = '<div style="padding:12px; border-radius:10px; background:var(--soft,#f6f6f6); font-size:13px; opacity:.75;">No pending agent requests.</div>';
+        list.innerHTML = '<div style="padding:12px; border-radius:10px; background:rgba(239,233,222,0.03); font-size:13px; color:rgba(239,233,222,0.3);">No pending agent requests.</div>';
         return;
       }
 
@@ -349,17 +384,17 @@
         const name = profileDisplayName(profile, request.agent_id);
 
         return `
-          <div class="distributor-agent-request" style="padding:12px; border:1px solid var(--line,#ddd); border-radius:10px; margin-bottom:8px;">
+          <div style="padding:12px; border:1px solid var(--line); border-radius:10px; margin-bottom:8px; background:var(--ink-2);">
             <div style="display:flex; justify-content:space-between; gap:10px;">
               <div>
-                <strong>${escapeHTML(name)}</strong>
-                <div style="font-size:12px; opacity:.7; margin-top:4px;">Requested ${escapeHTML(formatDate(request.created_at))}</div>
+                <strong style="color:var(--paper);">${escapeHTML(name)}</strong>
+                <div style="font-size:12px; color:rgba(239,233,222,0.4); margin-top:4px;">Requested ${escapeHTML(formatDate(request.created_at))}</div>
               </div>
-              <span style="font-size:11px; padding:4px 7px; border-radius:999px; background:var(--soft,#f3f4f6);">Pending</span>
+              <span style="font-size:11px; padding:4px 10px; border-radius:999px; background:rgba(200,138,52,0.12); color:var(--brass-bright);">Pending</span>
             </div>
             <div style="display:flex; gap:8px; margin-top:12px;">
-              <button type="button" class="submit-btn" style="flex:1;margin:0;" onclick="approveDistributorAgent('${request.id}')">Approve</button>
-              <button type="button" class="cancel-btn" style="flex:1;margin:0;" onclick="declineDistributorAgent('${request.id}')">Decline</button>
+              <button type="button" class="btn btn-success" style="flex:1;margin:0; padding:8px 12px; font-size:12px; background:var(--ok); color:#fff; border:none; border-radius:8px; cursor:pointer;" onclick="approveDistributorAgent('${request.id}')">✓ Approve</button>
+              <button type="button" class="btn btn-danger" style="flex:1;margin:0; padding:8px 12px; font-size:12px; background:var(--stamp); color:#fff; border:none; border-radius:8px; cursor:pointer;" onclick="declineDistributorAgent('${request.id}')">✕ Decline</button>
             </div>
           </div>
         `;
@@ -367,7 +402,7 @@
 
     } catch (error) {
       console.error("Load pending agents failed:", error);
-      list.innerHTML = '<div style="padding:12px; border-radius:10px; background:var(--soft,#f6f6f6); color:var(--danger,#b42318); font-size:13px;">Unable to load agent requests.</div>';
+      list.innerHTML = '<div style="padding:12px; border-radius:10px; background:rgba(239,233,222,0.03); color:var(--stamp-bright); font-size:13px;">Unable to load agent requests.</div>';
       setStatus(error.message || "Unable to load agent requests.", "error");
     }
   }
@@ -403,10 +438,20 @@
 
       if (count) {
         count.textContent = DistributorState.acceptedAgents.length;
+        
+        // Update my agents count in network links
+        const myAgentsCount = document.getElementById('my-agents-count');
+        if (myAgentsCount) {
+          myAgentsCount.textContent = DistributorState.acceptedAgents.length;
+        }
+        const myAgentsSub = document.getElementById('my-agents-sub');
+        if (myAgentsSub) {
+          myAgentsSub.textContent = `${DistributorState.acceptedAgents.length} active • 0 pending`;
+        }
       }
 
       if (!DistributorState.acceptedAgents.length) {
-        list.innerHTML = '<div style="padding:12px; border-radius:10px; background:var(--soft,#f6f6f6); font-size:13px; opacity:.75;">No approved agents yet.</div>';
+        list.innerHTML = '<div style="padding:12px; border-radius:10px; background:rgba(239,233,222,0.03); font-size:13px; color:rgba(239,233,222,0.3);">No approved agents yet.</div>';
         return;
       }
 
@@ -418,13 +463,13 @@
         const name = profileDisplayName(profile, attachment.agent_id);
 
         return `
-          <div style="padding:12px; border:1px solid var(--line,#ddd); border-radius:10px; margin-bottom:8px;">
+          <div style="padding:12px; border:1px solid var(--line); border-radius:10px; margin-bottom:8px; background:var(--ink-2);">
             <div style="display:flex; justify-content:space-between; gap:10px;">
               <div>
-                <strong>${escapeHTML(name)}</strong>
-                <div style="font-size:12px; opacity:.7; margin-top:4px;">Attached ${escapeHTML(formatDate(attachment.created_at))}</div>
+                <strong style="color:var(--paper);">${escapeHTML(name)}</strong>
+                <div style="font-size:12px; color:rgba(239,233,222,0.4); margin-top:4px;">Attached ${escapeHTML(formatDate(attachment.created_at))}</div>
               </div>
-              <span style="font-size:11px; padding:4px 7px; border-radius:999px; background:var(--soft,#f3f4f6);">Active</span>
+              <span style="font-size:11px; padding:4px 10px; border-radius:999px; background:rgba(63,122,78,0.12); color:var(--ok);">Active</span>
             </div>
           </div>
         `;
@@ -432,7 +477,7 @@
 
     } catch (error) {
       console.error("Load accepted agents failed:", error);
-      list.innerHTML = '<div style="padding:12px; border-radius:10px; background:var(--soft,#f6f6f6); color:var(--danger,#b42318); font-size:13px;">Unable to load agents.</div>';
+      list.innerHTML = '<div style="padding:12px; border-radius:10px; background:rgba(239,233,222,0.03); color:var(--stamp-bright); font-size:13px;">Unable to load agents.</div>';
     }
   }
 
@@ -466,10 +511,22 @@
 
       if (count) {
         count.textContent = DistributorState.buyers.length;
+        
+        // Update my buyers count in network links
+        const myBuyersCount = document.getElementById('my-buyers-count');
+        if (myBuyersCount) {
+          myBuyersCount.textContent = DistributorState.buyers.length;
+        }
+        const myBuyersSub = document.getElementById('my-buyers-sub');
+        if (myBuyersSub) {
+          const activeBuyers = DistributorState.buyers.filter(r => r.status === 'active').length;
+          const pendingBuyers = DistributorState.buyers.filter(r => r.status === 'pending').length;
+          myBuyersSub.textContent = `${activeBuyers} active • ${pendingBuyers} pending`;
+        }
       }
 
       if (!DistributorState.buyers.length) {
-        list.innerHTML = '<div style="padding:12px; border-radius:10px; background:var(--soft,#f6f6f6); font-size:13px; opacity:.75;">No buyer relationships yet.</div>';
+        list.innerHTML = '<div style="padding:12px; border-radius:10px; background:rgba(239,233,222,0.03); font-size:13px; color:rgba(239,233,222,0.3);">No buyer relationships yet.</div>';
         return;
       }
 
@@ -482,22 +539,22 @@
         const status = relationship.status || "unknown";
 
         return `
-          <div style="padding:12px; border:1px solid var(--line,#ddd); border-radius:10px; margin-bottom:8px;">
+          <div style="padding:12px; border:1px solid var(--line); border-radius:10px; margin-bottom:8px; background:var(--ink-2);">
             <div style="display:flex; justify-content:space-between; gap:10px;">
               <div>
-                <strong>${escapeHTML(name)}</strong>
-                <div style="font-size:12px; opacity:.7; margin-top:4px;">Relationship created ${escapeHTML(formatDate(relationship.created_at))}</div>
+                <strong style="color:var(--paper);">${escapeHTML(name)}</strong>
+                <div style="font-size:12px; color:rgba(239,233,222,0.4); margin-top:4px;">Relationship created ${escapeHTML(formatDate(relationship.created_at))}</div>
               </div>
-              <span style="font-size:11px; padding:4px 7px; border-radius:999px; background:var(--soft,#f3f4f6); text-transform:capitalize;">${escapeHTML(status)}</span>
+              <span style="font-size:11px; padding:4px 10px; border-radius:999px; background:${status === 'active' ? 'rgba(63,122,78,0.12)' : 'rgba(200,138,52,0.12)'}; color:${status === 'active' ? 'var(--ok)' : 'var(--brass-bright)'}; text-transform:capitalize;">${escapeHTML(status)}</span>
             </div>
-            ${relationship.is_primary ? '<div style="margin-top:8px; font-size:11px; opacity:.7;">Primary relationship</div>' : ""}
+            ${relationship.is_primary ? '<div style="margin-top:8px; font-size:11px; color:var(--brass-bright);">◆ Primary relationship</div>' : ""}
           </div>
         `;
       }).join("");
 
     } catch (error) {
       console.error("Load buyers failed:", error);
-      list.innerHTML = '<div style="padding:12px; border-radius:10px; background:var(--soft,#f6f6f6); color:var(--danger,#b42318); font-size:13px;">Unable to load buyer relationships.</div>';
+      list.innerHTML = '<div style="padding:12px; border-radius:10px; background:rgba(239,233,222,0.03); color:var(--stamp-bright); font-size:13px;">Unable to load buyer relationships.</div>';
     }
   }
 
@@ -512,7 +569,7 @@
     }
 
     DistributorState.processingAgentId = attachmentId;
-    setStatus("Approving agent attachment...");
+    setStatus("Approving agent attachment...", "success");
 
     try {
       const { data, error } = await window.sb
@@ -532,7 +589,7 @@
         throw new Error("The agent request could not be approved. It may have already been processed.");
       }
 
-      setStatus("Agent attachment approved.", "success");
+      setStatus("✅ Agent attachment approved.", "success");
       await refreshDistributorDashboard();
 
     } catch (error) {
@@ -613,6 +670,206 @@
 
 
   // =========================================================================
+  // INVITE BUYER FUNCTIONS (NEW)
+  // =========================================================================
+
+  function openInviteBuyerModal() {
+    const modal = document.getElementById('invite-buyer-modal');
+    if (modal) {
+      modal.classList.add('active');
+      const searchInput = document.getElementById('invite-buyer-search');
+      if (searchInput) {
+        searchInput.value = '';
+      }
+      const resultsContainer = document.getElementById('invite-buyer-results');
+      if (resultsContainer) {
+        resultsContainer.innerHTML = '<div style="color:rgba(239,233,222,0.3);font-size:12px;padding:8px;">Type to search for buyers</div>';
+      }
+      const statusEl = document.getElementById('invite-buyer-status');
+      if (statusEl) {
+        statusEl.textContent = '';
+      }
+    }
+  }
+
+  function closeInviteBuyerModal() {
+    const modal = document.getElementById('invite-buyer-modal');
+    if (modal) {
+      modal.classList.remove('active');
+      const statusEl = document.getElementById('invite-buyer-status');
+      if (statusEl) {
+        statusEl.textContent = '';
+      }
+    }
+  }
+
+  async function searchBuyersForInvite() {
+    const searchInput = document.getElementById('invite-buyer-search');
+    const resultsContainer = document.getElementById('invite-buyer-results');
+    
+    if (!searchInput || !resultsContainer) return;
+    
+    const query = searchInput.value.trim();
+    
+    if (query.length < 2) {
+      resultsContainer.innerHTML = '<div style="color:rgba(239,233,222,0.3);font-size:12px;padding:8px;">Type at least 2 characters to search</div>';
+      return;
+    }
+    
+    try {
+      const { data: buyers, error } = await window.sb
+        .from('profiles')
+        .select('id, full_name, business_name, location, category')
+        .eq('role', 'buyer')
+        .or(`full_name.ilike.%${query}%, business_name.ilike.%${query}%`)
+        .limit(10);
+      
+      if (error) throw error;
+      
+      if (!buyers || buyers.length === 0) {
+        resultsContainer.innerHTML = '<div style="color:rgba(239,233,222,0.3);font-size:12px;padding:8px;">No buyers found</div>';
+        return;
+      }
+      
+      resultsContainer.innerHTML = buyers.map(buyer => `
+        <div style="
+          padding:12px;
+          border:1px solid var(--line);
+          border-radius:8px;
+          margin-bottom:8px;
+          cursor:pointer;
+          transition: all 0.15s;
+          display:flex;
+          justify-content:space-between;
+          align-items:center;
+          background:var(--ink-2);
+        " onclick="sendBuyerInvite('${buyer.id}')" 
+        onmouseover="this.style.borderColor='var(--brass)'" 
+        onmouseout="this.style.borderColor='var(--line)'">
+          <div>
+            <div style="font-weight:600;color:var(--paper);">
+              ${buyer.business_name || buyer.full_name || 'Buyer'}
+            </div>
+            <div style="font-size:11px;color:rgba(239,233,222,0.5);">
+              ${buyer.location || 'No location'} • ${buyer.category || 'General'}
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--brass-bright);font-weight:600;">+ Invite</div>
+        </div>
+      `).join('');
+      
+    } catch (err) {
+      console.error('Error searching buyers:', err);
+      resultsContainer.innerHTML = '<div style="color:var(--stamp-bright);font-size:12px;">Error searching. Please try again.</div>';
+    }
+  }
+
+  async function sendBuyerInvite(buyerId) {
+    if (!currentUser) {
+      alert('Please log in first');
+      return;
+    }
+    
+    try {
+      // Check if relationship already exists
+      const { data: existing, error: checkError } = await window.sb
+        .from('trade_relationships')
+        .select('id, status')
+        .eq('distributor_id', currentUser.id)
+        .eq('buyer_id', buyerId)
+        .maybeSingle();
+      
+      if (existing) {
+        const statusEl = document.getElementById('invite-buyer-status');
+        if (statusEl) {
+          if (existing.status === 'pending') {
+            statusEl.textContent = '⏳ Invite already pending';
+            statusEl.style.color = 'var(--brass-bright)';
+          } else if (existing.status === 'active') {
+            statusEl.textContent = '✅ Already connected with this buyer';
+            statusEl.style.color = 'var(--ok)';
+          }
+        }
+        return;
+      }
+      
+      // Create relationship
+      const { data, error } = await window.sb
+        .from('trade_relationships')
+        .insert({
+          distributor_id: currentUser.id,
+          buyer_id: buyerId,
+          status: 'pending',
+          created_by: currentUser.id
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      const statusEl = document.getElementById('invite-buyer-status');
+      if (statusEl) {
+        statusEl.textContent = '✅ Invite sent successfully!';
+        statusEl.style.color = 'var(--ok)';
+      }
+      
+      // Refresh data
+      setTimeout(() => {
+        closeInviteBuyerModal();
+        refreshDistributorDashboard();
+        if (typeof loadDistributorsAndBuyers === 'function') {
+          loadDistributorsAndBuyers();
+        }
+      }, 1500);
+      
+    } catch (err) {
+      console.error('Error sending invite:', err);
+      const statusEl = document.getElementById('invite-buyer-status');
+      if (statusEl) {
+        statusEl.textContent = '❌ Failed to send invite. Please try again.';
+        statusEl.style.color = 'var(--stamp)';
+      }
+    }
+  }
+
+
+  // =========================================================================
+  // ATTENTION CLICK HANDLER
+  // =========================================================================
+
+  function handleAttentionClick(type) {
+    switch(type) {
+      case 'buyer-requests':
+        showScreen('profile');
+        // Try to scroll to buyer requests section
+        setTimeout(() => {
+          const element = document.getElementById('my-relationship-card');
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            element.style.borderColor = 'var(--brass)';
+            setTimeout(() => {
+              element.style.borderColor = 'var(--line)';
+            }, 2000);
+          }
+        }, 300);
+        break;
+        
+      case 'agent-request':
+        showScreen('profile');
+        break;
+        
+      case 'inquiries':
+        showScreen('inquiries');
+        break;
+        
+      default:
+        console.warn('Unknown attention type:', type);
+        break;
+    }
+  }
+
+
+  // =========================================================================
   // INITIALIZATION
   // =========================================================================
 
@@ -637,7 +894,13 @@
       if (!isDistributorRole(user)) {
         const holder = getHolder();
         if (holder) {
-          holder.innerHTML = '';
+          holder.innerHTML = `
+            <div class="lock-banner">
+              <div class="lb-title">🔒 Distributor Tools</div>
+              <div class="lb-sub">Upgrade to a distributor account to access these tools.</div>
+              <button onclick="showScreen('upgrade')">Upgrade Now</button>
+            </div>
+          `;
         }
         return;
       }
@@ -701,6 +964,13 @@
   window.refreshDistributorDashboard = refreshDistributorDashboard;
   window.approveDistributorAgent = approveDistributorAgent;
   window.declineDistributorAgent = declineDistributorAgent;
+  
+  // New public functions
+  window.openInviteBuyerModal = openInviteBuyerModal;
+  window.closeInviteBuyerModal = closeInviteBuyerModal;
+  window.searchBuyersForInvite = searchBuyersForInvite;
+  window.sendBuyerInvite = sendBuyerInvite;
+  window.handleAttentionClick = handleAttentionClick;
 
 
   // =========================================================================
