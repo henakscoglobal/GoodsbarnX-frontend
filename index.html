@@ -239,7 +239,7 @@
       <!-- GREETING SECTION -->
       <div class="greeting-section">
         <div class="greeting">
-          Good morning, <span class="highlight">John</span> 🪙
+          Good morning, <span class="highlight" id="greeting-name">Loading...</span> 🪙
         </div>
         <div class="greeting-sub">
           Your trade network is active
@@ -249,7 +249,7 @@
       <!-- NETWORK STATS - Premium KPI Cards -->
       <div class="network-stats">
         <div class="stat-card">
-          <span class="number" id="stat-buyers">12</span>
+          <span class="number" id="stat-buyers">0</span>
           <span class="label">Buyers</span>
           <span class="status">
             <span class="status-dot"></span> Active
@@ -257,7 +257,7 @@
         </div>
 
         <div class="stat-card">
-          <span class="number" id="stat-distributors">3</span>
+          <span class="number" id="stat-distributors">0</span>
           <span class="label">Agents</span>
           <span class="status">
             <span class="status-dot"></span> Active
@@ -275,7 +275,7 @@
       <div class="attention-section">
         <div class="attention-header">
           <span class="title">⚠️ Needs your attention</span>
-          <a href="#" class="view-all">View all →</a>
+          <a href="#" class="view-all" onclick="showScreen('inquiries')">View all →</a>
         </div>
 
         <div class="attention-item" onclick="handleAttentionClick('buyer-requests')">
@@ -286,7 +286,7 @@
               <div class="sub">New buyers want to connect</div>
             </div>
           </div>
-          <span class="badge buyer">2</span>
+          <span class="badge buyer" id="buyer-requests-count">0</span>
           <span class="chevron">›</span>
         </div>
 
@@ -298,7 +298,7 @@
               <div class="sub">New agent wants to join</div>
             </div>
           </div>
-          <span class="badge agent">1</span>
+          <span class="badge agent" id="agent-requests-count">0</span>
           <span class="chevron">›</span>
         </div>
 
@@ -310,7 +310,7 @@
               <div class="sub">Buyers waiting for your response</div>
             </div>
           </div>
-          <span class="badge urgent">3</span>
+          <span class="badge urgent" id="unanswered-inquiries-count">0</span>
           <span class="chevron">›</span>
         </div>
       </div>
@@ -320,10 +320,10 @@
         <div class="network-link" onclick="showScreen('profile')">
           <div class="left">
             <span class="title">My Buyers</span>
-            <span class="sub">12 active • 2 pending</span>
+            <span class="sub" id="my-buyers-sub">0 active • 0 pending</span>
           </div>
           <div class="right">
-            <div class="count">12</div>
+            <div class="count" id="my-buyers-count">0</div>
             <div class="status"><span class="active-dot"></span> Active</div>
           </div>
           <span class="link-chevron">›</span>
@@ -332,15 +332,18 @@
         <div class="network-link" onclick="showScreen('profile')">
           <div class="left">
             <span class="title">My Agents</span>
-            <span class="sub">3 active • 1 pending</span>
+            <span class="sub" id="my-agents-sub">0 active • 0 pending</span>
           </div>
           <div class="right">
-            <div class="count">3</div>
+            <div class="count" id="my-agents-count">0</div>
             <div class="status"><span class="active-dot"></span> Active</div>
           </div>
           <span class="link-chevron">›</span>
         </div>
       </div>
+
+      <!-- DISTRIBUTOR TOOLS HOLDER -->
+      <div id="distributor-tools-holder"></div>
 
       <!-- SEARCH - Elevated -->
       <div class="search-bar-wrap">
