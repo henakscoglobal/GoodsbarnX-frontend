@@ -38,10 +38,33 @@ let cart = JSON.parse(localStorage.getItem("goodsbarnx_cart") || "[]");
       await loadCurrentUser();
       document.getElementById("auth-shell").classList.add("hidden");
       document.getElementById("app").style.display = "block";
+      
+      // UPDATE: Set greeting after user loads
+      updateGreeting();
+      
+      // UPDATE: Show distributor tools if user is distributor
+      if (currentUser && currentUser.role === 'distributor') {
+        if (typeof openDistributorTools === 'function') {
+          openDistributorTools();
+        }
+      }
     }
     
     await loadDistributorsAndBuyers();
     updateCartBadge();
+    
+    // UPDATE: Load real data after distributors and buyers are loaded
+    setTimeout(() => {
+      if (typeof loadDistributors === 'function') {
+        loadDistributors();
+      }
+      if (typeof loadBuyers === 'function') {
+        loadBuyers();
+      }
+      if (typeof updateStats === 'function') {
+        updateStats();
+      }
+    }, 500);
     
     console.log("GoodsbarnX initialized successfully");
   } catch (error) {
@@ -72,5 +95,22 @@ function renderHistory() {
     </div>
   `).join("");
 }
+
+// ---------- UPDATE: Greeting function ----------
+function updateGreeting() {
+  const greetingElement = document.getElementById('greeting-name');
+  if (!greetingElement) return;
+  
+  if (currentUser) {
+    // Show business name for distributors, full name for others
+    const displayName = currentUser.business_name || currentUser.full_name || 'User';
+    greetingElement.textContent = displayName;
+  } else {
+    greetingElement.textContent = 'User';
+  }
+}
+
+// Make updateGreeting globally available
+window.updateGreeting = updateGreeting;
 
 console.log("GoodsbarnX app loaded successfully");
