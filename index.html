@@ -1281,6 +1281,94 @@ nav.bottom{
 <script>
 /* Build 1.1.1 integration-mode hook: keeps the prototype untouched by default. */
 </script>
+
+<script>
+/* GoodsbarnX V1.1.3 — Invite Buyer compatibility bridge.
+   Preserves the prototype's existing Add Buyer flow. If the host app already
+   provides the modal/functions, nothing is replaced. If missing, the exact
+   prototype sheet is restored and wired to the existing Supabase schema. */
+(function(){
+  function ensureBuyerModal(){
+    if(document.getElementById('add-buyer-modal')) return;
+    var wrap=document.createElement('div');
+    wrap.innerHTML=`
+      <div class="sheet-overlay" id="add-buyer-modal" style="position:fixed;inset:0;z-index:99999;display:none;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.58);">
+        <div class="sheet" onclick="event.stopPropagation()" style="width:min(100%,520px);border-radius:22px 22px 0 0;padding:24px;box-sizing:border-box;">
+          <div class="sheet-handle"></div>
+          <h3>Add Buyer</h3>
+          <div class="sub">Distributors and accepted supplier agents can invite an existing buyer. The buyer must accept before the connection becomes active.</div>
+          <div class="field"><label>Buyer's phone number</label><input type="tel" id="add-buyer-phone" placeholder="Must match their GoodsbarnX account"></div>
+          <button class="submit-btn" onclick="submitAddBuyer()">Send connection request</button>
+          <button class="cancel-btn" onclick="closeAddBuyerModal()">Cancel</button>
+          <div class="status-msg" id="add-buyer-status-msg"></div>
+        </div>
+      </div>`;
+    var node=wrap.firstElementChild;
+    document.body.appendChild(node);
+    node.addEventListener('click',function(e){if(e.target===node)closeAddBuyerModal();});
+  }
+
+  if(typeof window.openAddBuyerModal!=='function'){
+    window.openAddBuyerModal=function(){
+      ensureBuyerModal();
+      var phone=document.getElementById('add-buyer-phone');
+      var status=document.getElementById('add-buyer-status-msg');
+      if(phone) phone.value='';
+      if(status) status.innerText='';
+      var modal=document.getElementById('add-buyer-modal');
+      if(modal){ modal.style.display='flex'; modal.classList.add('active'); }
+      if(phone) setTimeout(function(){phone.focus();},80);
+    };
+  }
+
+  if(typeof window.closeAddBuyerModal!=='function'){
+    window.closeAddBuyerModal=function(){
+      var modal=document.getElementById('add-buyer-modal');
+      if(modal){modal.classList.remove('active');modal.style.display='none';}
+    };
+  }
+
+  if(typeof window.submitAddBuyer!=='function'){
+    window.submitAddBuyer=async function(){
+      var phoneEl=document.getElementById('add-buyer-phone');
+      var statusEl=document.getElementById('add-buyer-status-msg');
+      var phone=(phoneEl?.value||'').trim();
+      if(!phone){if(statusEl)statusEl.innerText='Please enter a phone number.';return;}
+      var u=null; try{u=currentUser;}catch(e){};
+      if(!u||!u.id){if(statusEl)statusEl.innerText='Your distributor session is not ready. Please refresh and try again.';return;}
+      if(typeof sb==='undefined'){if(statusEl)statusEl.innerText='Connection service is not ready. Please refresh and try again.';return;}
+      if(statusEl)statusEl.innerText='Checking buyer account…';
+      var lookup=await sb.from('profiles').select('id, role').eq('phone',phone).eq('role','buyer').maybeSingle();
+      if(lookup.error){
+        if(statusEl)statusEl.innerText='Could not verify that buyer account. Please try again.';
+        return;
+      }
+      if(!lookup.data){
+        if(statusEl)statusEl.innerText="No buyer account found with that phone number yet. They'll need to sign up first.";
+        return;
+      }
+      if(lookup.data.id===u.id){
+        if(statusEl)statusEl.innerText='You cannot connect yourself as a buyer.';
+        return;
+      }
+      if(statusEl)statusEl.innerText='Sending connection request…';
+      var ins=await sb.from('buyer_locks').insert({buyer_id:lookup.data.id,distributor_id:u.id,status:'pending_consent'});
+      if(ins.error){
+        if(statusEl)statusEl.innerText='Could not send request. They may already be connected elsewhere.';
+        return;
+      }
+      if(statusEl)statusEl.innerText="Sent! They'll see this request next time they open GoodsbarnX.";
+      setTimeout(function(){
+        window.closeAddBuyerModal();
+        if(typeof window.gbxV111Refresh==='function')window.gbxV111Refresh();
+      },1800);
+    };
+  }
+
+  // If the base prototype already has the modal but uses class-only visibility,
+  // leave its CSS/markup untouched. The bridge only supplies missing behavior.
+})();
+</script>
 </body>
 </html>
 <style id="goodsbarnx-distributor-v112-truth">
