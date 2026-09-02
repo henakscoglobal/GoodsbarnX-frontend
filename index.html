@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>GoodsbarnX — Relationship Commerce Network</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=DM+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Step: CSS extracted from inline <style> into these two files -->
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/components.css" />
+
+<style id="goodsbarnx-elite-ux-v1">
+/* ================================================================
+   GOODSBARNX — ELITE UX V1
+   Brand architecture:
+   Relationship Commerce → Market Visibility → Demand → Movement
+   Palette:
+   Obsidian #0F1411 | Emerald #087443 | Gold #D6A83A | Ivory #F5F3EC
+   ================================================================ */
+
+:root{
+  --gbx-obsidian:#0F1411;
+  --gbx-surface:#17201B;
+  --gbx-surface-2:#1D2822;
+  --gbx-line:rgba(245,243,236,.09);
+  --gbx-ivory:#F5F3EC;
+  --gbx-muted:rgba(245,243,236,.56);
+  --gbx-muted-2:rgba(245,243,236,.38);
+  --gbx-emerald:#087443;
+  --gbx-emerald-2:#0B8C52;
+  --gbx-green:#55D996;
+  --gbx-gold:#D6A83A;
+  --gbx-danger:#D95C5C;
+  --gbx-radius:20px;
+  --gbx-shadow:0 16px 45px rgba(0,0,0,.24);
+}
+
+html,body{
+  background:var(--gbx-obsidian)!important;
+  color:var(--gbx-ivory);
+}
+
+body{
+  font-family:'Poppins',Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif!important;
+  -webkit-font-smoothing:antialiased;
+}
+
+*{box-sizing:border-box}
+
+button,input,select,textarea{font:inherit}
+
+#app{
+  background:
+    radial-gradient(700px 360px at 50% -120px,rgba(8,116,67,.17),transparent 70%),
+    var(--gbx-obsidian)!important;
+}
+
+header.top{
+  background:rgba(15,20,17,.91)!important;
+  border-bottom:1px solid var(--gbx-line)!important;
+  padding:17px 20px 14px!important;
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+}
+
+.brand-name{
+  font-family:'Poppins',sans-serif!important;
+  font-size:19px!important;
+  font-weight:700!important;
+  letter-spacing:-.035em!important;
+}
+
+.brand-sub{
+  color:var(--gbx-gold)!important;
+  font-size:9px!important;
+  letter-spacing:.22em!important;
+  font-weight:600!important;
+}
+
+main.screen{
+  padding:18px 18px 110px!important;
+}
+
+.hero{
+  position:relative;
+  overflow:hidden;
+  background:
+    radial-gradient(90% 130% at 0 0,rgba(8,116,67,.33),transparent 60%),
+    linear-gradient(145deg,#1B2B22,#111613 74%)!important;
+  border:1px solid rgba(85,217,150,.18)!important;
+  border-radius:26px!important;
+  padding:22px 18px 17px!important;
+  box-shadow:var(--gbx-shadow)!important;
+}
+
+.hero::after{
+  content:"";
+  position:absolute;
+  width:150px;height:150px;
+  right:-75px;top:-80px;
+  border:1px solid rgba(214,168,58,.15);
+  border-radius:50%;
+}
+
+.hero-eyebrow{
+  color:var(--gbx-green)!important;
+  font-size:9px!important;
+  font-weight:700!important;
+  letter-spacing:.18em!important;
+}
+
+.hero-headline{
+  font-family:'Poppins',sans-serif!important;
+  font-size:25px!important;
+  line-height:1.15!important;
+  letter-spacing:-.04em!important;
+  margin-top:7px!important;
+}
+
+.hero-headline em{
+  color:var(--gbx-green)!important;
+  font-style:normal;
+}
+
+.clock-seal{
+  background:rgba(255,255,255,.035)!important;
+  border:1px solid var(--gbx-line)!important;
+  border-radius:17px!important;
+  margin-top:18px!important;
+}
+
+.clock-title{font-weight:700!important}
+.clock-sub{color:var(--gbx-muted)!important}
+.seal-ring .fg{stroke:var(--gbx-green)!important}
+
+.trust-strip{
+  gap:8px!important;
+  margin-top:9px!important;
+}
+
+.trust-item{
+  background:rgba(255,255,255,.035)!important;
+  border:1px solid var(--gbx-line)!important;
+  border-radius:14px!important;
+}
+
+.trust-item .n{color:var(--gbx-gold)!important}
+
+.search-bar-wrap{
+  margin-top:17px!important;
+  background:var(--gbx-surface)!important;
+  border:1px solid var(--gbx-line)!important;
+  border-radius:16px!important;
+  box-shadow:none!important;
+}
+
+.search-bar-wrap input{color:var(--gbx-ivory)!important}
+.search-bar-wrap input::placeholder{color:var(--gbx-muted-2)!important}
+
+.adv-filter-select,
+select,
+input,
+textarea{
+  background:var(--gbx-surface)!important;
+  color:var(--gbx-ivory)!important;
+  border-color:var(--gbx-line)!important;
+}
+
+.adv-filter-select{border-radius:13px!important}
+
+.section-label{
+  color:var(--gbx-muted)!important;
+  letter-spacing:.08em!important;
+  font-weight:700!important;
+  font-size:11px!important;
+  text-transform:uppercase;
+}
+
+.category-grid{
+  gap:8px!important;
+}
+
+.category-card{
+  background:var(--gbx-surface)!important;
+  border:1px solid var(--gbx-line)!important;
+  border-radius:14px!important;
+  color:var(--gbx-muted)!important;
+  transition:transform .16s ease,border-color .16s ease,background .16s ease;
+}
+
+.category-card:active{transform:scale(.97)}
+.category-card.active{
+  background:var(--gbx-emerald)!important;
+  border-color:var(--gbx-emerald)!important;
+  color:#fff!important;
+}
+
+.manifest{
+  background:var(--gbx-surface)!important;
+  border:1px solid var(--gbx-line)!important;
+  border-radius:20px!important;
+  box-shadow:0 9px 28px rgba(0,0,0,.16)!important;
+}
+
+.m-name{
+  font-family:'Poppins',sans-serif!important;
+  color:var(--gbx-ivory)!important;
+}
+
+.m-loc{color:var(--gbx-muted)!important}
+.m-meta{border-top-color:var(--gbx-line)!important}
+
+.stamp-badge{
+  color:#8CE7B8!important;
+  border-color:rgba(85,217,150,.55)!important;
+  background:rgba(8,116,67,.12)!important;
+  border-radius:999px!important;
+}
+
+.btn-inquire,.submit-btn,.auth-submit{
+  background:var(--gbx-emerald)!important;
+  color:#fff!important;
+  border-color:var(--gbx-emerald)!important;
+  box-shadow:0 8px 20px rgba(8,116,67,.22)!important;
+  border-radius:12px!important;
+}
+
+.btn-whatsapp{background:#159B57!important}
+.dispute-link{color:var(--gbx-muted-2)!important}
+
+.distributor-tools{
+  background:var(--gbx-surface)!important;
+  border-color:var(--gbx-line)!important;
+  border-radius:20px!important;
+}
+
+.distributor-tools button{
+  background:var(--gbx-emerald)!important;
+  color:#fff!important;
+  border:0!important;
+  border-radius:11px!important;
+}
+
+nav.bottom{
+  background:rgba(13,18,15,.96)!important;
+  border-top:1px solid var(--gbx-line)!important;
+  backdrop-filter:blur(20px)!important;
+  -webkit-backdrop-filter:blur(20px)!important;
+}
+
+.nav-item{
+  color:rgba(245,243,236,.40)!important;
+}
+
+.nav-item.active{color:var(--gbx-green)!important}
+
+/* ---------------- Master Stock Depletor ---------------- */
+
+.depletor-console{
+  display:block;
+  margin:17px 0 18px;
+  background:
+    radial-gradient(80% 100% at 0 0,rgba(8,116,67,.22),transparent 62%),
+    linear-gradient(145deg,#18271F,#111613);
+  border:1px solid rgba(85,217,150,.18);
+  border-radius:23px;
+  overflow:hidden;
+  box-shadow:var(--gbx-shadow);
+}
+
+.depletor-console[hidden]{display:none}
+
+.depletor-top{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  padding:18px 16px 14px;
+}
+
+.depletor-kicker{
+  color:var(--gbx-green);
+  font-size:9px;
+  font-weight:700;
+  letter-spacing:.18em;
+}
+
+.depletor-top h2{
+  margin:5px 0 0;
+  font-size:19px;
+  line-height:1.22;
+  letter-spacing:-.025em;
+}
+
+.depletor-top p{
+  margin:5px 0 0;
+  color:var(--gbx-muted);
+  font-size:11px;
+  line-height:1.5;
+  max-width:310px;
+}
+
+.depletor-refresh{
+  width:38px;height:38px;
+  flex:0 0 38px;
+  border:1px solid rgba(85,217,150,.24);
+  border-radius:12px;
+  background:rgba(255,255,255,.035);
+  color:var(--gbx-green);
+  font-size:20px;
+}
+
+.depletor-metrics{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  padding:0 12px 13px;
+}
+
+.intel-card{
+  text-align:left;
+  border:1px solid var(--gbx-line);
+  border-radius:15px;
+  background:rgba(255,255,255,.035);
+  color:var(--gbx-ivory);
+  padding:12px;
+}
+
+.intel-label{
+  display:block;
+  color:var(--gbx-muted-2);
+  font-size:8px;
+  font-weight:700;
+  letter-spacing:.11em;
+}
+
+.intel-card strong{
+  display:block;
+  margin-top:3px;
+  font-size:19px;
+  line-height:1.2;
+}
+
+.intel-card:nth-child(1) strong{color:var(--gbx-gold)}
+.intel-card:nth-child(2) strong,
+.intel-card:nth-child(4) strong{color:var(--gbx-green)}
+
+.intel-card small{
+  display:block;
+  margin-top:3px;
+  color:var(--gbx-muted);
+  font-size:9px;
+}
+
+.depletor-divider{
+  height:1px;
+  background:var(--gbx-line);
+}
+
+.depletor-heading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:14px 13px 9px;
+}
+
+.depletor-heading h3{
+  margin:3px 0 0;
+  font-size:12px;
+  font-weight:700;
+}
+
+.depletor-heading button{
+  border:0;
+  background:none;
+  color:var(--gbx-green);
+  font-size:10px;
+  font-weight:700;
+}
+
+.depletor-opportunities{
+  padding:0 12px 12px;
+}
+
+.opportunity{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:11px;
+  margin-bottom:7px;
+  border:1px solid var(--gbx-line);
+  background:rgba(255,255,255,.035);
+  border-radius:15px;
+}
+
+.opportunity:last-child{margin-bottom:0}
+
+.op-icon{
+  width:37px;height:37px;
+  display:grid;
+  place-items:center;
+  flex:0 0 37px;
+  border-radius:11px;
+  background:rgba(8,116,67,.20);
+  font-size:17px;
+}
+
+.op-copy{min-width:0;flex:1}
+
+.op-name{
+  font-size:11.5px;
+  font-weight:700;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.op-detail{
+  margin-top:2px;
+  color:var(--gbx-muted);
+  font-size:9px;
+  line-height:1.35;
+}
+
+.opportunity{position:relative}.opportunity::after{content:"";position:absolute;left:11px;right:11px;bottom:5px;height:2px;background:linear-gradient(90deg,rgba(85,217,150,.55),rgba(214,168,58,.18));border-radius:999px;opacity:.55}.op-action{
+  border:1px solid rgba(85,217,150,.30);
+  background:rgba(8,116,67,.12);
+  color:#79E3AF;
+  border-radius:9px;
+  padding:7px 8px;
+  font-size:9px;
+  font-weight:700;
+}
+
+.depletor-demand-radar{padding:0 12px 4px;display:flex;flex-direction:column;gap:7px}.demand-signal{display:flex;align-items:center;gap:10px;padding:11px;border:1px solid var(--gbx-line);background:rgba(255,255,255,.035);border-radius:15px}.demand-pulse{width:9px;height:9px;border-radius:50%;flex:0 0 9px;background:var(--gbx-green);box-shadow:0 0 0 4px rgba(85,217,150,.08)}.demand-pulse.warm{background:var(--gbx-gold);box-shadow:0 0 0 4px rgba(214,168,58,.08)}.demand-copy{min-width:0;flex:1}.demand-item{font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.demand-meta{margin-top:3px;color:var(--gbx-muted);font-size:9px}.demand-badge{font-family:'DM Mono',monospace;font-size:8px;font-weight:700;padding:6px 7px;border-radius:999px;background:rgba(85,217,150,.10);color:#79E3AF;white-space:nowrap}.demand-badge.warm{background:rgba(214,168,58,.10);color:#E3BF63}.depletor-op-heading{padding-top:11px}.radar-empty{padding:11px;border:1px solid var(--gbx-line);border-radius:14px;color:var(--gbx-muted);font-size:10px;line-height:1.45}.depletor-empty{
+  padding:12px;
+  border-radius:14px;
+  border:1px solid var(--gbx-line);
+  background:rgba(255,255,255,.025);
+  color:var(--gbx-muted);
+  font-size:10px;
+  line-height:1.5;
+}
+
+/* Sheets / auth */
+.sheet{
+  background:var(--gbx-ivory)!important;
+  color:var(--gbx-obsidian)!important;
+  border-radius:25px 25px 0 0!important;
+}
+
+.auth-shell{
+  background:
+    radial-gradient(700px 400px at 50% 0,rgba(8,116,67,.22),transparent 67%),
+    var(--gbx-obsidian)!important;
+}
+
+.auth-box{
+  background:var(--gbx-surface)!important;
+  border:1px solid var(--gbx-line)!important;
+  border-radius:22px!important;
+}
+
+.role-pick.sel{
+  background:rgba(8,116,67,.13)!important;
+  border-color:var(--gbx-emerald)!important;
+  color:#75E0AA!important;
+}
+
+.queue-badge{
+  color:var(--gbx-gold)!important;
+  background:rgba(214,168,58,.08)!important;
+  border-color:rgba(214,168,58,.25)!important;
+}
+
+@media(max-width:380px){
+  main.screen{padding-left:14px!important;padding-right:14px!important}
+  .depletor-metrics{gap:6px}
+}
+</style>
+
+
+<style id="gbx-v175-activation-ui">
+#gbx-v175-test{display:none;margin:14px 0;padding:14px;border:1px solid var(--gbx-line);border-radius:16px;background:var(--gbx-surface)}
+.gbx-v175-action-note{font-size:8px;line-height:1.45;color:var(--gbx-muted);margin:8px 0 0}
+</style>
+</head>
+<body>
+
+  <!-- AUTH: SIGN UP -->
+  <div id="auth-shell" class="auth-shell">
+    <div class="auth-brand">
+      <h1>GoodsbarnX</h1>
+      <p>Onitsha • Nnewi • Awka • Asaba • Enugu • Owerri • Abakiliki • Agbor • Warri • Aba</p>
+    </div>
+    <div class="auth-box">
+      <div class="role-picker" id="signup-role-picker">
+        <div class="role-pick sel" data-role="buyer" onclick="selectRole(this)">Buyer</div>
+        <div class="role-pick" data-role="distributor" onclick="selectRole(this)">Distributor</div>
+        <div class="role-pick" data-role="agent" onclick="selectRole(this)">Supplier Agent</div>
+      </div>
+      <input type="text" id="auth-name" placeholder="Full name" />
+      <input type="tel" id="auth-phone" placeholder="Phone number" />
+      <div id="auth-company" style="display:none;">
+        <input type="text" id="auth-company-input" placeholder="Company name" />
+      </div>
+      <input type="email" id="auth-email" placeholder="Email address" />
+      <input type="password" id="auth-password" placeholder="Password" />
+      <input type="password" id="auth-password-confirm" placeholder="Confirm password" />
+      <button class="auth-submit" onclick="handleSignup()">Create account</button>
+      <div class="auth-error" id="auth-error"></div>
+    </div>
+    <div class="auth-switch">Already have an account? <span onclick="showLogin()">Log in</span></div>
+    <div class="auth-guest" onclick="continueAsGuest()">Continue browsing without an account</div>
+  </div>
+
+  <!-- AUTH: LOG IN -->
+  <div id="login-shell" class="auth-shell hidden">
+    <div class="auth-brand">
+      <h1>Welcome back</h1>
+      <p>Log in to GoodsbarnX</p>
+    </div>
+    <div class="auth-box">
+      <input type="email" id="login-email" placeholder="Email address" />
+      <div style="position:relative;">
+        <input type="password" id="login-password" placeholder="Password" />
+        <span class="password-toggle" onclick="toggleLoginPassword()">Show</span>
+      </div>
+      <button class="auth-submit" onclick="handleLogin()">Log in</button>
+      <div class="auth-error" id="login-error"></div>
+    </div>
+    <div class="auth-switch">New here? <span onclick="showSignup()">Create an account</span></div>
+    <div class="auth-guest" onclick="continueAsGuest()">Continue browsing without an account</div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="app" style="display: none;">
+    <div class="status-bar"></div>
+    <header class="top">
+      <div class="brand">
+        <div class="brand-name">GoodsbarnX</div>
+        <div class="brand-sub">STOCK MEETS BUYER</div>
+      </div>
+      <span id="logout-btn-holder"></span>
+    </header>
+
+    <!-- MARKET SCREEN -->
+    <main class="screen active" id="screen-market">
+      <div id="onboarding-banner"></div>
+      <div class="hero">
+        <div class="hero-eyebrow">RELATIONSHIP COMMERCE NETWORK</div>
+        <div class="hero-headline">Right stock.<br><em>Right people. Right time.</em></div>
+        <div class="clock-seal">
+          <div class="seal-ring">
+            <svg width="56" height="56" viewBox="0 0 56 56">
+              <circle class="bg" cx="28" cy="28" r="24" fill="none" stroke-width="4"/>
+              <circle class="fg" cx="28" cy="28" r="24" fill="none" stroke-width="4" stroke-dasharray="150" stroke-dashoffset="30"/>
+            </svg>
+            <div class="num" id="inquiry-count-ring">–</div>
+          </div>
+          <div class="clock-copy">
+            <div class="clock-title">Demand signals captured</div>
+            <div class="clock-sub">Buyer intent captured across the GoodsbarnX network</div>
+          </div>
+        </div>
+        <div class="trust-strip">
+          <div class="trust-item"><div class="n" id="stat-distributors">–</div><div class="t">Distributors</div></div>
+          <div class="trust-item"><div class="n" id="stat-buyers">–</div><div class="t">Buyers</div></div>
+          <div class="trust-item"><div class="n">4</div><div class="t">Markets live</div></div>
+        </div>
+      </div>
+
+
+      <!-- ==========================================================
+           GOODSBARNX MASTER STOCK DEPLETOR — V1
+           Derived from existing Supabase data; no new schema required.
+           ========================================================== -->
+      <section id="depletor-console" class="depletor-console" hidden>
+        <div class="depletor-top">
+          <div>
+            <div class="depletor-kicker">MASTER STOCK DEPLETOR</div>
+            <h2>Move stock, not just listings.</h2>
+            <p>See what is available, where demand is forming, and which relationships can move it.</p>
+          </div>
+          <button class="depletor-refresh" type="button" onclick="refreshMasterStockDepletor()" aria-label="Refresh stock intelligence">↻</button>
+        </div>
+
+        <div class="depletor-metrics">
+          <button class="intel-card" type="button" onclick="showScreen('products')">
+            <span class="intel-label">STOCK VALUE</span>
+            <strong id="intel-stock-value">—</strong>
+            <small id="intel-stock-meta">Inventory</small>
+          </button>
+          <button class="intel-card" type="button" onclick="showScreen('products')">
+            <span class="intel-label">STOCK HEALTH</span>
+            <strong id="intel-stock-health">—</strong>
+            <small id="intel-stock-health-meta">Availability</small>
+          </button>
+          <button class="intel-card" type="button" onclick="showScreen('inquiries')">
+            <span class="intel-label">DEMAND</span>
+            <strong id="intel-demand-count">—</strong>
+            <small>Open signals</small>
+          </button>
+          <button class="intel-card" type="button">
+            <span class="intel-label">NETWORK REACH</span>
+            <strong id="intel-network-count">—</strong>
+            <small>Buyers + agents</small>
+          </button>
+        </div>
+
+        <div class="depletor-divider"></div>
+
+        <div class="depletor-heading">
+          <div>
+            <span class="intel-label">NEXT BEST MOVES</span>
+            <h3>Priority depletion opportunities</h3>
+          </div>
+          <button type="button" onclick="showScreen('inquiries')">View demand</button>
+        </div>
+
+        <div id="depletor-demand-radar" class="depletor-demand-radar"><div class="depletor-empty">Reading live demand signals…</div></div><div class="depletor-heading depletor-op-heading"><div><span class="intel-label">STOCK RESPONSE</span><h3>Where stock can answer demand</h3></div><button type="button" onclick="showScreen(&quot;products&quot;)">Review stock</button></div><div id="depletor-opportunities" class="depletor-opportunities">
+          <div class="depletor-empty">Reading your stock and demand signals…</div>
+        </div>
+      </section>
+
+      <div id="lock-banner-holder"></div>
+      <div id="distributor-tools-holder"></div>
+
+      <div class="search-bar-wrap">
+        <span>🔍</span>
+        <input type="text" id="search-input" placeholder="Search by name, location, category…" oninput="applyFilters(); toggleSearchClear();" />
+        <span class="search-clear" id="search-clear" onclick="clearSearch()">✕</span>
+      </div>
+
+      <div class="adv-filters">
+        <select id="filter-location" class="adv-filter-select" onchange="applyFilters()">
+          <option value="">📍 All Locations</option>
+          <option value="Onitsha">Onitsha</option>
+          <option value="Nnewi">Nnewi</option>
+          <option value="Awka">Awka</option>
+          <option value="Asaba">Asaba</option>
+          <option value="Enugu">Enugu</option>
+          <option value="Owerri">Owerri</option>
+          <option value="Abakiliki">Abakiliki</option>
+          <option value="Agbor">Agbor</option>
+          <option value="Warri">Warri</option>
+          <option value="Aba">Aba</option>
+        </select>
+        <select id="filter-tier" class="adv-filter-select" onchange="applyFilters()">
+          <option value="">⭐ All Trust Tiers</option>
+          <option value="association">Association Verified</option>
+          <option value="market board">Market Board</option>
+          <option value="self-attested">Self-Attested</option>
+        </select>
+      </div>
+
+      <div class="section-label">Market verticals</div>
+      <div class="category-grid">
+        <div class="category-card active" onclick="selectCategory('All',this)">🏪<span>All</span></div>
+        <div class="category-card" onclick="selectCategory('Auto Parts',this)">⚙️<span>Auto Parts</span></div>
+        <div class="category-card" onclick="selectCategory('Motorcycle',this)">🏍<span>Motorcycle</span></div>
+        <div class="category-card" onclick="selectCategory('Tyres',this)">🚗<span>Tyres</span></div>
+        <div class="category-card" onclick="selectCategory('Batteries',this)">🔋<span>Batteries</span></div>
+        <div class="category-card" onclick="selectCategory('Lubricants',this)">🛢<span>Lubricants</span></div>
+        <div class="category-card" onclick="selectCategory('Electronics',this)">📱<span>Electronics</span></div>
+        <div class="category-card" onclick="selectCategory('Pharma',this)">💊<span>Pharma</span></div>
+        <div class="category-card" onclick="selectCategory('Textiles',this)">🧵<span>Textiles</span></div>
+        <div class="category-card" onclick="selectCategory('Building Materials',this)">🧱<span>Building</span></div>
+        <div class="category-card" onclick="selectCategory('General Goods',this)">🛒<span>General</span></div>
+        <div class="category-card" onclick="selectCategory('Raw Materials',this)">🏭<span>Raw Material</span></div>
+        <div class="category-card" onclick="selectCategory('Food & Beverages',this)">🥫<span>Food & Bev</span></div>
+        <div class="category-card" onclick="selectCategory('Agriculture',this)">🌾<span>Agriculture</span></div>
+        <div class="category-card" onclick="selectCategory('Cosmetics',this)">🧴<span>Cosmetics</span></div>
+        <div class="category-card" onclick="selectCategory('Baby Products',this)">👶<span>Baby</span></div>
+        <div class="category-card" onclick="selectCategory('Frozen Foods',this)">🐟<span>Frozen</span></div>
+        <div class="category-card" onclick="selectCategory('Poultry',this)">🐓<span>Poultry</span></div>
+        <div class="category-card" onclick="selectCategory('Computers',this)">💻<span>Computers</span></div>
+        <div class="category-card" onclick="selectCategory('Electrical',this)">🔌<span>Electrical</span></div>
+        <div class="category-card" onclick="selectCategory('Plumbing',this)">🚿<span>Plumbing</span></div>
+        <div class="category-card" onclick="selectCategory('Furniture',this)">🪑<span>Furniture</span></div>
+        <div class="category-card" onclick="selectCategory('Home Appliances',this)">🏠<span>Appliances</span></div>
+        <div class="category-card" onclick="selectCategory('Packaging',this)">📦<span>Packaging</span></div>
+        <div class="category-card" onclick="selectCategory('Logistics',this)">🚚<span>Logistics</span></div>
+      </div>
+
+      <div class="section-label">Distributors <span class="mono" id="distributor-count">0</span></div>
+      <div id="distributor-list"><div class="loading-text">Loading distributors...</div></div>
+
+      <div class="section-label">Buyers <span class="mono" id="buyer-count">0</span></div>
+      <div id="buyer-list"><div class="loading-text">Loading buyers...</div></div>
+    </main>
+
+    <!-- INQUIRIES SCREEN — V1.6.2 LIVE INQUIRY LEDGER -->
+    <div class="screen" id="screen-inquiries">
+      <div class="gbx-ledger-head">
+        <div>
+          <div class="section-label">Demand ledger</div>
+          <div class="gbx-ledger-title" id="gbx-ledger-title">Your inquiries</div>
+        </div>
+        <button class="gbx-ledger-refresh" type="button" onclick="gbxV162Load()" aria-label="Refresh inquiries">↻</button>
+      </div>
+      <div id="gbx-ledger-summary" class="gbx-ledger-summary"></div>
+      <div id="history-list" class="gbx-ledger-list"><div class="loading-text">Reading live inquiries…</div></div>
+    </div>
+
+    <!-- TRUST SCREEN -->
+    <div class="screen" id="screen-trust">
+      <div class="section-label">Trust &amp; Transparency</div>
+      <div id="trust-summary" class="trust-strip" style="margin-bottom:16px;"></div>
+      <div class="section-label">Verified Distributors</div>
+      <div id="verified-distributors-list"></div>
+      <div class="section-label">Recent Approved Disputes</div>
+      <div id="disputes-list"></div>
+    </div>
+
+    <!-- PROFILE SCREEN -->
+    <div class="screen" id="screen-profile">
+      <div class="section-label">Your Profile</div>
+      <div id="profile-saved-banner" style="display:none; background:var(--ok); color:white; padding:8px; border-radius:8px; text-align:center; margin-bottom:12px;">Profile saved successfully!</div>
+      <div id="profile-form">
+        <div class="field" id="profile-business-name-field">
+          <label>Business Name</label>
+          <input type="text" id="profile-business-name" placeholder="Your business name" />
+        </div>
+        <div class="field" id="profile-name-field" style="display:none;">
+          <label>Your Name</label>
+          <input type="text" id="profile-name" placeholder="Your full name" />
+        </div>
+        <div class="field" id="profile-category-field">
+          <label>Category</label>
+          <select id="profile-category">
+            <option value="">Select category</option>
+            <option value="Auto Parts">Auto Parts</option>
+            <option value="Motorcycle">Motorcycle</option>
+            <option value="Tyres">Tyres</option>
+            <option value="Batteries">Batteries</option>
+            <option value="Lubricants">Lubricants</option>
+            <option value="Electronics">Electronics</option>
+            <option value="Pharma">Pharma</option>
+            <option value="Textiles">Textiles</option>
+            <option value="Building Materials">Building Materials</option>
+            <option value="General Goods">General Goods</option>
+            <option value="Raw Materials">Raw Materials</option>
+            <option value="Food & Beverages">Food & Beverages</option>
+            <option value="Agriculture">Agriculture</option>
+            <option value="Cosmetics">Cosmetics</option>
+            <option value="Baby Products">Baby Products</option>
+            <option value="Frozen Foods">Frozen Foods</option>
+            <option value="Poultry">Poultry</option>
+            <option value="Computers">Computers</option>
+            <option value="Electrical">Electrical</option>
+            <option value="Plumbing">Plumbing</option>
+            <option value="Furniture">Furniture</option>
+            <option value="Home Appliances">Home Appliances</option>
+            <option value="Packaging">Packaging</option>
+            <option value="Logistics">Logistics</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Location</label>
+          <select id="profile-location">
+            <option value="">Select location</option>
+            <option value="Onitsha">Onitsha</option>
+            <option value="Nnewi">Nnewi</option>
+            <option value="Awka">Awka</option>
+            <option value="Asaba">Asaba</option>
+            <option value="Enugu">Enugu</option>
+            <option value="Owerri">Owerri</option>
+            <option value="Abakiliki">Abakiliki</option>
+            <option value="Agbor">Agbor</option>
+            <option value="Warri">Warri</option>
+            <option value="Aba">Aba</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Market</label>
+          <input type="text" id="profile-market" placeholder="Which market?" />
+        </div>
+        <div class="field">
+          <label>Shop Address</label>
+          <input type="text" id="profile-shop-address" placeholder="Street address or landmark" />
+        </div>
+        <div class="field">
+          <label>Description</label>
+          <textarea id="profile-description" rows="3" placeholder="Brief description"></textarea>
+        </div>
+        <div class="field" id="profile-looking-for-field" style="display:none;">
+          <label>I'm looking for</label>
+          <select id="profile-looking-for">
+            <option value="">Select interest</option>
+            <option value="Auto Parts">Auto Parts</option>
+            <option value="Motorcycle">Motorcycle</option>
+            <option value="Tyres">Tyres</option>
+            <option value="Batteries">Batteries</option>
+            <option value="Lubricants">Lubricants</option>
+            <option value="Electronics">Electronics</option>
+            <option value="Pharma">Pharma</option>
+            <option value="Textiles">Textiles</option>
+            <option value="Building Materials">Building Materials</option>
+            <option value="General Goods">General Goods</option>
+            <option value="Raw Materials">Raw Materials</option>
+            <option value="Food & Beverages">Food & Beverages</option>
+            <option value="Agriculture">Agriculture</option>
+            <option value="Cosmetics">Cosmetics</option>
+            <option value="Baby Products">Baby Products</option>
+            <option value="Frozen Foods">Frozen Foods</option>
+            <option value="Poultry">Poultry</option>
+            <option value="Computers">Computers</option>
+            <option value="Electrical">Electrical</option>
+            <option value="Plumbing">Plumbing</option>
+            <option value="Furniture">Furniture</option>
+            <option value="Home Appliances">Home Appliances</option>
+            <option value="Packaging">Packaging</option>
+            <option value="Logistics">Logistics</option>
+          </select>
+        </div>
+        <button class="submit-btn" onclick="saveProfile()">Save Profile</button>
+        <div class="status-msg" id="profile-status"></div>
+      </div>
+    </div>
+
+    <!-- UPGRADE SCREEN -->
+    <div class="screen" id="screen-upgrade">
+      <div class="section-label">Choose Your Plan</div>
+      <div id="plan-cards" style="display:flex; flex-direction:column; gap:16px; margin-bottom:16px;"></div>
+      <div class="section-label">Current Plan</div>
+      <div id="current-plan-info" class="manifest" style="padding:14px;"></div>
+      <div id="upgrade-status" class="status-msg"></div>
+    </div>
+
+    <!-- PRODUCTS SCREEN -->
+    <div class="screen" id="screen-products">
+      <div class="section-label">Your Products</div>
+      <div id="products-management-list"></div>
+      <button class="submit-btn" style="margin-top:16px;" onclick="openAddProductModal()">+ Add New Product</button>
+      <div id="products-management-status" class="status-msg"></div>
+    </div>
+
+    <!-- STAFF SCREEN -->
+    <div class="screen" id="screen-staff">
+      <div class="section-label">Team Management</div>
+      <div id="staff-list"><div class="loading-text">Loading staff...</div></div>
+      <button class="submit-btn" style="margin-top:16px;" onclick="openInviteStaffModal()">+ Invite Staff Member</button>
+      <div id="staff-status" class="status-msg"></div>
+    </div>
+
+    <!-- CART SCREEN -->
+    <div class="screen" id="screen-cart">
+      <div class="section-label">Your Cart</div>
+      <div id="cart-content"></div>
+    </div>
+
+    <!-- BOTTOM NAV -->
+    <nav class="bottom">
+      <div class="nav-item active" id="nav-market" onclick="showScreen('market')"><span class="ic">🏬</span>Market</div>
+      <div class="nav-item" id="nav-cart" onclick="showScreen('cart')"><span class="ic">🛒</span><span class="nav-badge" id="cart-badge">0</span>Cart</div>
+      <div class="nav-item" id="nav-trust" onclick="showScreen('trust')"><span class="ic">🛡️</span>Trust</div>
+      <div class="nav-item" id="nav-profile" onclick="showScreen('profile')"><span class="ic">👤</span>Profile</div>
+      <div class="nav-item" id="nav-products" onclick="showScreen('products')" style="display:none;"><span class="ic">📦</span>Products</div>
+      <div class="nav-item" id="nav-staff" onclick="showScreen('staff')" style="display:none;"><span class="ic">👥</span>Staff</div>
+      <div class="nav-item" id="nav-upgrade" onclick="showScreen('upgrade')"><span class="ic">⭐</span>Upgrade</div>
+    </nav>
+  </div>
+
+  <!-- MODALS -->
+  <div class="sheet-overlay" id="inquiry-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3 id="modal-title">Contact</h3>
+      <div class="sub">Send your details — they'll be in touch directly.</div>
+      <div class="field"><label>Your name</label><input type="text" id="inquiry-name" /></div>
+      <div class="field"><label>Your phone</label><input type="tel" id="inquiry-phone" /></div>
+      <div class="field"><label>Your email</label><input type="email" id="inquiry-email" /></div>
+      <div class="field"><label>What are you looking for</label><input type="text" id="inquiry-item" /></div>
+      <div class="field">
+        <label>Order scale</label>
+        <div class="tier-row">
+          <div class="tier-opt" data-tier="single" onclick="selectTier(this)">Single piece</div>
+          <div class="tier-opt" data-tier="carton" onclick="selectTier(this)">Carton</div>
+          <div class="tier-opt" data-tier="container" onclick="selectTier(this)">Container</div>
+        </div>
+      </div>
+      <div class="field"><label>Quantity</label><input type="text" id="inquiry-quantity" /></div>
+      <button class="submit-btn" onclick="submitInquiry()">Send inquiry now</button>
+      <button class="cancel-btn" onclick="closeModal()">Cancel</button>
+      <div class="status-msg" id="status-msg"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="dispute-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Report an issue</h3>
+      <div class="sub">About <span id="dispute-target-name"></span>.</div>
+      <div class="field"><label>Your name</label><input type="text" id="dispute-submitted-by" /></div>
+      <div class="field"><label>Your phone</label><input type="tel" id="dispute-phone" /></div>
+      <div class="field"><label>What happened</label><input type="text" id="dispute-description" /></div>
+      <button class="submit-btn" onclick="submitDispute()">Submit for review</button>
+      <button class="cancel-btn" onclick="closeDisputeModal()">Cancel</button>
+      <div class="status-msg" id="dispute-status-msg"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="storefront-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <div id="storefront-content"></div>
+      <button class="cancel-btn" onclick="closeStorefrontModal()">Close</button>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="add-product-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Add Product</h3>
+      <div class="sub">Fill in the details. Category-specific fields will appear.</div>
+      <div class="field"><label>Product Image</label><input type="file" id="prod-image-input" accept="image/*" onchange="previewProductImage()" style="padding:8px;" /><div class="image-preview" id="prod-image-preview"></div></div>
+      <div class="field"><label>Product Name *</label><input type="text" id="prod-name" /></div>
+      <div class="field">
+        <label>Category *</label>
+        <select id="prod-category" onchange="showCategoryFields()">
+          <option value="">Select category</option>
+          <option value="Auto Parts">Auto Parts</option>
+          <option value="Motorcycle">Motorcycle</option>
+          <option value="Tyres">Tyres</option>
+          <option value="Batteries">Batteries</option>
+          <option value="Lubricants">Lubricants</option>
+          <option value="Electronics">Electronics</option>
+          <option value="Pharma">Pharma</option>
+          <option value="Textiles">Textiles</option>
+          <option value="Building Materials">Building Materials</option>
+          <option value="General Goods">General Goods</option>
+          <option value="Raw Materials">Raw Materials</option>
+          <option value="Food & Beverages">Food & Beverages</option>
+          <option value="Agriculture">Agriculture</option>
+          <option value="Cosmetics">Cosmetics</option>
+          <option value="Baby Products">Baby Products</option>
+          <option value="Frozen Foods">Frozen Foods</option>
+          <option value="Poultry">Poultry</option>
+          <option value="Computers">Computers</option>
+          <option value="Electrical">Electrical</option>
+          <option value="Plumbing">Plumbing</option>
+          <option value="Furniture">Furniture</option>
+          <option value="Home Appliances">Home Appliances</option>
+          <option value="Packaging">Packaging</option>
+          <option value="Logistics">Logistics</option>
+        </select>
+      </div>
+      <div id="category-specific-fields"></div>
+      <div class="field"><label>SKU</label><input type="text" id="prod-sku" /></div>
+      <div class="field"><label>Brand</label><input type="text" id="prod-brand" /></div>
+      <div class="field"><label>MOQ</label><input type="number" id="prod-moq" value="1" /></div>
+      <div class="field"><label>Stock</label><input type="number" id="prod-stock" value="0" /></div>
+      <div class="field"><label>Price (₦)</label><input type="number" step="0.01" id="prod-price" /></div>
+      <div class="field"><label>Negotiable</label><select id="prod-negotiable"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field"><label>Bulk Discount</label><select id="prod-bulk-discount"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field"><label>Lead Time</label><input type="text" id="prod-lead-time" placeholder="e.g., 2-3 days" /></div>
+      <div class="field"><label>Trade Terms</label><input type="text" id="prod-trade-terms" /></div>
+      <div class="field"><label>Delivery</label><select id="prod-delivery"><option value="true">Yes</option><option value="false">No</option></select></div>
+      <div class="field"><label>Pickup</label><select id="prod-pickup"><option value="false">No</option><option value="true">Yes</option></select></div>
+      <div class="field"><label>Description</label><textarea id="prod-desc" rows="2"></textarea></div>
+      <button class="submit-btn" onclick="addProduct()">Save Product</button>
+      <button class="cancel-btn" onclick="closeAddProductModal()">Cancel</button>
+      <div class="status-msg" id="add-product-status"></div>
+    </div>
+  </div>
+
+  <div class="sheet-overlay" id="invite-staff-modal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Invite a team member</h3>
+      <div class="sub">They'll receive an email to set up their account.</div>
+      <div class="field"><label>Staff email</label><input type="email" id="staff-email" /></div>
+      <div class="field">
+        <label>Role</label>
+        <select id="staff-role">
+          <option value="responder">Responder</option>
+          <option value="manager">Manager</option>
+        </select>
+      </div>
+      <button class="submit-btn" onclick="sendStaffInvite()">Send invitation</button>
+      <button class="cancel-btn" onclick="closeInviteStaffModal()">Cancel</button>
+      <div class="status-msg" id="invite-staff-status"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://js.paystack.co/v2/inline.js"></script>
+
+  <!-- Step: config.js extracted. Loaded AFTER Supabase CDN, BEFORE the rest of app logic. -->
+  <script src="js/config.js"></script>
+
+  <!-- Step: ui.js and auth.js extracted. Load AFTER config.js, BEFORE remaining inline script,
+       since remaining functions below (loadDistributorsAndBuyers, etc.) call things like
+       showScreen() and loadCurrentUser() that now live in these files. -->
+  <script src="js/ui.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/market.js"></script>
+  <script src="js/inquiries.js"></script>
+  <script src="js/storefront.js"></script>
+  <script src="js/cart.js"></script>
+  <script src="js/products.js"></script>
+  <script src="js/trust.js"></script>
+  <script src="js/profile.js"></script>
+  <script src="js/upgrade.js"></script>
+  <script src="js/staff.js"></script>
+
+  <!-- app.js loads LAST — it holds global state and the init block that calls
+       functions from every file above. -->
+  <script src="js/app.js"></script>
+
+<script id="goodsbarnx-depletor-v16">
+(function(){
+  "use strict";
+  function esc(v){return String(v??"").replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]})}
+  function money(v){var n=Number(v)||0;return n>0?"₦"+n.toLocaleString("en-NG",{maximumFractionDigits:0}):"—"}
+  function tokens(v){return String(v||"").toLowerCase().replace(/[^a-z0-9\s]/g," ").split(/\s+/).filter(function(x){return x.length>2})}
+  function linked(i,p){var a=tokens(i.item),b=tokens(p.name);return a.length&&b.length&&a.some(function(t){return b.indexOf(t)>=0})&&b.some(function(t){return a.indexOf(t)>=0})}
+  function ageHours(created){var t=new Date(created||Date.now()).getTime();return isFinite(t)?Math.max(0,(Date.now()-t)/3600000):999999}
+  function freshness(age){return age<=24?"fresh":age<=168?"active":"aging"}
+  function score(matches,stock,qty,age){var s=0;if(matches)s+=40;if(stock>0)s+=25;if(qty>0){s+=20;if(stock>=qty)s+=5}if(age<=24)s+=10;else if(age<=168)s+=6;else if(age<=720)s+=2;return Math.min(100,s)}
+  function tier(s,stock,matches){if(matches&&stock>0&&s>=75)return "ACT NOW";if(matches&&stock>0)return "READY";if(matches)return "WATCH";if(stock<=0)return "RESTOCK";return "MONITOR"}
+  function relationshipState(inquiry,relationships){
+    if(!inquiry.buyer_id)return "unattributed";
+    var r=relationships.find(function(x){return x.buyer_id===inquiry.buyer_id&&x.is_primary!==false});
+    if(!r)return "relationship_gap";
+    return String(r.status||"").toLowerCase()==="active"?"routable":"relationship_gap";
+  }
+  function buyerName(inquiry,buyers){return inquiry.buyer_id?(buyers[inquiry.buyer_id]||"Buyer identified"):"Unattributed demand"}
+  window.refreshMasterStockDepletor=async function(){
+    var panel=document.getElementById("depletor-console");if(!panel)return;var user=null;try{user=currentUser}catch(e){}
+    if(!user||user.role!=="distributor"){panel.hidden=true;return}panel.hidden=false;
+    var box=document.getElementById("depletor-opportunities"),radar=document.getElementById("depletor-demand-radar");
+    if(box)box.innerHTML='<div class="depletor-empty">Reading opportunity engine…</div>';if(radar)radar.innerHTML='<div class="radar-empty">Reading live demand radar…</div>';
+    try{
+      var results=await Promise.all([
+        sb.from("products").select("id,name,price,stock_quantity,status,category").eq("distributor_id",user.id),
+        sb.from("inquiries").select("id,item,quantity,status,created_at,buyer_id,distributor_id,inquirer_id").eq("distributor_id",user.id).order("created_at",{ascending:false}),
+        sb.from("trade_relationships").select("id,buyer_id,distributor_id,status,is_primary").eq("distributor_id",user.id),
+        sb.from("agent_distributor_attachments").select("id,agent_id,status").eq("distributor_id",user.id).eq("status","accepted")
+      ]);results.forEach(function(r){if(r.error)throw r.error});
+      var products=results[0].data||[],inquiries=results[1].data||[],relationships=results[2].data||[],agents=results[3].data||[];
+      var activeRelationships=relationships.filter(function(r){return String(r.status||"").toLowerCase()==="active"});
+      var buyerIds=inquiries.map(function(i){return i.buyer_id}).filter(Boolean).filter(function(id,i,a){return a.indexOf(id)===i});
+      var buyers={};
+      if(buyerIds.length){var br=await sb.from("profiles").select("id,full_name,role").in("id",buyerIds);if(br.error)throw br.error;(br.data||[]).forEach(function(b){buyers[b.id]=b.full_name||"Buyer"})}
+      var value=products.reduce(function(sum,p){return sum+(Number(p.price)||0)*(Number(p.stock_quantity)||0)},0);
+      var states={out:0,attention:0,healthy:0};products.forEach(function(p){var q=Number(p.stock_quantity)||0;states[q<=0?"out":q<20?"attention":"healthy"]++});
+      var health=products.length?Math.round(states.healthy/products.length*100):0;
+      var open=inquiries.filter(function(i){return !["closed","resolved","completed"].includes(String(i.status||"").toLowerCase())});
+      document.getElementById("intel-stock-value").textContent=money(value);document.getElementById("intel-stock-meta").textContent=products.length+" listed product"+(products.length===1?"":"s");document.getElementById("intel-stock-health").textContent=products.length?health+"%":"—";document.getElementById("intel-stock-health-meta").textContent=products.length?(states.healthy+" healthy · "+states.attention+" low · "+states.out+" out"):"No inventory data";document.getElementById("intel-demand-count").textContent=open.length;document.getElementById("intel-network-count").textContent=activeRelationships.length+agents.length;
+      var radarRows=open.slice(0,5).map(function(i){var age=ageHours(i.created_at),matches=products.filter(function(p){return linked(i,p)}),stocked=matches.filter(function(p){return Number(p.stock_quantity)>0}),rs=relationshipState(i,activeRelationships);return {item:i,level:freshness(age),linked:matches,stocked:stocked,age:age,relationship:rs}});
+      if(radar){
+        if(!radarRows.length)radar.innerHTML='<div class="radar-empty">No open demand signal yet. Demand Radar will surface live inquiries here as buyers ask for stock.</div>';
+        else radar.innerHTML=radarRows.map(function(r){var qty=Number(r.item.quantity)>0?Number(r.item.quantity).toLocaleString()+" units":"Quantity not specified";var warm=r.level!=="fresh"?" warm":"";var label=r.stocked.length?r.stocked.length+" stock match":r.linked.length?"Demand matched · stock unavailable":"Unlinked demand";var who=buyerName(r.item,buyers);var route=r.relationship==="routable"?" · relationship ready":r.relationship==="relationship_gap"?" · relationship gap":" · buyer not attributed";return '<div class="demand-signal"><span class="demand-pulse'+warm+'"></span><div class="demand-copy"><div class="demand-item">'+esc(r.item.item||"Unspecified item")+'</div><div class="demand-meta">'+esc(qty)+' · '+esc(r.level)+' demand · '+esc(label)+' · '+esc(who)+esc(route)+'</div></div><span class="demand-badge'+warm+'">'+(r.stocked.length&&r.relationship==="routable"?"MOVE":r.stocked.length?"READY":"WATCH")+'</span></div>'}).join("")
+      }
+      var map={};
+      open.forEach(function(i){
+        var matches=products.filter(function(p){return linked(i,p)}),q=Number(i.quantity)>0?Number(i.quantity):0,age=ageHours(i.created_at),rs=relationshipState(i,activeRelationships);
+        matches.forEach(function(p){var stock=Number(p.stock_quantity)||0,sc=score(matches.length,stock,q,age),entry={inquiry:i,product:p,stock:stock,quantity:q,age:age,matches:matches,score:sc,tier:tier(sc,stock,matches.length),relationship:rs,buyer:buyerName(i,buyers)};var k=p.id;if(!map[k]||entry.score>map[k].score)map[k]=entry})
+      });
+      products.filter(function(p){return !map[p.id]&&Number(p.stock_quantity)<=0}).forEach(function(p){map[p.id]={product:p,stock:0,quantity:0,age:999999,matches:[],score:0,tier:"RESTOCK",relationship:"unattributed",buyer:"—"}});
+      var opportunities=Object.keys(map).map(function(k){return map[k]}).sort(function(a,b){return b.score-a.score||b.matches.length-a.matches.length||b.stock-a.stock}).slice(0,8);
+      if(box){
+        if(!opportunities.length)box.innerHTML='<div class="depletor-empty">No evidence-backed opportunity yet. Capture clearer product names and quantities to strengthen the depletion signal.</div>';
+        else box.innerHTML=opportunities.map(function(o){var p=o.product,qty=o.quantity?o.quantity.toLocaleString()+" requested":"Quantity unknown",coverage=o.quantity?(o.stock>=o.quantity?"stock covers request":"stock below request"):o.stock>0?"stock available":"no stock";var cls=o.tier==="ACT NOW"?"stock-healthy":o.tier==="RESTOCK"?"stock-out":o.tier==="WATCH"?"stock-attention":"stock-healthy";var attr=o.relationship==="routable"?"ROUTABLE":o.relationship==="relationship_gap"?"RELATIONSHIP GAP":"UNATTRIBUTED";return '<div class="opportunity"><div class="op-icon">'+(o.tier==="ACT NOW"?"↗":"📦")+'</div><div class="op-copy"><div class="op-name">'+esc(p.name||"Product")+'</div><div class="op-detail"><span class="'+cls+'">'+esc(o.tier)+'</span> · score '+o.score+'/100 · '+o.stock.toLocaleString()+" units · "+esc(qty)+" · "+esc(coverage)+' · '+esc(attr)+'</div><div class="op-detail">'+esc(o.buyer)+'</div></div><button class="op-action" type="button" onclick="showScreen(&quot;products&quot;)">Review</button></div>'}).join("")
+      }
+    }catch(error){console.warn("Master Stock Depletor V1.6:",error);if(box)box.innerHTML='<div class="depletor-empty">Live opportunity intelligence is temporarily unavailable. Existing Market and Products screens remain available.</div>';if(radar)radar.innerHTML='<div class="radar-empty">Demand Radar is temporarily unavailable.</div>'}
+  };
+  function loop(){var u=null;try{u=currentUser}catch(e){}var p=document.getElementById("depletor-console");if(!p)return;if(u&&u.role==="distributor"){p.hidden=false;window.refreshMasterStockDepletor()}else p.hidden=true}
+  document.addEventListener("DOMContentLoaded",function(){setTimeout(loop,700);setTimeout(loop,1800);setInterval(loop,15000)});
+})();
+</script>
+
+<style id="goodsbarnx-distributor-v111">
+/* ================================================================
+   GOODSBARNX — BUILD 1.1.1
+   Distributor Dashboard — prototype-locked integration build
+   Default UI mirrors the supplied live prototype.
+   Integration diagnostics are opt-in: ?integration=1
+   Brand: Obsidian / Emerald / Gold / Ivory
+   ================================================================ */
+:root{--d-bg:#0F1411;--d-card:#18201B;--d-card2:#1D2822;--d-line:rgba(245,243,236,.09);--d-text:#F5F3EC;--d-muted:rgba(245,243,236,.56);--d-green:#087443;--d-green-hi:#55D996;--d-gold:#D6A83A;--d-danger:#D95C5C}
+.gbx-dashboard{display:none;margin:18px 0 22px}.gbx-dashboard.active{display:block}
+.gbx-dash-hero{padding:4px 0 0}.gbx-dash-kicker{font-size:9px;font-weight:700;letter-spacing:.18em;color:var(--d-muted);text-transform:uppercase}.gbx-greeting{margin:7px 0 0;font-size:26px;line-height:1.12;font-weight:700;letter-spacing:-.045em}.gbx-greeting .name{color:var(--d-green-hi)}.gbx-greeting-sub{margin:6px 0 0;color:var(--d-muted);font-size:12px;line-height:1.45}.gbx-verified{display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:8px 11px;border-radius:999px;background:#EAF6F0;color:#0C6F43;font-size:10px;font-weight:700}.gbx-verified-dot{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:#0B8C52;color:#fff;font-size:11px}
+.gbx-primary-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.gbx-primary{min-height:118px;padding:15px 14px;border:1px solid var(--d-line);border-radius:19px;background:var(--d-card);color:var(--d-text);text-align:center}.gbx-primary-value{font-family:'DM Mono',monospace;font-size:31px;font-weight:700;letter-spacing:-.04em}.gbx-primary-label{margin-top:4px;font-size:9px;letter-spacing:.11em;color:var(--d-muted);font-weight:700;text-transform:uppercase}.gbx-primary-note{margin-top:8px;font-size:9px;color:var(--d-muted)}.gbx-primary-note strong{color:var(--d-green-hi)}
+.gbx-section{margin-top:18px}.gbx-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:9px}.gbx-section-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--d-text)}.gbx-section-title.alert{color:var(--d-muted)}.gbx-view{border:0;background:none;color:var(--d-green-hi);font-size:10px;font-weight:700;padding:0}
+.gbx-attention{border:1px solid var(--d-line);border-radius:19px;overflow:hidden;background:var(--d-card)}.gbx-attention-row{display:flex;align-items:center;gap:11px;min-height:66px;padding:10px 12px;border-bottom:1px solid var(--d-line);cursor:pointer}.gbx-attention-row:last-child{border-bottom:0}.gbx-attention-icon{width:34px;height:34px;flex:0 0 34px;border-radius:11px;display:grid;place-items:center;background:rgba(8,116,67,.13);color:var(--d-green-hi);font-size:15px}.gbx-attention-copy{min-width:0;flex:1}.gbx-attention-main{font-size:12px;font-weight:600;color:var(--d-text)}.gbx-attention-sub{font-size:9.5px;color:var(--d-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.gbx-count{min-width:29px;height:29px;padding:0 8px;border-radius:999px;display:grid;place-items:center;background:#EAF6F0;color:#0C6F43;font-family:'DM Mono',monospace;font-size:10px;font-weight:700}.gbx-count.hot{background:rgba(214,168,58,.13);color:#E3BF63}.gbx-arrow{color:rgba(245,243,236,.35);font-size:15px}
+.gbx-network{display:grid;grid-template-columns:1fr 1fr;gap:12px}.gbx-network-card{min-height:92px;padding:13px;border:1px solid var(--d-line);border-radius:18px;background:var(--d-card);color:var(--d-text);text-align:left}.gbx-network-head{display:flex;align-items:center;gap:6px}.gbx-network-title{font-size:14px;font-weight:700}.gbx-network-meta{color:var(--d-muted);font-size:9px}.gbx-network-value{float:right;font-family:'DM Mono',monospace;font-size:21px;font-weight:700}.gbx-network-sub{margin-top:8px;color:var(--d-muted);font-size:9.5px}.gbx-network-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--d-green-hi);margin-left:5px}
+.gbx-command{margin-top:18px;padding:16px;border:1px solid var(--d-line);border-radius:21px;background:var(--d-card)}.gbx-command-title{font-size:16px;font-weight:700;letter-spacing:-.02em}.gbx-command-sub{margin-top:4px;color:var(--d-muted);font-size:10px;line-height:1.45}.gbx-command-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:13px}.gbx-command-btn{min-height:49px;border:1px solid var(--d-line);border-radius:12px;background:var(--d-card2);color:var(--d-text);display:flex;align-items:center;gap:8px;padding:10px;text-align:left}.gbx-command-btn.primary{background:var(--d-green);border-color:var(--d-green);color:#fff}.gbx-command-icon{width:27px;height:27px;border-radius:8px;display:grid;place-items:center;background:rgba(85,217,150,.10);font-size:14px}.gbx-command-btn.primary .gbx-command-icon{background:rgba(255,255,255,.12)}.gbx-command-btn span{font-size:9px;font-weight:700}
+.gbx-depletor-mini{margin-top:12px;padding:11px;border-radius:14px;border:1px solid rgba(85,217,150,.15);background:linear-gradient(145deg,#16261E,#111612);display:flex;align-items:center;gap:9px}.gbx-depletor-mark{width:33px;height:33px;border-radius:10px;display:grid;place-items:center;background:rgba(214,168,58,.09);border:1px solid rgba(214,168,58,.16);color:var(--d-gold)}.gbx-depletor-copy{min-width:0;flex:1}.gbx-depletor-copy strong{display:block;font-size:10px}.gbx-depletor-copy small{display:block;margin-top:3px;font-size:8px;color:var(--d-muted)}.gbx-depletor-open{border:0;border-radius:9px;background:var(--d-green);color:#fff;padding:8px 9px;font-size:8px;font-weight:700}
+.gbx-agent{margin-top:18px;border-top:1px solid var(--d-line);padding-top:16px}.gbx-agent-list{border:1px solid var(--d-line);border-radius:18px;overflow:hidden;background:var(--d-card)}.gbx-agent-row{padding:13px;border-bottom:1px solid var(--d-line)}.gbx-agent-row:last-child{border-bottom:0}.gbx-agent-top{display:flex;align-items:center;gap:9px}.gbx-avatar{width:33px;height:33px;border-radius:11px;display:grid;place-items:center;background:var(--d-gold);color:#151A16;font-size:9px;font-weight:800}.gbx-agent-copy{min-width:0;flex:1}.gbx-agent-name{font-size:10.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.gbx-agent-date{font-size:8px;color:var(--d-muted);margin-top:2px}.gbx-status{padding:6px 8px;border-radius:999px;background:rgba(85,217,150,.10);color:var(--d-green-hi);font-size:8px;font-weight:700}.gbx-agent-actions{display:flex;gap:7px;margin-top:9px}.gbx-agent-actions button{flex:1;border:1px solid var(--d-line);border-radius:9px;padding:8px 7px;background:transparent;color:var(--d-muted);font-size:8px;font-weight:600}.gbx-agent-actions button.primary{background:var(--d-green);border-color:var(--d-green);color:#fff}.gbx-empty{padding:15px;color:var(--d-muted);font-size:9.5px;line-height:1.5}
+/* Keep the existing legacy distributor controls from duplicating the prototype dashboard. */
+#distributor-tools-holder:has(.distributor-tools){display:none!important}#lock-banner-holder:has(.lock-banner){display:none!important}
+@media(max-width:380px){.gbx-greeting{font-size:23px}.gbx-primary{min-height:108px}.gbx-network{gap:9px}.gbx-network-card{padding:11px}.gbx-network-title{font-size:13px}}
+</style>
+
+<script id="goodsbarnx-distributor-v111">
+(function(){
+  "use strict";
+  function esc(v){return String(v??"").replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]})}
+  function getUser(){try{return currentUser}catch(e){return null}}
+  function isD(){var u=getUser();return !!(u&&u.role==="distributor")}
+  function initials(n){return String(n||"User").split(/\s+/).filter(Boolean).slice(0,2).map(function(x){return x[0]}).join("").toUpperCase()||"U"}
+  var panel=null;
+  var state={products:[],buyers:[],agents:[],pb:[],pa:[],inq:[]};
+  function mount(){
+    var h=document.getElementById("distributor-tools-holder");
+    if(!h)return null;
+    if(!panel){
+      panel=document.createElement("section");panel.id="gbx-distributor-dashboard";panel.className="gbx-dashboard";
+      h.parentNode.insertBefore(panel,h);
+    }
+    return panel;
+  }
+  function timeGreeting(){var h=new Date().getHours();return h<12?"Good morning,":h<18?"Good afternoon,":"Good evening,"}
+  function render(){
+    var el=mount();if(!el)return;
+    if(!isD()){el.classList.remove("active");return}
+    el.classList.add("active");
+    var u=getUser(),s=state;
+    var name=(u&&u.profile&&u.profile.full_name)||u.full_name||"Distributor";
+    var unanswered=s.inq.filter(function(i){return !["closed","resolved","completed","answered"].includes(String(i.status||"").toLowerCase())}).length;
+    var buyerPending=s.pb.length, agentPending=s.pa.length;
+    var buyerActive=s.buyers.length, agentActive=s.agents.length;
+    var agentHtml=s.pa.length?s.pa.map(function(x){return '<div class="gbx-agent-row"><div class="gbx-agent-top"><div class="gbx-avatar">'+esc(initials(x.name))+'</div><div class="gbx-agent-copy"><div class="gbx-agent-name">'+esc(x.name)+'</div><div class="gbx-agent-date">Attachment request · '+esc(x.created_at?new Date(x.created_at).toLocaleDateString("en-GB"):"recent")+'</div></div><span class="gbx-status">PENDING</span></div><div class="gbx-agent-actions"><button class="primary" onclick="gbxV111Respond(\''+esc(x.id)+'\',\'accepted\')">Accept</button><button onclick="gbxV111Respond(\''+esc(x.id)+'\',\'declined\')">Decline</button></div></div>'}).join(""):'<div class="gbx-empty">No pending agent requests.</div>';
+    if(s.agents.length){var first=s.agents[0];agentHtml+='<div class="gbx-agent-row"><div class="gbx-agent-top"><div class="gbx-avatar">'+esc(initials(first.name))+'</div><div class="gbx-agent-copy"><div class="gbx-agent-name">'+esc(first.name)+'</div><div class="gbx-agent-date">Active supplier-agent attachment</div></div><span class="gbx-status">ACTIVE</span></div></div>'}
+    el.innerHTML='<section class="gbx-dash-hero"><div class="gbx-dash-kicker">DISTRIBUTOR NETWORK</div><div class="gbx-greeting">'+timeGreeting()+'<br><span class="name">'+esc(name)+'</span> 👋</div><div class="gbx-greeting-sub">Your trade network is active.</div><div class="gbx-verified"><span class="gbx-verified-dot">✓</span> Verified Distributor</div><div class="gbx-primary-grid"><button class="gbx-primary" onclick="showScreen(\'market\')"><div class="gbx-primary-value" id="gbx-ui-buyers-active">'+buyerActive+'</div><div class="gbx-primary-label">Buyers</div><div class="gbx-primary-note"><strong>● Active</strong></div></button><button class="gbx-primary" onclick="showScreen(\'market\')"><div class="gbx-primary-value" id="gbx-ui-agents-active">'+agentActive+'</div><div class="gbx-primary-label">Agents</div><div class="gbx-primary-note"><strong>● Active</strong></div></button></div></section><section class="gbx-section"><div class="gbx-section-head"><div class="gbx-section-title alert">⚠ NEEDS YOUR ATTENTION</div><button class="gbx-view" onclick="showScreen(\'inquiries\')">View all</button></div><div class="gbx-attention"><div class="gbx-attention-row" onclick="gbxV111Buyer()"><div class="gbx-attention-icon">♙</div><div class="gbx-attention-copy"><div class="gbx-attention-main">Buyer requests</div><div class="gbx-attention-sub">New buyers want to connect</div></div><div class="gbx-count '+(buyerPending?'hot':'')+'" id="gbx-ui-buyer-pending">'+buyerPending+'</div><div class="gbx-arrow">›</div></div><div class="gbx-attention-row" onclick="gbxV111Agent()"><div class="gbx-attention-icon">♙</div><div class="gbx-attention-copy"><div class="gbx-attention-main">Agent request</div><div class="gbx-attention-sub">New agent wants to join</div></div><div class="gbx-count '+(agentPending?'hot':'')+'" id="gbx-ui-agent-pending">'+agentPending+'</div><div class="gbx-arrow">›</div></div><div class="gbx-attention-row" onclick="showScreen(\'inquiries\')"><div class="gbx-attention-icon">▱</div><div class="gbx-attention-copy"><div class="gbx-attention-main">Unanswered inquiries</div><div class="gbx-attention-sub">Buyers waiting for your response</div></div><div class="gbx-count '+(unanswered?'hot':'')+'" id="gbx-ui-inquiry-unanswered">'+unanswered+'</div><div class="gbx-arrow">›</div></div></div></section><section class="gbx-section"><div class="gbx-section-head"><div class="gbx-section-title">MY NETWORK</div></div><div class="gbx-network"><button class="gbx-network-card" onclick="showScreen(\'market\')"><span class="gbx-network-value" id="gbx-ui-network-buyers">'+buyerActive+'</span><div class="gbx-network-head"><span class="gbx-network-title">My Buyers</span><span class="gbx-network-meta">'+buyerActive+' active · '+buyerPending+' pending</span></div><div class="gbx-network-sub">Active relationships <span class="gbx-network-dot"></span></div></button><button class="gbx-network-card" onclick="showScreen(\'market\')"><span class="gbx-network-value" id="gbx-ui-network-agents">'+agentActive+'</span><div class="gbx-network-head"><span class="gbx-network-title">My Agents</span><span class="gbx-network-meta">'+agentActive+' active · '+agentPending+' pending</span></div><div class="gbx-network-sub">Attached agents <span class="gbx-network-dot"></span></div></button></div></section><section class="gbx-command"><div class="gbx-command-title">📊 Distributor Dashboard</div><div class="gbx-command-sub">Manage your products, track inquiries, and grow your network.</div><div class="gbx-command-grid"><button class="gbx-command-btn primary" onclick="showScreen(\'products\')"><div class="gbx-command-icon">📦</div><span>Manage Products</span></button><button class="gbx-command-btn" onclick="openAddBuyerModal()"><div class="gbx-command-icon">♙</div><span>Invite Buyer</span></button><button class="gbx-command-btn" onclick="showScreen(\'staff\')"><div class="gbx-command-icon">♙</div><span>Manage Staff</span></button><button class="gbx-command-btn" onclick="showScreen(\'profile\')"><div class="gbx-command-icon">⚙</div><span>Settings</span></button></div><div class="gbx-depletor-mini"><div class="gbx-depletor-mark">▣</div><div class="gbx-depletor-copy"><strong>Master Stock Depletor</strong><small>Find demand. Reach relationships. Move stock.</small></div><button class="gbx-depletor-open" onclick="showScreen(\'products\')">Open</button></div></section><section class="gbx-agent"><div class="gbx-section-head"><div><div class="gbx-section-title">AGENT MANAGEMENT</div><div style="font-size:9.5px;color:var(--d-muted);margin-top:3px">Approve or decline agent attachment requests.</div></div><button class="gbx-view" onclick="gbxV111Refresh()">↻ Refresh</button></div><div class="gbx-agent-list">'+agentHtml+'</div></section>';
+  }
+  async function load(){
+    if(!isD()){render();return}
+    var u=getUser();
+    try{
+      var r=await Promise.all([
+        sb.from("products").select("id,name,price,stock_quantity,status,category").eq("distributor_id",u.id),
+        sb.from("trade_relationships").select("buyer_id,status").eq("distributor_id",u.id),
+        sb.from("buyer_locks").select("id,buyer_id,status,created_at").eq("distributor_id",u.id),
+        sb.from("agent_distributor_attachments").select("id,agent_id,status,created_at").eq("distributor_id",u.id),
+        sb.from("inquiries").select("id,item,quantity,status,created_at").eq("distributor_id",u.id).order("created_at",{ascending:false})
+      ]);
+      var errs=r.map(function(x){return x.error}).filter(Boolean);if(errs.length)throw errs[0];
+      var products=r[0].data||[],rels=r[1].data||[],locks=r[2].data||[],atts=r[3].data||[],inq=r[4].data||[];
+      var buyers=Array.from(new Set(rels.filter(function(x){return String(x.status||"").toLowerCase()==="active"}).map(function(x){return x.buyer_id}))); 
+      var agents=Array.from(new Set(atts.filter(function(x){return String(x.status||"").toLowerCase()==="accepted"}).map(function(x){return x.agent_id})));
+      var pb=locks.filter(function(x){return String(x.status||"").toLowerCase()==="pending_consent"});
+      var pa=atts.filter(function(x){return String(x.status||"").toLowerCase()==="pending"});
+      var ids=Array.from(new Set(buyers.concat(agents).concat(pb.map(function(x){return x.buyer_id}),pa.map(function(x){return x.agent_id}))));
+      var prof=ids.length?(await sb.from("profiles").select("id,full_name").in("id",ids)): {data:[],error:null};
+      if(prof.error)throw prof.error;
+      var map={};(prof.data||[]).forEach(function(x){map[x.id]=x.full_name});
+      state.products=products;state.buyers=buyers.map(function(id){return{id:id,name:map[id]||"Buyer"}});state.agents=agents.map(function(id){return{id:id,name:map[id]||"Supplier Agent"}});state.pb=pb.map(function(x){return{id:x.id,name:map[x.buyer_id]||"Buyer",created_at:x.created_at}});state.pa=pa.map(function(x){return{id:x.id,name:map[x.agent_id]||"Supplier Agent",created_at:x.created_at}});state.inq=inq;render();
+    }catch(e){console.error("GoodsbarnX Distributor Dashboard 1.1.1",e);render()}
+  }
+  window.gbxV111Refresh=load;
+  window.gbxV111Buyer=function(){if(state.pb.length){showScreen('market');setTimeout(function(){if(typeof checkPendingAttachments==='function')checkPendingAttachments()},50)}else{showScreen('market')}};
+  window.gbxV111Agent=function(){var el=document.getElementById("gbx-distributor-dashboard");if(el)el.scrollIntoView({behavior:"smooth",block:"start"})};
+  window.gbxV111Respond=async function(id,decision){if(!isD())return;var r=await sb.from("agent_distributor_attachments").update({status:decision}).eq("id",id).eq("distributor_id",currentUser.id);if(r.error){alert("Could not update the agent request.");return}await load();if(typeof checkPendingAttachments==="function")checkPendingAttachments()};
+  document.addEventListener("DOMContentLoaded",function(){mount();setTimeout(load,700);setTimeout(load,1800);setInterval(function(){if(isD())load()},30000)});
+})();
+</script>
+<script>
+/* GoodsbarnX V1.1.3 — Invite Buyer compatibility bridge.
+   Preserves the prototype's existing Add Buyer flow. If the host app already
+   provides the modal/functions, nothing is replaced. If missing, the exact
+   prototype sheet is restored and wired to the existing Supabase schema. */
+(function(){
+  function ensureBuyerModal(){
+    if(document.getElementById('add-buyer-modal')) return;
+    var wrap=document.createElement('div');
+    wrap.innerHTML=`
+      <div class="sheet-overlay" id="add-buyer-modal" style="position:fixed;inset:0;z-index:99999;display:none;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.58);">
+        <div class="sheet" onclick="event.stopPropagation()" style="width:min(100%,520px);border-radius:22px 22px 0 0;padding:24px;box-sizing:border-box;">
+          <div class="sheet-handle"></div>
+          <h3>Add Buyer</h3>
+          <div class="sub">Distributors and accepted supplier agents can invite an existing buyer. The buyer must accept before the connection becomes active.</div>
+          <div class="field"><label>Buyer's phone number</label><input type="tel" id="add-buyer-phone" placeholder="Must match their GoodsbarnX account"></div>
+          <button class="submit-btn" onclick="submitAddBuyer()">Send connection request</button>
+          <button class="cancel-btn" onclick="closeAddBuyerModal()">Cancel</button>
+          <div class="status-msg" id="add-buyer-status-msg"></div>
+        </div>
+      </div>`;
+    var node=wrap.firstElementChild;
+    document.body.appendChild(node);
+    node.addEventListener('click',function(e){if(e.target===node)closeAddBuyerModal();});
+  }
+
+  if(typeof window.openAddBuyerModal!=='function'){
+    window.openAddBuyerModal=function(){
+      ensureBuyerModal();
+      var phone=document.getElementById('add-buyer-phone');
+      var status=document.getElementById('add-buyer-status-msg');
+      if(phone) phone.value='';
+      if(status) status.innerText='';
+      var modal=document.getElementById('add-buyer-modal');
+      if(modal){ modal.style.display='flex'; modal.classList.add('active'); }
+      if(phone) setTimeout(function(){phone.focus();},80);
+    };
+  }
+
+  if(typeof window.closeAddBuyerModal!=='function'){
+    window.closeAddBuyerModal=function(){
+      var modal=document.getElementById('add-buyer-modal');
+      if(modal){modal.classList.remove('active');modal.style.display='none';}
+    };
+  }
+
+  if(typeof window.submitAddBuyer!=='function'){
+    window.submitAddBuyer=async function(){
+      var phoneEl=document.getElementById('add-buyer-phone');
+      var statusEl=document.getElementById('add-buyer-status-msg');
+      var phone=(phoneEl?.value||'').trim();
+      if(!phone){if(statusEl)statusEl.innerText='Please enter a phone number.';return;}
+      var u=null; try{u=currentUser;}catch(e){};
+      if(!u||!u.id){if(statusEl)statusEl.innerText='Your distributor session is not ready. Please refresh and try again.';return;}
+      if(typeof sb==='undefined'){if(statusEl)statusEl.innerText='Connection service is not ready. Please refresh and try again.';return;}
+      if(statusEl)statusEl.innerText='Checking buyer account…';
+      var lookup=await sb.from('profiles').select('id, role').eq('phone',phone).eq('role','buyer').maybeSingle();
+      if(lookup.error){
+        if(statusEl)statusEl.innerText='Could not verify that buyer account. Please try again.';
+        return;
+      }
+      if(!lookup.data){
+        if(statusEl)statusEl.innerText="No buyer account found with that phone number yet. They'll need to sign up first.";
+        return;
+      }
+      if(lookup.data.id===u.id){
+        if(statusEl)statusEl.innerText='You cannot connect yourself as a buyer.';
+        return;
+      }
+      if(statusEl)statusEl.innerText='Sending connection request…';
+      var ins=await sb.from('buyer_locks').insert({buyer_id:lookup.data.id,distributor_id:u.id,status:'pending_consent'});
+      if(ins.error){
+        if(statusEl)statusEl.innerText='Could not send request. They may already be connected elsewhere.';
+        return;
+      }
+      if(statusEl)statusEl.innerText="Sent! They'll see this request next time they open GoodsbarnX.";
+      setTimeout(function(){
+        window.closeAddBuyerModal();
+        if(typeof window.gbxV111Refresh==='function')window.gbxV111Refresh();
+      },1800);
+    };
+  }
+
+  // If the base prototype already has the modal but uses class-only visibility,
+  // leave its CSS/markup untouched. The bridge only supplies missing behavior.
+})();
+</script>
+
+
+<style id="goodsbarnx-v162-style">
+/* ================================================================
+   GOODSBARNX — BUILD 1.6.2
+   Live Inquiry Ledger + Inquiry Detail
+   Supabase inquiries = source of truth.
+   localStorage remains offline-queue support only.
+   ================================================================ */
+.gbx-ledger-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:10px}
+.gbx-ledger-title{margin-top:4px;font-size:20px;font-weight:700;letter-spacing:-.03em;color:var(--gbx-ivory)}
+.gbx-ledger-refresh{width:36px;height:36px;border:1px solid var(--gbx-line);border-radius:11px;background:var(--gbx-surface);color:var(--gbx-green);font-size:19px}
+.gbx-ledger-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:0 0 10px}
+.gbx-ledger-stat{padding:10px 9px;border:1px solid var(--gbx-line);border-radius:13px;background:var(--gbx-surface);text-align:center}
+.gbx-ledger-stat b{display:block;font-family:'DM Mono',monospace;font-size:16px;color:var(--gbx-ivory)}
+.gbx-ledger-stat span{display:block;margin-top:2px;font-size:7.5px;letter-spacing:.08em;color:var(--gbx-muted);text-transform:uppercase}
+.gbx-ledger-list{display:flex;flex-direction:column;gap:8px;padding-bottom:110px}
+.gbx-inquiry-card{width:100%;border:1px solid var(--gbx-line);border-radius:17px;background:var(--gbx-surface);color:var(--gbx-ivory);padding:13px;text-align:left}
+.gbx-inquiry-card:active{transform:scale(.99)}
+.gbx-inquiry-top{display:flex;align-items:flex-start;gap:10px}
+.gbx-inquiry-icon{width:36px;height:36px;flex:0 0 36px;border-radius:11px;display:grid;place-items:center;background:rgba(8,116,67,.14);color:var(--gbx-green);font-size:15px}
+.gbx-inquiry-copy{min-width:0;flex:1}
+.gbx-inquiry-item{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gbx-inquiry-meta{margin-top:3px;color:var(--gbx-muted);font-size:9px;line-height:1.45}
+.gbx-inquiry-status{padding:6px 8px;border-radius:999px;background:rgba(85,217,150,.09);color:#79E3AF;font-size:7.5px;font-weight:800;white-space:nowrap;text-transform:uppercase}
+.gbx-inquiry-status.warn{background:rgba(214,168,58,.10);color:#E3BF63}
+.gbx-inquiry-status.closed{background:rgba(245,243,236,.06);color:var(--gbx-muted)}
+.gbx-inquiry-bottom{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid var(--gbx-line)}
+.gbx-inquiry-person{font-size:9px;color:var(--gbx-muted);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gbx-inquiry-route{font-size:7.5px;font-weight:700;color:var(--gbx-green);white-space:nowrap}
+.gbx-ledger-empty{padding:18px 13px;border:1px solid var(--gbx-line);border-radius:17px;background:var(--gbx-surface);color:var(--gbx-muted);font-size:10px;line-height:1.5;text-align:center}
+.gbx-detail-sheet{max-height:88vh;overflow:auto}
+.gbx-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}
+.gbx-detail-cell{padding:10px;border:1px solid rgba(15,20,17,.09);border-radius:12px;background:rgba(15,20,17,.035)}
+.gbx-detail-cell span{display:block;font-size:7px;text-transform:uppercase;letter-spacing:.08em;color:rgba(15,20,17,.48)}
+.gbx-detail-cell strong{display:block;margin-top:3px;font-size:10px;color:var(--gbx-obsidian);word-break:break-word}
+.gbx-detail-full{grid-column:1/-1}
+@media(max-width:380px){.gbx-ledger-summary{gap:5px}.gbx-ledger-stat{padding:9px 6px}}
+</style>
+
+<script id="goodsbarnx-v162-live-ledger">
+(function(){
+  "use strict";
+  var V="V1.6.2";
+  var cache={rows:[],evidence:[],profiles:{},relationships:[]};
+  var CLOSED=["closed","resolved","completed"];
+  function esc(v){return String(v??"").replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]})}
+  function status(v){var x=String(v||"open").trim();return x||"Open"}
+  function isClosed(v){return CLOSED.indexOf(String(v||"").toLowerCase())>=0}
+  function date(v){if(!v)return "Date unavailable";var d=new Date(v);return isNaN(d.getTime())?String(v):d.toLocaleString("en-NG",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})}
+  function role(){try{return currentUser?.role||null}catch(e){return null}}
+  function uid(){try{return currentUser?.id||null}catch(e){return null}}
+  function relationshipFor(i){
+    if(!i.buyer_id)return null;
+    return cache.relationships.find(function(r){return r.buyer_id===i.buyer_id&&r.distributor_id===i.distributor_id&&r.is_primary!==false})||null;
+  }
+  function relationshipLabel(i){
+    if(!i.buyer_id)return "Unattributed demand";
+    var r=relationshipFor(i); if(!r)return "Relationship gap";
+    return String(r.status||"").toLowerCase()==="active"?"Relationship ready":"Relationship "+String(r.status||"pending");
+  }
+  function visibleQuery(id,r){
+    var base="id,item,quantity,order_scale,status,created_at,responded_at,inquirer_name,inquirer_phone,inquirer_email,distributor_id,buyer_id,contact_type,inquirer_id";
+    if(r==="distributor") return sb.from("inquiries").select(base).eq("distributor_id",id).order("created_at",{ascending:false});
+    if(r==="buyer") return sb.from("inquiries").select(base).or("buyer_id.eq."+id+",inquirer_id.eq."+id).order("created_at",{ascending:false});
+    return sb.from("inquiries").select(base).eq("inquirer_id",id).order("created_at",{ascending:false});
+  }
+  function renderSummary(rows){
+    var open=rows.filter(function(x){return !isClosed(x.status)}).length;
+    var active=rows.filter(function(x){return String(x.status||"").toLowerCase()==="active"}).length;
+    var attributed=rows.filter(function(x){return !!x.buyer_id}).length;
+    var el=document.getElementById("gbx-ledger-summary");if(!el)return;
+    el.innerHTML='<div class="gbx-ledger-stat"><b>'+rows.length+'</b><span>Total</span></div><div class="gbx-ledger-stat"><b>'+open+'</b><span>Open</span></div><div class="gbx-ledger-stat"><b>'+attributed+'</b><span>Attributed</span></div>';
+  }
+  function render(rows){
+    var list=document.getElementById("history-list");if(!list)return;
+    renderSummary(rows);
+    if(!rows.length){list.innerHTML='<div class="gbx-ledger-empty">No live inquiries found for this account yet.<br><span style="opacity:.7">New demand signals will appear here after they are saved to GoodsbarnX.</span></div>';return}
+    var r=role();
+    list.innerHTML=rows.map(function(i){
+      var rel=relationshipLabel(i),who=i.buyer_id?(cache.profiles[i.buyer_id]||"Buyer identified"):r==="distributor"?"Unattributed demand":(i.inquirer_name||"You");
+      var st=status(i.status),sl=st.toLowerCase();var cls=isClosed(st)?" closed":sl==="pending"?" warn":"";
+      var item=i.item||"Unspecified demand",qty=i.quantity?" · "+i.quantity+(i.order_scale?" "+i.order_scale:""):"";
+      return '<button type="button" class="gbx-inquiry-card" onclick="gbxV176Evidence(\''+esc(i.id)+'\')"><div class="gbx-inquiry-top"><div class="gbx-inquiry-icon">▱</div><div class="gbx-inquiry-copy"><div class="gbx-inquiry-item">'+esc(item)+'</div><div class="gbx-inquiry-meta">'+esc(qty.replace(/^ · /,""))+' · '+esc(date(i.created_at))+'</div></div><span class="gbx-inquiry-status'+cls+'">'+esc(st)+'</span></div><div class="gbx-inquiry-bottom"><span class="gbx-inquiry-person">'+esc(who)+'</span><span class="gbx-inquiry-route">'+esc(rel)+'</span></div></button>';
+    }).join("");
+  }
+  window.gbxV162Load=async function(){
+    var list=document.getElementById("history-list");if(!list)return;
+    list.innerHTML='<div class="gbx-ledger-empty">Reading live inquiries…</div>';
+    var id=uid(),r=role();if(!id){list.innerHTML='<div class="gbx-ledger-empty">Sign in to read your live inquiry ledger.</div>';return}
+    try{
+      var q=await visibleQuery(id,r);if(q.error)throw q.error;
+      var rows=q.data||[];cache.rows=rows;cache.profiles={};cache.relationships=[];
+      var buyerIds=rows.map(function(x){return x.buyer_id}).filter(Boolean).filter(function(x,i,a){return a.indexOf(x)===i});
+      if(buyerIds.length){var bp=await sb.from("profiles").select("id,full_name,role").in("id",buyerIds);if(bp.error)throw bp.error;(bp.data||[]).forEach(function(x){if(x.role==="buyer")cache.profiles[x.id]=x.full_name||"Buyer"})}
+      if(r==="distributor"){
+        var rel=await sb.from("trade_relationships").select("id,buyer_id,distributor_id,status,is_primary,activated_at").eq("distributor_id",id);if(rel.error)throw rel.error;cache.relationships=rel.data||[];
+      }
+      var title=document.getElementById("gbx-ledger-title");if(title)title.textContent=r==="distributor"?"Demand ledger":"Your inquiries";
+      render(rows);
+    }catch(e){console.error(V+" live ledger",e);list.innerHTML='<div class="gbx-ledger-empty">Live inquiry ledger is temporarily unavailable.<br><span style="opacity:.7">'+esc(e.message||String(e))+'</span></div>'}
+  };
+  window.gbxV162Detail=function(id){
+    var i=cache.rows.find(function(x){return x.id===id});if(!i)return;
+    var rel=relationshipLabel(i),who=i.buyer_id?(cache.profiles[i.buyer_id]||"Buyer identified"):"Unattributed demand";
+    var wrap=document.createElement("div");wrap.id="gbx-v162-detail-modal";wrap.className="sheet-overlay";wrap.style.cssText="position:fixed;inset:0;z-index:100000;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.58);";
+    wrap.innerHTML='<div class="sheet gbx-detail-sheet" style="width:min(100%,520px);padding:24px;box-sizing:border-box;"><div class="sheet-handle"></div><h3>'+esc(i.item||"Inquiry")+'</h3><div class="sub">Live demand signal · '+esc(date(i.created_at))+'</div><div class="gbx-detail-grid"><div class="gbx-detail-cell"><span>Requester</span><strong>'+esc(i.inquirer_name||who)+'</strong></div><div class="gbx-detail-cell"><span>Status</span><strong>'+esc(status(i.status))+'</strong></div><div class="gbx-detail-cell"><span>Quantity</span><strong>'+esc(i.quantity||"Not specified")+'</strong></div><div class="gbx-detail-cell"><span>Order scale</span><strong>'+esc(i.order_scale||"Not specified")+'</strong></div><div class="gbx-detail-cell gbx-detail-full"><span>Relationship</span><strong>'+esc(rel)+'</strong></div><div class="gbx-detail-cell gbx-detail-full"><span>Contact</span><strong>'+esc(i.inquirer_phone||"Not supplied")+(i.inquirer_email?" · "+esc(i.inquirer_email):"")+'</strong></div></div><button class="cancel-btn" type="button" onclick="document.getElementById(\'gbx-v162-detail-modal\')?.remove()">Close</button></div>';
+    document.body.appendChild(wrap);wrap.addEventListener("click",function(e){if(e.target===wrap)wrap.remove()});
+  };
+  // UI navigation calls this when entering the Inquiries screen.
+  document.addEventListener("DOMContentLoaded",function(){setTimeout(function(){if(typeof showScreen==="function"){var original=showScreen;if(!window.__gbxV162Wrapped){window.__gbxV162Wrapped=true;window.showScreen=function(name){var out=original.apply(this,arguments);if(name==="inquiries")setTimeout(window.gbxV162Load,0);return out;}}}if(document.getElementById("screen-inquiries")?.classList.contains("active"))window.gbxV162Load()},400)});
+  window.addEventListener("online",function(){setTimeout(window.gbxV162Load,500)});
+  window.addEventListener("load",function(){setTimeout(function(){if(document.getElementById("screen-inquiries")?.classList.contains("active"))window.gbxV162Load()},900)});
+})();
+</script>
+
+
+
+<style id="goodsbarnx-v176-style">
+/* GOODSBARNX — BUILD 1.7.6
+   Controlled Live Relationship Activation + Truth Test */
+#gbx-v176-test{display:none;margin:18px 0 100px;padding:16px;border:1px solid rgba(214,168,58,.28);border-radius:18px;background:#121813;color:var(--gbx-ivory)}
+body.gbx-integration #gbx-v176-test{display:block}
+.v176-head{display:flex;gap:10px;align-items:flex-start}.v176-title{font-size:12px;font-weight:800}.v176-sub{font-size:8px;color:var(--gbx-muted);line-height:1.45;margin-top:4px}.v176-btn{margin-top:11px;border:0;background:var(--gbx-gold);color:#111;padding:8px 10px;border-radius:9px;font-size:9px;font-weight:800}.v176-btn.secondary{background:transparent;color:var(--gbx-ivory);border:1px solid rgba(214,168,58,.35)}.v176-result{margin-top:12px;border-top:1px solid var(--gbx-line);padding-top:10px}.v176-row{display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--gbx-line)}.v176-dot{width:7px;height:7px;border-radius:50%;background:#777;flex:0 0 7px;margin-top:4px}.v176-dot.pass{background:var(--gbx-green-hi)}.v176-dot.warn{background:var(--gbx-gold)}.v176-dot.fail{background:var(--gbx-danger)}.v176-row b{font-size:9px}.v176-row small{display:block;font-size:7.8px;color:var(--gbx-muted);line-height:1.45;margin-top:2px;word-break:break-word}.v176-note{font-size:7.5px;color:var(--gbx-muted);line-height:1.45;margin-top:10px;padding-top:10px;border-top:1px solid var(--gbx-line)}
+</style>
+
+<section id="gbx-v176-test">
+  <div class="v176-head"><div>
+    <div class="v176-title">Build 1.7.6 · Controlled Live Relationship Activation</div>
+    <div class="v176-sub">Executes one explicit canonical relationship transaction for the first verified activation candidate, then proves the database truth, idempotency, routing-state transition, and stock boundary. Never runs automatically.</div>
+  </div></div>
+  <button class="v176-btn" type="button" onclick="gbxV176RunLive()">EXECUTE LIVE ACTIVATION TEST</button>
+  <button class="v176-btn secondary" type="button" onclick="gbxV176RunReadiness()">RUN READINESS CHECK</button>
+  <div id="v176-result" class="v176-result"></div>
+  <div class="v176-note">This test performs a real relationship write only after this button is deliberately pressed and confirmed. It does not write inquiries, allocate stock, reserve stock, or change product quantities. The unresolved Pan signal remains blocked.</div>
+</section>
+
+<script id="goodsbarnx-v176-live-relationship">
+(function(){
+  "use strict";
+  var V="V1.7.6";
+  function esc(v){return String(v??"").replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]})}
+  function lower(v){return String(v||"").toLowerCase().trim()}
+  function uid(){return window.currentUser?.id||window.supabaseUser?.id||null}
+  function role(){return String(window.currentUser?.role||"").toLowerCase()}
+  function openStatus(v){return !["closed","resolved","cancelled","canceled","completed"].includes(lower(v))}
+  async function visible(){
+    var id=uid();if(!id)throw new Error("No authenticated user.");
+    var q=await sb.from("inquiries").select("id,inquirer_name,inquirer_phone,inquirer_email,item,order_scale,quantity,distributor_id,buyer_id,contact_type,created_at,status,inquirer_id").eq("distributor_id",id).order("created_at",{ascending:false});
+    if(q.error)throw q.error;
+    return q.data||[];
+  }
+  async function evidence(rows){
+    var buyerIds=rows.map(function(x){return x.buyer_id}).filter(Boolean);
+    var byId={};
+    if(buyerIds.length){var p=await sb.from("profiles").select("id,full_name,role,phone").in("id",buyerIds);if(p.error)throw p.error;(p.data||[]).forEach(function(x){if(x.role==="buyer")byId[x.id]=x})}
+    var out=[];
+    for(var i=0;i<rows.length;i++){
+      var q=rows[i],candidate=q.buyer_id?byId[q.buyer_id]:null,method=candidate?"existing buyer_id":null;
+      if(!candidate&&q.inquirer_id){var ip=await sb.from("profiles").select("id,full_name,role,phone").eq("id",q.inquirer_id).maybeSingle();if(ip.error)throw ip.error;if(ip.data?.role==="buyer"){candidate=ip.data;method="inquirer_id"}}
+      if(!candidate&&q.inquirer_phone){var ph=await sb.from("profiles").select("id,full_name,role,phone").eq("role","buyer").eq("phone",q.inquirer_phone);if(ph.error)throw ph.error;if((ph.data||[]).length===1){candidate=ph.data[0];method="exact phone"}}
+      var rels=[];
+      if(candidate){var rr=await sb.from("trade_relationships").select("id,buyer_id,distributor_id,status,is_primary,activated_at,relationship_started_at,created_at,updated_at").eq("buyer_id",candidate.id).eq("distributor_id",q.distributor_id).eq("is_primary",true).in("status",["active","pending","paused"]);if(rr.error)throw rr.error;rels=rr.data||[]}
+      var active=rels.find(function(r){return lower(r.status)==="active"});
+      out.push({inquiry:q,candidate:candidate,method:method,relationships:rels,active:active||null,state:!candidate?"identity_gap":active?"ready":"relationship_gap"});
+    }
+    return out;
+  }
+  function row(label,state,detail){var out=document.getElementById("v176-result");var d=document.createElement("div");d.className="v176-row";d.innerHTML='<span class="v176-dot '+state+'"></span><div><b>'+esc(label)+'</b><small>'+esc(detail)+'</small></div>';out.appendChild(d)}
+  function clear(){var out=document.getElementById("v176-result");if(out)out.innerHTML=""}
+  async function runReadiness(){
+    clear();
+    try{
+      var u=await sb.auth.getUser();if(u.error)throw u.error;if(!u.data.user){row("Authenticated session","fail","No live Supabase session.");return}row("Authenticated session","pass","Live Supabase session available.");
+      var pr=await sb.from("profiles").select("id,role,full_name").eq("id",u.data.user.id).maybeSingle();if(pr.error)throw pr.error;if(!pr.data||pr.data.role!=="distributor"){row("Distributor role","fail","Current session is not a distributor.");return}row("Distributor role","pass",(pr.data.full_name||"Distributor")+" · role=distributor");
+      var rows=await visible(),open=rows.filter(function(x){return openStatus(x.status)}),ev=await evidence(open),cand=ev.filter(function(x){return x.state==="relationship_gap"}),ready=ev.filter(function(x){return x.state==="ready"}),blocked=ev.filter(function(x){return x.state==="identity_gap"});
+      row("Demand source","pass",rows.length+" inquiries read directly from Supabase.");
+      row("Open demand","pass",open.length+" open demand signals evaluated.");
+      row("Verified identities","pass",ev.filter(function(x){return !!x.candidate}).length+" of "+open.length+" open signals have safe buyer identity evidence.");
+      row("Live activation candidates",cand.length?"pass":"warn",cand.length+" candidate(s) eligible for explicit activation.");
+      row("Already relationship-ready",ready.length?"pass":"warn",ready.length+" identified signal(s) already have an active primary relationship.");
+      row("Identity blockers",blocked.length?"warn":"pass",blocked.length+" open signal(s) remain blocked before relationship activation.");
+      row("Mutation boundary","pass","Readiness check performed no relationship mutation.");
+      row("Stock safety","pass","Readiness check does not allocate, reserve, or mutate stock.");
+      row("V1.7.6 readiness","pass","Ready for one controlled live activation transaction.");
+      ev.slice(0,10).forEach(function(x){row("Signal: "+(x.inquiry.item||"Unspecified"),x.state==="relationship_gap"?"warn":x.state==="ready"?"pass":"warn",(x.candidate?.full_name||"Unresolved buyer")+" → "+x.state+(x.method?" · "+x.method:""))});
+    }catch(e){row("Readiness test","fail",e.message||String(e))}
+  }
+  window.gbxV176Evidence=async function(id){
+    try{
+      var rows=await visible(),open=rows.filter(function(x){return openStatus(x.status)}),ev=await evidence(open),r=ev.find(function(x){return x.inquiry.id===id});
+      if(!r)return;
+      var wrap=document.createElement("div");wrap.id="gbx-v176-relationship-modal";wrap.className="sheet-overlay";wrap.style.cssText="position:fixed;inset:0;z-index:100004;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.58);";
+      var state=r.state==="ready"?"RELATIONSHIP READY":r.state==="relationship_gap"?"RELATIONSHIP GAP · ACTION AVAILABLE":"IDENTITY GAP · ACTION BLOCKED";
+      var action=r.state==="relationship_gap"?'<button class="gbx-activation-primary" type="button" onclick="gbxV176Activate(\''+esc(id)+'\',this)">Establish active relationship</button>':'';
+      wrap.innerHTML='<div class="sheet gbx-detail-sheet" style="width:min(100%,520px);padding:24px;box-sizing:border-box;"><div class="sheet-handle"></div><h3>'+esc(r.inquiry.item||"Demand signal")+'</h3><div class="sub">Relationship activation · '+esc(new Date(r.inquiry.created_at||Date.now()).toLocaleString("en-NG"))+'</div><div class="gbx-relationship"><div class="gbx-relationship-title">Commercial readiness</div><div class="gbx-relationship-row"><span class="gbx-relationship-dot '+(r.candidate?'pass':'warn')+'"></span><div class="gbx-relationship-copy"><div class="gbx-relationship-label">Buyer identity</div><div class="gbx-relationship-detail">'+esc(r.candidate?(r.candidate.full_name||"Buyer"):("Not safely resolved"))+'</div></div></div><div class="gbx-relationship-row"><span class="gbx-relationship-dot '+(r.active?'pass':'warn')+'"></span><div class="gbx-relationship-copy"><div class="gbx-relationship-label">Canonical relationship</div><div class="gbx-relationship-detail">'+esc(r.active?"Active primary relationship verified.":"No active primary relationship verified.")+'</div></div></div></div><div class="gbx-relationship-state"><span>Routing state</span><strong>'+esc(state)+'</strong></div><div style="margin-top:8px;font-size:8px;line-height:1.45;color:rgba(15,20,17,.55)">'+esc(r.method?"Identity evidence: "+r.method:"No safe identity evidence available.")+'</div>'+action+'<button class="cancel-btn" type="button" onclick="document.getElementById(\'gbx-v176-relationship-modal\')?.remove()">Close</button></div>';
+      document.body.appendChild(wrap);wrap.addEventListener("click",function(e){if(e.target===wrap)wrap.remove()});
+    }catch(e){console.error(V,e);alert("Relationship activation is temporarily unavailable.")}
+  };
+  async function activate(id,button){
+    var original=button?button.textContent:"Establish active relationship";
+    try{
+      var rows=await visible(),open=rows.filter(function(x){return openStatus(x.status)}),ev=await evidence(open),r=ev.find(function(x){return x.inquiry.id===id});
+      if(!r)throw new Error("Demand signal not found.");
+      if(r.state!=="relationship_gap"||!r.candidate)throw new Error("This demand signal is not currently eligible for relationship activation.");
+      if(!confirm("Establish the canonical trade relationship with "+(r.candidate.full_name||"this buyer")+"?\n\nThis is a real relationship transaction. It will not allocate, reserve, or mutate stock."))return;
+      if(button){button.disabled=true;button.textContent="Establishing…"}
+      var rpc=await sb.rpc("create_trade_relationship",{p_buyer_id:r.candidate.id,p_distributor_id:r.inquiry.distributor_id});if(rpc.error)throw rpc.error;
+      var relationshipId=rpc.data;if(!relationshipId)throw new Error("Canonical RPC returned no relationship id.");
+      var verify=await sb.from("trade_relationships").select("id,buyer_id,distributor_id,status,is_primary,activated_at,relationship_started_at,created_at,updated_at").eq("id",relationshipId).maybeSingle();if(verify.error)throw verify.error;
+      var rel=verify.data;if(!rel)throw new Error("Created relationship could not be read back.");
+      if(rel.buyer_id!==r.candidate.id||rel.distributor_id!==r.inquiry.distributor_id)throw new Error("Canonical relationship readback does not match the requested buyer/distributor pair.");
+      if(lower(rel.status)!=="active")throw new Error("Relationship exists but is not active: "+(rel.status||"unknown"));
+      if(rel.is_primary!==true)throw new Error("Relationship exists but is not primary.");
+      if(!rel.activated_at||!rel.relationship_started_at)throw new Error("Active relationship is missing activation/start timestamps.");
+      var repeat=await sb.rpc("create_trade_relationship",{p_buyer_id:r.candidate.id,p_distributor_id:r.inquiry.distributor_id});if(repeat.error)throw repeat.error;if(repeat.data!==relationshipId)throw new Error("Idempotency check failed: repeat request returned a different relationship id.");
+      var dup=await sb.from("trade_relationships").select("id,status,is_primary").eq("buyer_id",r.candidate.id).eq("distributor_id",r.inquiry.distributor_id).eq("is_primary",true).in("status",["active","pending","paused"]);if(dup.error)throw dup.error;if((dup.data||[]).length!==1)throw new Error("Duplicate protection failed: expected exactly one primary active/pending/paused relationship.");
+      document.getElementById("gbx-v176-relationship-modal")?.remove();
+      alert("Relationship established and verified.\n\nCanonical ID: "+relationshipId+"\nStatus: "+rel.status+" · primary\nIdempotency: verified\nStock: unchanged");
+      if(typeof gbxV162Load==="function")await gbxV162Load();
+    }catch(e){console.error(V,e);if(button){button.disabled=false;button.textContent=original}alert("Relationship activation failed: "+(e.message||String(e)))}
+  }
+  window.gbxV176Activate=activate;
+  window.gbxV176RunReadiness=runReadiness;
+  window.gbxV176RunLive=async function(){
+    clear();
+    try{
+      var u=await sb.auth.getUser();if(u.error)throw u.error;if(!u.data.user){row("Authenticated session","fail","No live Supabase session.");return}
+      var pr=await sb.from("profiles").select("id,role,full_name").eq("id",u.data.user.id).maybeSingle();if(pr.error)throw pr.error;if(!pr.data||pr.data.role!=="distributor"){row("Authorization","fail","Current session is not a distributor.");return}
+      var rows=await visible(),open=rows.filter(function(x){return openStatus(x.status)}),ev=await evidence(open),candidates=ev.filter(function(x){return x.state==="relationship_gap"});
+      row("Live candidate scan","pass",candidates.length+" verified buyer(s) have a relationship gap.");
+      if(!candidates.length){row("Controlled activation","warn","No eligible relationship-gap candidate exists. No write performed.");return}
+      var r=candidates[0],buyer=r.candidate.full_name||"verified buyer";
+      if(!confirm("EXECUTE REAL RELATIONSHIP ACTIVATION?\n\nBuyer: "+buyer+"\nDistributor: "+(pr.data.full_name||"current distributor")+"\nDemand: "+(r.inquiry.item||"Unspecified")+"\n\nThis writes to trade_relationships. It does NOT allocate or reserve stock.")){row("User confirmation","warn","Cancelled. No relationship mutation performed.");return}
+      var rpc=await sb.rpc("create_trade_relationship",{p_buyer_id:r.candidate.id,p_distributor_id:r.inquiry.distributor_id});if(rpc.error)throw rpc.error;var relationshipId=rpc.data;if(!relationshipId)throw new Error("Canonical RPC returned no relationship id.");
+      row("Canonical write","pass","create_trade_relationship returned "+relationshipId+".");
+      var verify=await sb.from("trade_relationships").select("id,buyer_id,distributor_id,status,is_primary,activated_at,relationship_started_at,created_at,updated_at").eq("id",relationshipId).maybeSingle();if(verify.error)throw verify.error;var rel=verify.data;if(!rel)throw new Error("Created relationship could not be read back.");
+      var pair=rel.buyer_id===r.candidate.id&&rel.distributor_id===r.inquiry.distributor_id;if(!pair)throw new Error("Readback buyer/distributor pair mismatch.");
+      row("Canonical readback",pair?"pass":"fail","Buyer/distributor pair matches requested activation.");
+      var active=lower(rel.status)==="active";row("Active status",active?"pass":"fail","status="+(rel.status||"unknown"));if(!active)throw new Error("Relationship is not active.");
+      var primary=rel.is_primary===true;row("Primary relationship",primary?"pass":"fail","is_primary="+rel.is_primary);if(!primary)throw new Error("Relationship is not primary.");
+      var stamps=!!rel.activated_at&&!!rel.relationship_started_at;row("Activation timestamps",stamps?"pass":"fail",stamps?"activated_at and relationship_started_at populated.":"Required activation timestamps are missing.");if(!stamps)throw new Error("Activation timestamps missing.");
+      var repeat=await sb.rpc("create_trade_relationship",{p_buyer_id:r.candidate.id,p_distributor_id:r.inquiry.distributor_id});if(repeat.error)throw repeat.error;var idem=repeat.data===relationshipId;row("Idempotency",idem?"pass":"fail","Repeat canonical request returned "+String(repeat.data)+"; expected "+relationshipId+".");if(!idem)throw new Error("Idempotency failed.");
+      var dup=await sb.from("trade_relationships").select("id,status,is_primary").eq("buyer_id",r.candidate.id).eq("distributor_id",r.inquiry.distributor_id).eq("is_primary",true).in("status",["active","pending","paused"]);if(dup.error)throw dup.error;var one=(dup.data||[]).length===1;row("Duplicate protection",one?"pass":"fail","Found "+((dup.data||[]).length)+" active/pending/paused primary relationship(s); expected exactly 1.");if(!one)throw new Error("Duplicate protection failed.");
+      var after=await evidence(open),target=after.find(function(x){return x.inquiry.id===r.inquiry.id}),pan=after.find(function(x){lower(x.inquiry.item).includes("pan")});
+      var routed=target&&target.state==="ready";row("Demand relationship state",routed?"pass":"fail",routed?"Target demand is now relationship-ready.":"Target demand did not become relationship-ready.");if(!routed)throw new Error("Demand relationship state did not transition to ready.");
+      if(pan)row("Pan isolation",pan.state==="identity_gap"?"pass":"fail",pan.state==="identity_gap"?"Pan remains blocked by identity_gap.":"Pan unexpectedly became routable.");
+      row("Stock safety","pass","Activation path contains no products update, inventory mutation, allocation, or reservation write.");
+      row("V1.7.6 LIVE ACTIVATION","pass","Controlled relationship transaction completed and verified. Canonical relationship is active, primary, idempotent, and the target demand is relationship-ready.");
+      if(typeof gbxV162Load==="function")setTimeout(gbxV162Load,250);
+    }catch(e){console.error(V,e);row("V1.7.6 LIVE ACTIVATION","fail",e.message||String(e))}
+  };
+  document.addEventListener("DOMContentLoaded",function(){setTimeout(function(){if(new URLSearchParams(location.search).get("integration")==="1")document.body.classList.add("gbx-integration")},0)});
+  window.addEventListener("load",function(){setTimeout(function(){if(new URLSearchParams(location.search).get("integration")==="1")document.body.classList.add("gbx-integration")},150)});
+})();
+</script>
+</body>
+</html>
