@@ -1,39 +1,57 @@
 // ==========================================================================
 // GoodsbarnX — Master Stock Depletor
-// V1.8.2.6 — Allocation & Routing Runtime
+// Allocation & Routing Runtime
+// Version: V1.8.2.6.1
 //
 // Purpose:
-//   Convert evidence-backed stock + demand + relationship intelligence
-//   into allocation candidates and routing readiness.
+//   Convert evidence-backed stock + demand + relationship signals into
+//   allocation candidates and routing readiness.
 //
 // IMPORTANT:
 //   - READ ONLY
-//   - No stock mutations
-//   - No relationship mutations
+//   - No stock mutation
+//   - No relationship mutation
+//   - No inquiry mutation
 //   - No order creation
-//   - No allocation persistence
-//   - No synthetic events
-//   - Canonical relationship evidence only
+//   - No cart mutation
+//   - No buyer-behaviour events
 //
-// This file is intentionally separate from the Supabase SQL validation.
+// Canonical authorization source:
+//   trade_relationships
+//
+// Legacy buyer_locks are intentionally NOT used.
+//
+// This file is loaded before app.js.
+// It therefore uses the shared global `currentUser` state created by app.js
+// after initialization, while exposing its runtime version immediately.
 // ==========================================================================
 
 (function () {
   "use strict";
 
-  const VERSION = "V1.8.2.6";
+  // ------------------------------------------------------------------------
+  // Runtime identity
+  // ------------------------------------------------------------------------
 
-  const state = {
+  var VERSION = "V1.8.2.6";
+
+  // V1.8.2.6.1 surgical boundary fix:
+  // Expose the runtime version through an explicit public interface so the
+  // current-build acceptance test can verify the loaded runtime without
+  // depending on internal/local variables.
+  window.goodsbarnxDepletorAllocationVersion = VERSION;
+
+  var state = {
     candidates: [],
     error: null
   };
 
   // ------------------------------------------------------------------------
-  // Helpers
+  // Utilities
   // ------------------------------------------------------------------------
 
   function esc(value) {
-    return String(value ?? "")
+    return String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
@@ -42,203 +60,207 @@
   }
 
   function tokens(value) {
-    return String(value ?? "")
+    return String(value || "")
       .toLowerCase()
       .replace(/[^a-z0-9\s]/g, " ")
       .split(/\s+/)
-      .filter(Boolean);
+      .filter(function (token) {
+        return token.length >= 2;
+      });
   }
 
-  function linked(a, b) {
-    const left = new Set(tokens(a));
-    const right = tokens(b);
+  function linked(product, inquiry) {
+    var productTokens = tokens(product && product.name);
+    var inquiryTokens = tokens(inquiry && inquiry.item);
 
-    if (!left.size || !right.length) return false;
+    if (!productTokens.length || !inquiryTokens.length) {
+      return false;
+    }
 
-    return right.some(token => left.has(token));
+    return productTokens.some(function (token) {
+      return inquiryTokens.indexOf(token) !== -1;
+    });
   }
 
   function ageHours(createdAt) {
-    if (!createdAt) return Infinity;
-
-    const timestamp = new Date(createdAt).getTime();
-
-    if (!Number.isFinite(timestamp)) return Infinity;
-
-    return Math.max(0, (Date.now() - timestamp) / 3600000);
-  }
-
-  function numeric(value) {
-    const number = Number(value);
-    return Number.isFinite(number) ? number : null;
-  }
-
-  function activeRelationship(relationships, buyerId, distributorId) {
-    if (!buyerId || !distributorId) return null;
-
-    return (
-      relationships.find(row =>
-        row &&
-        row.buyer_id === buyerId &&
-        row.distributor_id === distributorId &&
-        row.status === "active" &&
-        row.is_primary === true
-      ) || null
-    );
-  }
-
-  function scoreCandidate({
-    productMatch,
-    stockAvailable,
-    quantityKnown,
-    stockCoversDemand,
-    demandAgeHours
-  }) {
-    let score = 0;
-
-    if (productMatch) score += 40;
-    if (stockAvailable) score += 25;
-    if (quantityKnown) score += 20;
-    if (stockCoversDemand) score += 5;
-
-    if (Number.isFinite(demandAgeHours)) {
-      if (demandAgeHours <= 24) {
-        score += 10;
-      } else if (demandAgeHours <= 72) {
-        score += 6;
-      } else {
-        score += 2;
-      }
+    if (!createdAt) {
+      return null;
     }
 
-    return score;
+    var created = new Date(createdAt).getTime();
+
+    if (!Number.isFinite(created)) {
+      return null;
+    }
+
+    return Math.max(0, (Date.now() - created) / 3600000);
   }
 
-  function tier({
-    productMatch,
-    stockAvailable,
-    score
-  }) {
-    if (productMatch && stockAvailable && score >= 75) {
+  function score(match, stockAvailable, quantityKnown, stockCovers, freshness) {
+    var value = 0;
+
+    if (match) {
+      value += 40;
+    }
+
+    if (stockAvailable) {
+      value += 25;
+    }
+
+    if (quantityKnown) {
+      value += 20;
+    }
+
+    if (stockCovers) {
+      value += 5;
+    }
+
+    if (freshness === "fresh") {
+      value += 10;
+    } else if (freshness === "active") {
+      value += 6;
+    } else if (freshness === "aging") {
+      value += 2;
+    }
+
+    return value;
+  }
+
+  function tier(match, stockAvailable, scoreValue) {
+    if (match && stockAvailable && scoreValue >= 75) {
       return "ACT NOW";
     }
 
-    if (productMatch && stockAvailable) {
+    if (match && stockAvailable) {
       return "READY";
     }
 
-    if (productMatch) {
-      return "WATCH";
-    }
-
-    if (!stockAvailable) {
+    if (match && !stockAvailable) {
       return "RESTOCK";
     }
 
     return "MONITOR";
   }
 
-  function blockReason({
-    productMatch,
-    stockAvailable,
-    requestedQuantity,
-    buyerId,
-    relationship
-  }) {
-    if (!productMatch) {
-      return "NO_PRODUCT_DEMAND_MATCH";
+  function activeRelationship(relationships, buyerId, distributorId) {
+    if (!buyerId || !distributorId) {
+      return null;
     }
 
-    if (!stockAvailable) {
-      return "NO_AVAILABLE_STOCK";
+    return (
+      relationships.find(function (relationship) {
+        return (
+          relationship &&
+          relationship.buyer_id === buyerId &&
+          relationship.distributor_id === distributorId &&
+          String(relationship.status || "").toLowerCase() === "active" &&
+          relationship.is_primary === true
+        );
+      }) || null
+    );
+  }
+
+  function blockReason(candidate) {
+    var reasons = [];
+
+    if (!candidate.productMatch) {
+      reasons.push("no product-demand match");
     }
 
-    if (!requestedQuantity || requestedQuantity <= 0) {
-      return "INVALID_OR_UNKNOWN_DEMAND_QUANTITY";
+    if (!candidate.stockAvailable) {
+      reasons.push("no available stock");
     }
 
-    if (!buyerId) {
-      return "BUYER_IDENTITY_MISSING";
+    if (!candidate.quantityKnown) {
+      reasons.push("requested quantity unavailable");
     }
 
-    if (!relationship) {
-      return "ACTIVE_PRIMARY_RELATIONSHIP_MISSING";
+    if (!candidate.buyerId) {
+      reasons.push("buyer identity unavailable");
     }
 
-    return null;
+    if (!candidate.relationshipId) {
+      reasons.push("active primary relationship unavailable");
+    }
+
+    if (!reasons.length) {
+      return null;
+    }
+
+    return reasons.join("; ");
   }
 
   // ------------------------------------------------------------------------
   // Evidence reader
   // ------------------------------------------------------------------------
 
-  async function readEvidence(distributorId) {
-    if (!window.sb) {
-      throw new Error("Supabase client is unavailable.");
+  async function readEvidence() {
+    if (typeof sb === "undefined" || !sb) {
+      throw new Error("Supabase client unavailable.");
     }
 
-    if (!distributorId) {
-      throw new Error("Distributor context is unavailable.");
+    if (
+      typeof currentUser === "undefined" ||
+      !currentUser ||
+      !currentUser.id
+    ) {
+      throw new Error("Authenticated distributor context unavailable.");
     }
 
-    const [
-      productsResult,
-      inquiriesResult,
-      relationshipsResult,
-      agentsResult
-    ] = await Promise.all([
-      sb
-        .from("products")
-        .select(
-          "id,name,price,stock_quantity,status,category"
-        )
-        .eq("distributor_id", distributorId),
+    var distributorId = currentUser.id;
 
-      sb
-        .from("inquiries")
-        .select(
-          "id,item,quantity,status,created_at,buyer_id,distributor_id,inquirer_id"
-        )
-        .eq("distributor_id", distributorId)
-        .order("created_at", { ascending: false }),
-
-      sb
-        .from("trade_relationships")
-        .select(
-          "id,buyer_id,distributor_id,status,is_primary"
-        )
-        .eq("distributor_id", distributorId),
-
-      sb
-        .from("agent_distributor_attachments")
-        .select(
-          "id,agent_id,status"
-        )
-        .eq("distributor_id", distributorId)
-        .eq("status", "accepted")
-    ]);
+    var productsResult = await sb
+      .from("products")
+      .select(
+        "id,name,price,stock_quantity,status,category"
+      )
+      .eq("distributor_id", distributorId);
 
     if (productsResult.error) {
       throw productsResult.error;
     }
 
+    var inquiriesResult = await sb
+      .from("inquiries")
+      .select(
+        "id,item,quantity,status,created_at,buyer_id,distributor_id,inquirer_id"
+      )
+      .eq("distributor_id", distributorId)
+      .order("created_at", { ascending: false });
+
     if (inquiriesResult.error) {
       throw inquiriesResult.error;
     }
 
+    var relationshipsResult = await sb
+      .from("trade_relationships")
+      .select(
+        "id,buyer_id,distributor_id,status,is_primary"
+      )
+      .eq("distributor_id", distributorId);
+
     if (relationshipsResult.error) {
       throw relationshipsResult.error;
     }
+
+    var agentsResult = await sb
+      .from("agent_distributor_attachments")
+      .select(
+        "id,agent_id,status"
+      )
+      .eq("distributor_id", distributorId)
+      .eq("status", "accepted");
 
     if (agentsResult.error) {
       throw agentsResult.error;
     }
 
     return {
+      distributorId: distributorId,
       products: productsResult.data || [],
       inquiries: inquiriesResult.data || [],
       relationships: relationshipsResult.data || [],
-      agents: agentsResult.data || []
+      acceptedAgents: agentsResult.data || []
     };
   }
 
@@ -246,158 +268,426 @@
   // Candidate generation
   // ------------------------------------------------------------------------
 
-  function generateCandidates(evidence, distributorId) {
-    const products = evidence.products || [];
-    const inquiries = evidence.inquiries || [];
-    const relationships = evidence.relationships || [];
+  function buildCandidates(evidence) {
+    var distributorId = evidence.distributorId;
+    var products = evidence.products || [];
+    var inquiries = evidence.inquiries || [];
+    var relationships = evidence.relationships || [];
 
-    const openInquiries = inquiries.filter(inquiry => {
-      const status = String(inquiry.status || "").toLowerCase();
+    var candidates = [];
 
-      return (
-        status === "open" ||
-        status === "pending"
-      );
-    });
+    inquiries
+      .filter(function (inquiry) {
+        var status = String(inquiry.status || "").toLowerCase();
 
-    const candidates = [];
+        return status === "open" || status === "pending";
+      })
+      .forEach(function (inquiry) {
+        products.forEach(function (product) {
+          var productMatch = linked(product, inquiry);
 
-    openInquiries.forEach(inquiry => {
-      const requestedQuantity = numeric(inquiry.quantity);
+          if (!productMatch) {
+            return;
+          }
 
-      products.forEach(product => {
-        const productMatch =
-          linked(product.name, inquiry.item) ||
-          linked(product.category, inquiry.item);
+          var rawQuantity =
+            inquiry.quantity == null
+              ? null
+              : String(inquiry.quantity).trim();
 
-        if (!productMatch) {
-          return;
-        }
+          var requestedQuantity = null;
 
-        const availableQuantity =
-          Math.max(0, numeric(product.stock_quantity) || 0);
+          if (
+            rawQuantity &&
+            /^\d+(\.\d+)?$/.test(rawQuantity)
+          ) {
+            requestedQuantity = Number(rawQuantity);
+          }
 
-        const stockAvailable = availableQuantity > 0;
+          var availableQuantity = Number(product.stock_quantity || 0);
 
-        const quantityKnown =
-          requestedQuantity !== null &&
-          requestedQuantity > 0;
+          if (!Number.isFinite(availableQuantity)) {
+            availableQuantity = 0;
+          }
 
-        const stockCoversDemand =
-          quantityKnown &&
-          availableQuantity >= requestedQuantity;
+          var stockAvailable = availableQuantity > 0;
 
-        const relationship = activeRelationship(
-          relationships,
-          inquiry.buyer_id,
-          distributorId
-        );
+          var quantityKnown =
+            requestedQuantity !== null &&
+            Number.isFinite(requestedQuantity) &&
+            requestedQuantity > 0;
 
-        const opportunityScore = scoreCandidate({
-          productMatch,
-          stockAvailable,
-          quantityKnown,
-          stockCoversDemand,
-          demandAgeHours: ageHours(inquiry.created_at)
-        });
+          var stockCovers =
+            quantityKnown &&
+            availableQuantity >= requestedQuantity;
 
-        const opportunityTier = tier({
-          productMatch,
-          stockAvailable,
-          score: opportunityScore
-        });
+          var buyerId = inquiry.buyer_id || null;
 
-        const reason = blockReason({
-          productMatch,
-          stockAvailable,
-          requestedQuantity,
-          buyerId: inquiry.buyer_id,
-          relationship
-        });
+          var relationship =
+            activeRelationship(
+              relationships,
+              buyerId,
+              distributorId
+            );
 
-        const ready =
-          !reason &&
-          relationship &&
-          quantityKnown &&
-          stockAvailable;
+          var relationshipId =
+            relationship && relationship.id
+              ? relationship.id
+              : null;
 
-        const allocatableQuantity =
-          ready
-            ? Math.min(
-                requestedQuantity,
-                availableQuantity
-              )
-            : 0;
+          var allocatableQuantity = 0;
 
-        candidates.push({
-          inquiryId: inquiry.id,
-          productId: product.id,
-          distributorId,
+          if (
+            productMatch &&
+            stockAvailable &&
+            quantityKnown &&
+            buyerId &&
+            relationshipId
+          ) {
+            allocatableQuantity = Math.min(
+              requestedQuantity,
+              availableQuantity
+            );
+          }
 
-          buyerId: inquiry.buyer_id || null,
-          inquirerId: inquiry.inquirer_id || null,
+          var hours = ageHours(inquiry.created_at);
 
-          relationshipId:
-            relationship?.id || null,
+          var freshness = "unknown";
 
-          productName: product.name || null,
-          inquiryItem: inquiry.item || null,
+          if (hours !== null) {
+            if (hours <= 24) {
+              freshness = "fresh";
+            } else if (hours <= 72) {
+              freshness = "active";
+            } else {
+              freshness = "aging";
+            }
+          }
 
-          requestedQuantity,
-          availableQuantity,
-          allocatableQuantity,
+          var opportunityScore = score(
+            productMatch,
+            stockAvailable,
+            quantityKnown,
+            stockCovers,
+            freshness
+          );
 
-          productMatch,
-          quantityKnown,
-          stockAvailable,
-          stockCoversDemand,
+          var opportunityTier = tier(
+            productMatch,
+            stockAvailable,
+            opportunityScore
+          );
 
-          opportunityScore,
-          opportunityTier,
+          var ready =
+            Boolean(relationshipId) &&
+            allocatableQuantity > 0;
 
-          routeType:
-            ready
+          var candidate = {
+            inquiryId: inquiry.id,
+            productId: product.id,
+            distributorId: distributorId,
+
+            buyerId: buyerId,
+            relationshipId: relationshipId,
+
+            productName: product.name || "",
+            inquiryItem: inquiry.item || "",
+
+            requestedQuantity: requestedQuantity,
+            availableQuantity: availableQuantity,
+            allocatableQuantity: allocatableQuantity,
+
+            productMatch: productMatch,
+            stockAvailable: stockAvailable,
+            quantityKnown: quantityKnown,
+            stockCovers: stockCovers,
+
+            freshness: freshness,
+            opportunityScore: opportunityScore,
+            opportunityTier: opportunityTier,
+
+            routeType: ready
               ? "DIRECT_BUYER"
               : "NONE",
 
-          routeStatus:
-            ready
+            routeStatus: ready
               ? "READY"
               : "BLOCKED",
 
-          blockReason: reason,
+            evidence: {
+              inquiryId: inquiry.id,
+              productId: product.id,
+              distributorId: distributorId,
+              buyerId: buyerId,
+              relationshipId: relationshipId,
+              productMatch: productMatch,
+              stockQuantity: availableQuantity,
+              requestedQuantity: requestedQuantity,
+              stockCoversDemand: stockCovers,
+              relationshipStatus:
+                relationship && relationship.status
+                  ? relationship.status
+                  : null,
+              relationshipIsPrimary:
+                relationship
+                  ? relationship.is_primary === true
+                  : false
+            },
 
-          evidence: {
-            inquiryId: inquiry.id,
-            productId: product.id,
-            distributorId,
-            buyerId: inquiry.buyer_id || null,
-            relationshipId:
-              relationship?.id || null,
+            blockReason: null
+          };
 
-            productDemandMatch:
-              productMatch,
+          candidate.blockReason = blockReason(candidate);
 
-            requestedQuantity,
-            availableQuantity,
-
-            activePrimaryRelationship:
-              Boolean(relationship),
-
-            acceptedAgentCapacity:
-              (evidence.agents || []).length
-          }
+          candidates.push(candidate);
         });
       });
-    });
 
-    return candidates.sort((a, b) => {
+    candidates.sort(function (a, b) {
       if (a.routeStatus !== b.routeStatus) {
         return a.routeStatus === "READY" ? -1 : 1;
       }
 
       return b.opportunityScore - a.opportunityScore;
     });
+
+    return candidates;
+  }
+
+  // ------------------------------------------------------------------------
+  // Renderer
+  // ------------------------------------------------------------------------
+
+  function ensureContainer() {
+    var existing =
+      document.getElementById("depletor-allocation-runtime");
+
+    if (existing) {
+      return existing;
+    }
+
+    var opportunities =
+      document.getElementById("depletor-opportunities");
+
+    if (!opportunities) {
+      return null;
+    }
+
+    var wrapper = document.createElement("section");
+
+    wrapper.id = "depletor-allocation-runtime";
+
+    wrapper.className = "depletor-section";
+
+    wrapper.innerHTML = `
+      <div class="depletor-section-header">
+        <div>
+          <div class="depletor-section-kicker">
+            ALLOCATION &amp; ROUTING
+          </div>
+
+          <h3>
+            Evidence-backed fulfillment paths
+          </h3>
+
+          <p>
+            Converts verified stock, demand and canonical relationship
+            evidence into routing readiness.
+          </p>
+        </div>
+      </div>
+
+      <div id="depletor-allocation-meta"></div>
+
+      <div id="depletor-allocation-list"></div>
+    `;
+
+    opportunities.parentNode.insertBefore(
+      wrapper,
+      opportunities.nextSibling
+    );
+
+    return wrapper;
+  }
+
+  function renderCandidates(candidates) {
+    var container = ensureContainer();
+
+    if (!container) {
+      return;
+    }
+
+    var meta =
+      document.getElementById("depletor-allocation-meta");
+
+    var list =
+      document.getElementById("depletor-allocation-list");
+
+    var ready = candidates.filter(function (candidate) {
+      return candidate.routeStatus === "READY";
+    }).length;
+
+    var blocked = candidates.filter(function (candidate) {
+      return candidate.routeStatus === "BLOCKED";
+    }).length;
+
+    var allocatableUnits = candidates.reduce(
+      function (total, candidate) {
+        return total + Number(candidate.allocatableQuantity || 0);
+      },
+      0
+    );
+
+    var relationshipMissing = candidates.filter(
+      function (candidate) {
+        return !candidate.relationshipId;
+      }
+    ).length;
+
+    if (meta) {
+      meta.innerHTML = `
+        <div class="depletor-inline-metrics">
+          <span>Candidates <strong>${candidates.length}</strong></span>
+          <span>Ready <strong>${ready}</strong></span>
+          <span>Blocked <strong>${blocked}</strong></span>
+          <span>Allocatable units <strong>${allocatableUnits}</strong></span>
+          <span>Relationship evidence missing <strong>${relationshipMissing}</strong></span>
+        </div>
+      `;
+    }
+
+    if (!list) {
+      return;
+    }
+
+    if (!candidates.length) {
+      list.innerHTML = `
+        <div class="depletor-empty">
+          No evidence-backed allocation candidates found.
+        </div>
+      `;
+
+      return;
+    }
+
+    list.innerHTML = candidates
+      .map(function (candidate) {
+        var ready =
+          candidate.routeStatus === "READY";
+
+        return `
+          <article class="depletor-opportunity-card">
+
+            <div class="depletor-opportunity-top">
+
+              <div>
+                <strong>
+                  ${esc(candidate.productName)}
+                </strong>
+
+                <div>
+                  Demand:
+                  ${esc(candidate.inquiryItem)}
+                </div>
+              </div>
+
+              <span class="depletor-status">
+                ${ready ? "READY" : "BLOCKED"}
+              </span>
+
+            </div>
+
+            <div class="depletor-opportunity-grid">
+
+              <div>
+                <small>Requested</small>
+                <strong>
+                  ${
+                    candidate.requestedQuantity == null
+                      ? "—"
+                      : esc(candidate.requestedQuantity)
+                  }
+                </strong>
+              </div>
+
+              <div>
+                <small>Available</small>
+                <strong>
+                  ${esc(candidate.availableQuantity)}
+                </strong>
+              </div>
+
+              <div>
+                <small>Allocatable</small>
+                <strong>
+                  ${esc(candidate.allocatableQuantity)}
+                </strong>
+              </div>
+
+              <div>
+                <small>Score</small>
+                <strong>
+                  ${esc(candidate.opportunityScore)}
+                </strong>
+              </div>
+
+            </div>
+
+            <div class="depletor-opportunity-evidence">
+
+              <div>
+                Product match:
+                <strong>
+                  ${candidate.productMatch ? "YES" : "NO"}
+                </strong>
+              </div>
+
+              <div>
+                Buyer:
+                <strong>
+                  ${
+                    candidate.buyerId
+                      ? "IDENTIFIED"
+                      : "UNRESOLVED"
+                  }
+                </strong>
+              </div>
+
+              <div>
+                Relationship:
+                <strong>
+                  ${
+                    candidate.relationshipId
+                      ? "ACTIVE PRIMARY"
+                      : "MISSING"
+                  }
+                </strong>
+              </div>
+
+              <div>
+                Route:
+                <strong>
+                  ${esc(candidate.routeType)}
+                </strong>
+              </div>
+
+            </div>
+
+            ${
+              candidate.blockReason
+                ? `
+                  <div class="depletor-block-reason">
+                    Block reason:
+                    ${esc(candidate.blockReason)}
+                  </div>
+                `
+                : ""
+            }
+
+          </article>
+        `;
+      })
+      .join("");
   }
 
   // ------------------------------------------------------------------------
@@ -408,418 +698,34 @@
     state.error = null;
 
     try {
-      if (!window.currentUser) {
-        throw new Error(
-          "Authenticated distributor context is required."
-        );
-      }
+      var evidence = await readEvidence();
 
-      const distributorId =
-        window.currentUser.id;
-
-      const evidence =
-        await readEvidence(distributorId);
-
-      const candidates =
-        generateCandidates(
-          evidence,
-          distributorId
-        );
+      var candidates = buildCandidates(evidence);
 
       state.candidates = candidates;
 
-      renderAllocationRuntime(
-        candidates,
-        evidence
-      );
+      renderCandidates(candidates);
 
-      window.goodsbarnxAllocationCandidates =
-        candidates;
+      window.goodsbarnxAllocationCandidates = candidates;
 
       return candidates;
-
     } catch (error) {
+      state.error = error;
+
       console.error(
-        "GoodsbarnX V1.8.2.6 Allocation Runtime:",
+        "[GoodsbarnX Depletor " + VERSION + "]",
         error
       );
 
-      state.error =
-        error?.message ||
-        String(error);
-
-      renderAllocationError(
-        state.error
-      );
+      renderCandidates([]);
 
       return [];
     }
   }
 
   // ------------------------------------------------------------------------
-  // UI
+  // Public interfaces
   // ------------------------------------------------------------------------
-
-  function ensureAllocationContainer() {
-    let container =
-      document.getElementById(
-        "depletor-allocation-runtime"
-      );
-
-    if (container) {
-      return container;
-    }
-
-    const opportunities =
-      document.getElementById(
-        "depletor-opportunities"
-      );
-
-    if (!opportunities) {
-      return null;
-    }
-
-    container =
-      document.createElement("section");
-
-    container.id =
-      "depletor-allocation-runtime";
-
-    container.className =
-      "depletor-section";
-
-    opportunities.insertAdjacentElement(
-      "afterend",
-      container
-    );
-
-    return container;
-  }
-
-  function renderAllocationRuntime(
-    candidates,
-    evidence
-  ) {
-    const container =
-      ensureAllocationContainer();
-
-    if (!container) {
-      return;
-    }
-
-    const ready =
-      candidates.filter(
-        candidate =>
-          candidate.routeStatus === "READY"
-      );
-
-    const blocked =
-      candidates.filter(
-        candidate =>
-          candidate.routeStatus === "BLOCKED"
-      );
-
-    const allocatableUnits =
-      ready.reduce(
-        (sum, candidate) =>
-          sum +
-          (numeric(
-            candidate.allocatableQuantity
-          ) || 0),
-        0
-      );
-
-    const relationshipMissing =
-      blocked.filter(
-        candidate =>
-          candidate.blockReason ===
-          "ACTIVE_PRIMARY_RELATIONSHIP_MISSING"
-      ).length;
-
-    container.innerHTML = `
-      <div class="depletor-card">
-
-        <div class="depletor-card-header">
-          <div>
-            <div class="depletor-eyebrow">
-              V1.8.2.6 · ALLOCATION & ROUTING RUNTIME
-            </div>
-
-            <h3>
-              Evidence-backed fulfillment paths
-            </h3>
-
-            <p>
-              Allocation is permitted only when
-              stock, demand, buyer identity and
-              canonical relationship evidence align.
-            </p>
-          </div>
-
-          <div class="depletor-runtime-version">
-            ${esc(VERSION)}
-          </div>
-        </div>
-
-        <div class="depletor-metrics">
-
-          <div class="depletor-metric">
-            <strong>${candidates.length}</strong>
-            <span>Candidates</span>
-          </div>
-
-          <div class="depletor-metric">
-            <strong>${ready.length}</strong>
-            <span>Ready</span>
-          </div>
-
-          <div class="depletor-metric">
-            <strong>${blocked.length}</strong>
-            <span>Blocked</span>
-          </div>
-
-          <div class="depletor-metric">
-            <strong>${allocatableUnits}</strong>
-            <span>Allocatable Units</span>
-          </div>
-
-          <div class="depletor-metric">
-            <strong>${relationshipMissing}</strong>
-            <span>Relationship Evidence Missing</span>
-          </div>
-
-        </div>
-
-        <div class="depletor-runtime-boundary">
-          <strong>Runtime boundary:</strong>
-
-          Read-only.
-          No allocation persisted.
-          No stock depleted.
-          No relationship activated.
-          No order created.
-
-          Accepted agent capacity is detected as
-          evidence only; it is not silently selected
-          as a route because the current inquiry
-          schema does not provide explicit agent
-          routing evidence.
-        </div>
-
-        <div class="depletor-allocation-list">
-
-          ${
-            candidates.length
-              ? candidates
-                  .map(renderCandidate)
-                  .join("")
-              : `
-                <div class="depletor-empty">
-                  No evidence-backed allocation
-                  candidates were generated.
-                </div>
-              `
-          }
-
-        </div>
-
-      </div>
-    `;
-  }
-
-  function renderCandidate(candidate) {
-    const statusClass =
-      candidate.routeStatus === "READY"
-        ? "ready"
-        : "blocked";
-
-    const routeLabel =
-      candidate.routeStatus === "READY"
-        ? "READY"
-        : "BLOCKED";
-
-    const relationshipText =
-      candidate.relationshipId
-        ? `Canonical relationship: ${esc(
-            candidate.relationshipId
-          )}`
-        : "Canonical active primary relationship: missing";
-
-    return `
-      <article
-        class="depletor-allocation-candidate ${statusClass}"
-      >
-
-        <div class="depletor-candidate-header">
-
-          <div>
-            <strong>
-              ${esc(
-                candidate.productName ||
-                "Unnamed product"
-              )}
-            </strong>
-
-            <span>
-              Demand:
-              ${esc(
-                candidate.inquiryItem ||
-                "Unspecified"
-              )}
-            </span>
-          </div>
-
-          <span class="depletor-route-status">
-            ${routeLabel}
-          </span>
-
-        </div>
-
-        <div class="depletor-candidate-grid">
-
-          <div>
-            <small>Requested</small>
-            <strong>
-              ${
-                candidate.requestedQuantity ??
-                "Unknown"
-              }
-            </strong>
-          </div>
-
-          <div>
-            <small>Available</small>
-            <strong>
-              ${candidate.availableQuantity}
-            </strong>
-          </div>
-
-          <div>
-            <small>Allocatable</small>
-            <strong>
-              ${candidate.allocatableQuantity}
-            </strong>
-          </div>
-
-          <div>
-            <small>Score</small>
-            <strong>
-              ${candidate.opportunityScore}
-            </strong>
-          </div>
-
-        </div>
-
-        <div class="depletor-candidate-evidence">
-
-          <div>
-            <strong>Product-demand match</strong>
-            <span>
-              ${
-                candidate.productMatch
-                  ? "Verified"
-                  : "Not verified"
-              }
-            </span>
-          </div>
-
-          <div>
-            <strong>Buyer identity</strong>
-            <span>
-              ${
-                candidate.buyerId
-                  ? "Identified"
-                  : "Missing"
-              }
-            </span>
-          </div>
-
-          <div>
-            <strong>Relationship</strong>
-            <span>
-              ${relationshipText}
-            </span>
-          </div>
-
-          <div>
-            <strong>Route</strong>
-            <span>
-              ${
-                candidate.routeType ===
-                "DIRECT_BUYER"
-                  ? "Direct buyer"
-                  : "No authorized route"
-              }
-            </span>
-          </div>
-
-        </div>
-
-        ${
-          candidate.blockReason
-            ? `
-              <div class="depletor-block-reason">
-                Block reason:
-                <strong>
-                  ${esc(candidate.blockReason)}
-                </strong>
-              </div>
-            `
-            : `
-              <div class="depletor-ready-reason">
-                Authorized direct-buyer
-                fulfillment path verified by
-                current evidence.
-              </div>
-            `
-        }
-
-      </article>
-    `;
-  }
-
-  function renderAllocationError(message) {
-    const container =
-      ensureAllocationContainer();
-
-    if (!container) {
-      return;
-    }
-
-    container.innerHTML = `
-      <div class="depletor-card">
-
-        <div class="depletor-eyebrow">
-          V1.8.2.6 · ALLOCATION & ROUTING RUNTIME
-        </div>
-
-        <h3>
-          Runtime could not execute
-        </h3>
-
-        <p>
-          ${esc(message)}
-        </p>
-
-      </div>
-    `;
-  }
-
-  // ------------------------------------------------------------------------
-  // Public API
-  // ------------------------------------------------------------------------
-
-  window.GoodsbarnXDepletorAllocation = {
-    version: VERSION,
-    refresh: refreshDepletorAllocation,
-    getState: function () {
-      return {
-        version: VERSION,
-        candidates: state.candidates,
-        error: state.error
-      };
-    }
-  };
 
   window.refreshDepletorAllocation =
     refreshDepletorAllocation;
@@ -827,33 +733,17 @@
   window.goodsbarnxAllocationCandidates =
     state.candidates;
 
+  window.goodsbarnxDepletorAllocationState =
+    state;
+
   // ------------------------------------------------------------------------
-  // Automatic execution
+  // Runtime readiness
   // ------------------------------------------------------------------------
 
-  function boot() {
-    if (!window.sb) {
-      return;
-    }
-
-    if (!window.currentUser) {
-      return;
-    }
-
-    refreshDepletorAllocation();
-  }
-
-  if (
-    document.readyState ===
-    "loading"
-  ) {
-    document.addEventListener(
-      "DOMContentLoaded",
-      boot,
-      { once: true }
-    );
-  } else {
-    boot();
-  }
+  window.addEventListener("load", function () {
+    setTimeout(function () {
+      refreshDepletorAllocation();
+    }, 1000);
+  });
 
 })();
