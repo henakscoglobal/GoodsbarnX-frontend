@@ -4,7 +4,7 @@
 // Plain global script — MUST be the LAST js/ file loaded in index.html,
 // since its init block calls functions (loadCurrentUser, loadDistributorsAndBuyers,
 // updateCartBadge) that live in every other js/ file.
-// V1.8.2.6.6 — Supabase Auth State Trace.
+// V1.8.2.6.6.1 — Supabase Auth State Trace.
 // ==========================================================================
 
 let selectedSignupRole = "buyer";
@@ -23,7 +23,7 @@ let disputeTargetName = "";
 let cart = JSON.parse(localStorage.getItem("goodsbarnx_cart") || "[]");
 
 (async () => {
-  console.log("GoodsbarnX initializing — V1.8.2.6.6 Supabase Auth State Trace");
+  console.log("GoodsbarnX initializing — V1.8.2.6.6.1 Supabase Auth State Trace");
   try {
     // V1.8.2.6.6: loadCurrentUser() is now the single authentication execution boundary.
     // Do NOT preflight sb.auth.getSession() here. That duplicate gate could block the
