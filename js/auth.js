@@ -148,7 +148,8 @@ function installAuthStateTrace() {
   window.goodsbarnxAuthStateTraceSubscription = result && result.data && result.data.subscription ? result.data.subscription : result;
 }
 
-installAuthStateTrace();
+// Listener installation is intentionally deferred to loadCurrentUser() so the
+// trace state is initialized first and cannot be wiped by resetAuthContext().
 
 // ---------- Current user / resolution trace ----------
 async function loadCurrentUser() {
@@ -156,6 +157,10 @@ async function loadCurrentUser() {
 
   goodsbarnxAuthResolutionPromise = (async function() {
     resetAuthContext();
+    // V1.8.2.6.6.1: install/rebind the diagnostic listener AFTER trace state
+    // initialization but BEFORE the first getSession() call. This preserves the
+    // listener marker/events and guarantees the lifecycle trace belongs to this
+    // resolver execution.
     installAuthStateTrace();
     publishAuthContext({
       execution: {
