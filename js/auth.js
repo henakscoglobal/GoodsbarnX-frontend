@@ -1,7 +1,7 @@
 // ==========================================================================
 // GoodsbarnX — auth.js
 // Signup, login, logout, role selection, guest mode, current user loading.
-// V1.8.2.6.6 — Supabase Auth State Trace.
+// V1.8.2.6.6.2 — Supabase Session Persistence Trace.
 // Plain global script — depends on js/config.js (for `sb`) being loaded first.
 // ===========================================================================
 
@@ -38,7 +38,7 @@ function toggleLoginPassword() {
 // ---------- V1.8.2.6.6 Supabase Auth State Trace ----------
 // Diagnostic-only boundary over the existing Supabase auth/profile flow.
 // No second authentication mechanism. No database writes.
-const GBX_AUTH_CONTEXT_VERSION = "V1.8.2.6.6";
+const GBX_AUTH_CONTEXT_VERSION = "V1.8.2.6.6.2";
 window.goodsbarnxAuthContextVersion = GBX_AUTH_CONTEXT_VERSION;
 
 window.goodsbarnxAuthContext = {
@@ -58,6 +58,16 @@ window.goodsbarnxAuthContext = {
     listenerInstalledAt: null,
     events: [],
     lastEvent: null
+  },
+  sessionPersistenceTrace: {
+    loginAttemptAt: null,
+    loginResultAt: null,
+    loginStatus: "not_started",
+    loginUserId: null,
+    loginError: null,
+    postLoginSession: { status: "not_started", detail: null, userId: null },
+    storage: { inspected: false, authKeyCount: 0, authKeyNames: [] },
+    reloadBoundary: { status: "not_observed", detail: null }
   },
   trace: {
     session: { status: "not_started", ms: null, detail: null },
@@ -85,6 +95,16 @@ function resetAuthContext() {
     initializedAt: new Date().toISOString(),
     resolvedAt: null,
     execution: { state: "not_started", startedAt: null, completedAt: null },
+    sessionPersistenceTrace: {
+      loginAttemptAt: null,
+      loginResultAt: null,
+      loginStatus: "not_started",
+      loginUserId: null,
+      loginError: null,
+      postLoginSession: { status: "not_started", detail: null, userId: null },
+      storage: { inspected: false, authKeyCount: 0, authKeyNames: [] },
+      reloadBoundary: { status: "not_observed", detail: null }
+    },
     trace: {
       session: { status: "not_started", ms: null, detail: null },
       authUser: { status: "not_started", ms: null, detail: null },
@@ -332,6 +352,40 @@ window.getGoodsbarnXAuthResolutionTrace = function() {
   return { version: GBX_AUTH_CONTEXT_VERSION, state: c.state, ready: c.ready, authenticated: c.authenticated, userId: c.userId, role: c.role, trace: c.trace || {}, errorCode: c.errorCode, errorMessage: c.errorMessage };
 };
 
+function inspectSupabaseAuthStorage() {
+  const names = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (/supabase/i.test(key) || /^sb-/i.test(key))) names.push(key);
+    }
+  } catch (e) {}
+  return { inspected: true, authKeyCount: names.length, authKeyNames: names.slice(0, 20) };
+}
+
+async function tracePostLoginSession(userId) {
+  const trace = Object.assign({}, (window.goodsbarnxAuthContext || {}).sessionPersistenceTrace || {});
+  trace.loginResultAt = new Date().toISOString();
+  trace.loginUserId = userId || null;
+  trace.storage = inspectSupabaseAuthStorage();
+  try {
+    const result = await sb.auth.getSession();
+    const session = result && result.data && result.data.session;
+    if (result && result.error) throw result.error;
+    trace.postLoginSession = {
+      status: session && session.user ? "present" : "absent",
+      detail: session && session.user ? "Session available immediately after sign-in." : "No session returned immediately after sign-in.",
+      userId: session && session.user ? session.user.id : null
+    };
+  } catch (e) {
+    trace.postLoginSession = { status: "failed", detail: traceError(e), userId: null };
+  }
+  publishAuthContext({ sessionPersistenceTrace: trace });
+  return trace;
+}
+
+// ---------- Session persistence trace ----------
+
 // ---------- Signup ----------
 
 async function handleSignup() {
@@ -357,6 +411,9 @@ async function handleSignup() {
     err.innerText = error.message;
     return;
   }
+  publishAuthContext({ sessionPersistenceTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).sessionPersistenceTrace || {}, {
+    loginAttemptAt: new Date().toISOString(), loginResultAt: new Date().toISOString(), loginStatus: "signup_succeeded", loginUserId: data && data.user ? data.user.id : null, storage: inspectSupabaseAuthStorage()
+  }) });
 
   const userId = data.user.id;
   await sb.from("profiles").insert({ id: userId, full_name: name, phone: phone, role: selectedSignupRole });
@@ -386,11 +443,26 @@ async function handleLogin() {
     return;
   }
 
+  const startedAt = new Date().toISOString();
+  publishAuthContext({ sessionPersistenceTrace: {
+    loginAttemptAt: startedAt, loginResultAt: null, loginStatus: "running", loginUserId: null, loginError: null,
+    postLoginSession: { status: "not_started", detail: null, userId: null },
+    storage: { inspected: false, authKeyCount: 0, authKeyNames: [] }, reloadBoundary: { status: "not_observed", detail: null }
+  }});
+
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if (error) {
     err.innerText = error.message;
+    const failedTrace = Object.assign({}, (window.goodsbarnxAuthContext || {}).sessionPersistenceTrace || {}, {
+      loginResultAt: new Date().toISOString(), loginStatus: "failed", loginError: error.message, storage: inspectSupabaseAuthStorage()
+    });
+    publishAuthContext({ sessionPersistenceTrace: failedTrace });
     return;
   }
+
+  await tracePostLoginSession(data && data.user ? data.user.id : null);
+  const successTrace = Object.assign({}, (window.goodsbarnxAuthContext || {}).sessionPersistenceTrace || {}, { loginStatus: "succeeded" });
+  publishAuthContext({ sessionPersistenceTrace: successTrace });
 
   goodsbarnxAuthResolutionPromise = null;
   await loadCurrentUser();
