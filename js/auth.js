@@ -1,7 +1,7 @@
 // ==========================================================================
 // GoodsbarnX — auth.js
 // Signup, login, logout, role selection, guest mode, current user loading.
-// V1.8.2.6.6.2 — Supabase Session Persistence Trace.
+// V1.8.2.6.6.4 — Auth Session Termination Boundary.
 // Plain global script — depends on js/config.js (for `sb`) being loaded first.
 // ===========================================================================
 
@@ -38,7 +38,7 @@ function toggleLoginPassword() {
 // ---------- V1.8.2.6.6 Supabase Auth State Trace ----------
 // Diagnostic-only boundary over the existing Supabase auth/profile flow.
 // No second authentication mechanism. No database writes.
-const GBX_AUTH_CONTEXT_VERSION = "V1.8.2.6.6.3";
+const GBX_AUTH_CONTEXT_VERSION = "V1.8.2.6.6.4";
 window.goodsbarnxAuthContextVersion = GBX_AUTH_CONTEXT_VERSION;
 
 window.goodsbarnxAuthContext = {
@@ -73,6 +73,11 @@ window.goodsbarnxAuthContext = {
     handlerEnteredAt: null, validation: "not_started", signInMethod: "not_started",
     signInInvokedAt: null, signInReturnedAt: null, signInStatus: "not_started",
     returnedUserId: null, returnedSessionPresent: false, exception: null, resolverReentryAt: null, resolverStatus: "not_started"
+  },
+  logoutExecutionTrace: {
+    handlerEnteredAt: null, signOutMethod: "not_started", signOutInvokedAt: null, signOutReturnedAt: null,
+    signOutStatus: "not_started", signedOutEventObserved: false, sessionAfterSignOut: "not_started",
+    currentUserCleared: false, uiReset: false, exception: null
   },
   trace: {
     session: { status: "not_started", ms: null, detail: null },
@@ -109,6 +114,11 @@ function resetAuthContext() {
       postLoginSession: { status: "not_started", detail: null, userId: null },
       storage: { inspected: false, authKeyCount: 0, authKeyNames: [] },
       reloadBoundary: { status: "not_observed", detail: null }
+    },
+    logoutExecutionTrace: {
+      handlerEnteredAt: null, signOutMethod: "not_started", signOutInvokedAt: null, signOutReturnedAt: null,
+      signOutStatus: "not_started", signedOutEventObserved: false, sessionAfterSignOut: "not_started",
+      currentUserCleared: false, uiReset: false, exception: null
     },
     trace: {
       session: { status: "not_started", ms: null, detail: null },
@@ -503,6 +513,83 @@ async function handleLogin() {
   }
   document.getElementById("login-shell").classList.add("hidden");
   document.getElementById("app").style.display = "block";
+}
+
+// ---------- Logout / Auth Session Termination Boundary ----------
+// Surgical runtime path: the existing logout UI invokes this real handler.
+// No local credential manipulation; Supabase remains the authoritative session owner.
+async function handleLogout() {
+  const startedAt = new Date().toISOString();
+  const trace = {
+    handlerEnteredAt: startedAt, signOutMethod: (window.sb && sb.auth && typeof sb.auth.signOut === "function") ? "available" : "missing",
+    signOutInvokedAt: null, signOutReturnedAt: null, signOutStatus: "not_started",
+    signedOutEventObserved: false, sessionAfterSignOut: "not_started", currentUserCleared: false, uiReset: false, exception: null
+  };
+  publishAuthContext({ logoutExecutionTrace: trace });
+
+  if (trace.signOutMethod !== "available") {
+    trace.signOutStatus = "missing";
+    trace.exception = "Supabase signOut method is unavailable.";
+    publishAuthContext({ logoutExecutionTrace: trace });
+    return;
+  }
+
+  trace.signOutInvokedAt = new Date().toISOString();
+  trace.signOutStatus = "running";
+  publishAuthContext({ logoutExecutionTrace: trace });
+
+  let result;
+  try {
+    result = await sb.auth.signOut();
+  } catch (error) {
+    trace.signOutReturnedAt = new Date().toISOString();
+    trace.signOutStatus = "exception";
+    trace.exception = traceError(error);
+    publishAuthContext({ logoutExecutionTrace: trace });
+    return;
+  }
+
+  trace.signOutReturnedAt = new Date().toISOString();
+  if (result && result.error) {
+    trace.signOutStatus = "failed";
+    trace.exception = traceError(result.error);
+    publishAuthContext({ logoutExecutionTrace: trace });
+    return;
+  }
+  trace.signOutStatus = "succeeded";
+  publishAuthContext({ logoutExecutionTrace: trace });
+
+  // Give Supabase's auth-state listener a microtask boundary to observe SIGNED_OUT.
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const ctxAfterSignOut = window.goodsbarnxAuthContext || {};
+  const events = ctxAfterSignOut.authStateTrace && Array.isArray(ctxAfterSignOut.authStateTrace.events) ? ctxAfterSignOut.authStateTrace.events : [];
+  trace.signedOutEventObserved = events.some(e => e.event === "SIGNED_OUT" && !e.hasSession);
+
+  try {
+    const sessionResult = await sb.auth.getSession();
+    if (sessionResult && sessionResult.error) throw sessionResult.error;
+    trace.sessionAfterSignOut = sessionResult && sessionResult.data && sessionResult.data.session ? "present" : "absent";
+  } catch (error) {
+    trace.sessionAfterSignOut = "failed";
+    trace.exception = trace.exception || traceError(error);
+  }
+
+  currentUser = null;
+  trace.currentUserCleared = currentUser === null;
+
+  const authShell = document.getElementById("auth-shell");
+  const loginShell = document.getElementById("login-shell");
+  const app = document.getElementById("app");
+  if (authShell) authShell.classList.remove("hidden");
+  if (loginShell) loginShell.classList.add("hidden");
+  if (app) app.style.display = "none";
+  const logoutHolder = document.getElementById("logout-btn-holder");
+  if (logoutHolder) logoutHolder.innerHTML = "";
+  trace.uiReset = !!(authShell && loginShell && app);
+
+  // Preserve the diagnostic result after resetting the authoritative auth context.
+  resetAuthContext();
+  publishAuthContext({ state: "signed_out", ready: true, authenticated: false, userId: null, role: null, errorCode: null, errorMessage: null, logoutExecutionTrace: trace });
 }
 
 // ---------- Forgot password ----------
