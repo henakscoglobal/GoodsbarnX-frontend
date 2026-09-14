@@ -38,7 +38,7 @@ function toggleLoginPassword() {
 // ---------- V1.8.2.6.6 Supabase Auth State Trace ----------
 // Diagnostic-only boundary over the existing Supabase auth/profile flow.
 // No second authentication mechanism. No database writes.
-const GBX_AUTH_CONTEXT_VERSION = "V1.8.2.6.6.2";
+const GBX_AUTH_CONTEXT_VERSION = "V1.8.2.6.6.3";
 window.goodsbarnxAuthContextVersion = GBX_AUTH_CONTEXT_VERSION;
 
 window.goodsbarnxAuthContext = {
@@ -68,6 +68,11 @@ window.goodsbarnxAuthContext = {
     postLoginSession: { status: "not_started", detail: null, userId: null },
     storage: { inspected: false, authKeyCount: 0, authKeyNames: [] },
     reloadBoundary: { status: "not_observed", detail: null }
+  },
+  loginExecutionTrace: {
+    handlerEnteredAt: null, validation: "not_started", signInMethod: "not_started",
+    signInInvokedAt: null, signInReturnedAt: null, signInStatus: "not_started",
+    returnedUserId: null, returnedSessionPresent: false, exception: null, resolverReentryAt: null, resolverStatus: "not_started"
   },
   trace: {
     session: { status: "not_started", ms: null, detail: null },
@@ -433,6 +438,12 @@ async function handleSignup() {
 // ---------- Login ----------
 
 async function handleLogin() {
+  const executionStartedAt = new Date().toISOString();
+  publishAuthContext({ loginExecutionTrace: {
+    handlerEnteredAt: executionStartedAt, validation: "running", signInMethod: "available",
+    signInInvokedAt: null, signInReturnedAt: null, signInStatus: "not_started",
+    returnedUserId: null, returnedSessionPresent: false, exception: null, resolverReentryAt: null, resolverStatus: "not_started"
+  }});
   const email = document.getElementById("login-email").value;
   const password = document.getElementById("login-password").value;
   const err = document.getElementById("login-error");
@@ -440,8 +451,10 @@ async function handleLogin() {
   err.innerText = "";
   if (!email || !password) {
     err.innerText = "Please fill in both fields.";
+    publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, { validation: "blocked" }) });
     return;
   }
+  publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, { validation: "passed", signInMethod: typeof sb.auth.signInWithPassword === "function" ? "available" : "missing" }) });
 
   const startedAt = new Date().toISOString();
   publishAuthContext({ sessionPersistenceTrace: {
@@ -450,7 +463,22 @@ async function handleLogin() {
     storage: { inspected: false, authKeyCount: 0, authKeyNames: [] }, reloadBoundary: { status: "not_observed", detail: null }
   }});
 
-  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, { signInInvokedAt: new Date().toISOString(), signInStatus: "running" }) });
+  let data, error;
+  try {
+    const result = await sb.auth.signInWithPassword({ email, password });
+    data = result && result.data;
+    error = result && result.error;
+  } catch (e) {
+    error = e;
+    publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, { signInReturnedAt: new Date().toISOString(), signInStatus: "exception", exception: traceError(e) }) });
+    err.innerText = traceError(e);
+    return;
+  }
+  publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, {
+    signInReturnedAt: new Date().toISOString(), signInStatus: error ? "failed" : "succeeded",
+    returnedUserId: data && data.user ? data.user.id : null, returnedSessionPresent: !!(data && data.session), exception: error ? null : null
+  }) });
   if (error) {
     err.innerText = error.message;
     const failedTrace = Object.assign({}, (window.goodsbarnxAuthContext || {}).sessionPersistenceTrace || {}, {
@@ -465,7 +493,14 @@ async function handleLogin() {
   publishAuthContext({ sessionPersistenceTrace: successTrace });
 
   goodsbarnxAuthResolutionPromise = null;
-  await loadCurrentUser();
+  publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, { resolverReentryAt: new Date().toISOString(), resolverStatus: "running" }) });
+  try {
+    await loadCurrentUser();
+    publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, { resolverStatus: "completed" }) });
+  } catch (e) {
+    publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, { resolverStatus: "failed", exception: traceError(e) }) });
+    throw e;
+  }
   document.getElementById("login-shell").classList.add("hidden");
   document.getElementById("app").style.display = "block";
 }
