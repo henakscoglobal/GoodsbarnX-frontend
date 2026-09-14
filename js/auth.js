@@ -1,7 +1,7 @@
 // ==========================================================================
 // GoodsbarnX — auth.js
 // Signup, login, logout, role selection, guest mode, current user loading.
-// V1.8.2.6.5 — Auth Resolution Execution Boundary.
+// V1.8.2.6.6 — Supabase Auth State Trace.
 // Plain global script — depends on js/config.js (for `sb`) being loaded first.
 // ===========================================================================
 
@@ -35,10 +35,10 @@ function toggleLoginPassword() {
   pw.type = pw.type === "password" ? "text" : "password";
 }
 
-// ---------- V1.8.2.6.5 Auth Resolution Execution Boundary ----------
+// ---------- V1.8.2.6.6 Supabase Auth State Trace ----------
 // Diagnostic-only boundary over the existing Supabase auth/profile flow.
 // No second authentication mechanism. No database writes.
-const GBX_AUTH_CONTEXT_VERSION = "V1.8.2.6.5";
+const GBX_AUTH_CONTEXT_VERSION = "V1.8.2.6.6";
 window.goodsbarnxAuthContextVersion = GBX_AUTH_CONTEXT_VERSION;
 
 window.goodsbarnxAuthContext = {
@@ -54,6 +54,11 @@ window.goodsbarnxAuthContext = {
   initializedAt: null,
   resolvedAt: null,
   execution: { state: "not_started", startedAt: null, completedAt: null },
+  authStateTrace: {
+    listenerInstalledAt: null,
+    events: [],
+    lastEvent: null
+  },
   trace: {
     session: { status: "not_started", ms: null, detail: null },
     authUser: { status: "not_started", ms: null, detail: null },
@@ -108,12 +113,50 @@ function traceError(error) {
   return error && error.message ? error.message : String(error || "Unknown error");
 }
 
+// ---------- V1.8.2.6.6 Supabase Auth State Trace ----------
+// Diagnostic-only. Records auth lifecycle events without exposing tokens or
+// creating a second authentication mechanism. The resolver remains authoritative.
+function recordAuthStateEvent(event, session) {
+  const ctx = window.goodsbarnxAuthContext || {};
+  const trace = Object.assign({}, ctx.authStateTrace || {});
+  const events = Array.isArray(trace.events) ? trace.events.slice(-19) : [];
+  const userId = session && session.user ? session.user.id : null;
+  const entry = {
+    event: String(event || "UNKNOWN"),
+    at: new Date().toISOString(),
+    hasSession: !!session,
+    userId: userId || null
+  };
+  events.push(entry);
+  trace.events = events;
+  trace.lastEvent = entry;
+  publishAuthContext({ authStateTrace: trace });
+}
+
+function installAuthStateTrace() {
+  if (!window.sb || !sb.auth || typeof sb.auth.onAuthStateChange !== "function") return;
+  if (window.goodsbarnxAuthStateTraceSubscription) return;
+  const installedAt = new Date().toISOString();
+  publishAuthContext({
+    authStateTrace: Object.assign({}, window.goodsbarnxAuthContext.authStateTrace || {}, {
+      listenerInstalledAt: installedAt
+    })
+  });
+  const result = sb.auth.onAuthStateChange(function(event, session) {
+    recordAuthStateEvent(event, session);
+  });
+  window.goodsbarnxAuthStateTraceSubscription = result && result.data && result.data.subscription ? result.data.subscription : result;
+}
+
+installAuthStateTrace();
+
 // ---------- Current user / resolution trace ----------
 async function loadCurrentUser() {
   if (goodsbarnxAuthResolutionPromise) return goodsbarnxAuthResolutionPromise;
 
   goodsbarnxAuthResolutionPromise = (async function() {
     resetAuthContext();
+    installAuthStateTrace();
     publishAuthContext({
       execution: {
         state: "running",
