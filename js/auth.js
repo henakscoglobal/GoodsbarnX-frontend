@@ -1,821 +1,430 @@
 // ==========================================================================
 // GoodsbarnX — auth.js
-// V1.8.2.6.4 — AUTH RESOLUTION TRACE
-//
-// Purpose:
-// Establish and expose an explicit authentication → profile → role →
-// distributor-principal → currentUser resolution chain.
-//
-// This is NOT an Allocation upgrade.
-// This file performs no business-data writes.
-//
-// Dependencies:
-//   - js/config.js
-//   - Supabase JS v2
-//
-// Loaded before:
-//   - market.js
-//   - inquiries.js
-//   - storefront.js
-//   - cart.js
-//   - depletor.js
-//   - app.js
-// ==========================================================================
+// Signup, login, logout, role selection, guest mode, current user loading.
+// V1.8.2.6.5 — Auth Resolution Execution Boundary.
+// Plain global script — depends on js/config.js (for `sb`) being loaded first.
+// ===========================================================================
 
-"use strict";
+// ---------- Role / screen switching ----------
 
-const GBX_AUTH_CONTEXT_VERSION = "V1.8.2.6.4";
+function selectRole(el) {
+  document.querySelectorAll("#signup-role-picker .role-pick").forEach(r => r.classList.remove("sel"));
+  el.classList.add("sel");
+  selectedSignupRole = el.dataset.role;
+  document.getElementById("auth-company").style.display = selectedSignupRole === "agent" ? "block" : "none";
+}
 
+function showLogin() {
+  document.getElementById("auth-shell").classList.add("hidden");
+  document.getElementById("login-shell").classList.remove("hidden");
+}
+
+function showSignup() {
+  document.getElementById("login-shell").classList.add("hidden");
+  document.getElementById("auth-shell").classList.remove("hidden");
+}
+
+function continueAsGuest() {
+  document.getElementById("auth-shell").classList.add("hidden");
+  document.getElementById("login-shell").classList.add("hidden");
+  document.getElementById("app").style.display = "block";
+}
+
+function toggleLoginPassword() {
+  const pw = document.getElementById("login-password");
+  pw.type = pw.type === "password" ? "text" : "password";
+}
+
+// ---------- V1.8.2.6.5 Auth Resolution Execution Boundary ----------
+// Diagnostic-only boundary over the existing Supabase auth/profile flow.
+// No second authentication mechanism. No database writes.
+const GBX_AUTH_CONTEXT_VERSION = "V1.8.2.6.5";
 window.goodsbarnxAuthContextVersion = GBX_AUTH_CONTEXT_VERSION;
 
 window.goodsbarnxAuthContext = {
-  status: "NOT_INITIALIZED",
-  code: "AUTH_CONTEXT_NOT_INITIALIZED",
+  state: "initializing",
+  ready: false,
   authenticated: false,
   userId: null,
   role: null,
-  profileResolved: false,
-  distributorResolved: false,
-  currentUserResolved: false,
-  error: null
-};
-
-window.goodsbarnxAuthResolutionTrace = {
-  version: GBX_AUTH_CONTEXT_VERSION,
-  startedAt: null,
-  completedAt: null,
-  durationMs: null,
-
-  session: {
-    status: "NOT_EVALUATED",
-    resolved: false,
-    errorCode: null,
-    errorMessage: null
-  },
-
-  authUser: {
-    status: "NOT_EVALUATED",
-    resolved: false,
-    userId: null,
-    errorCode: null,
-    errorMessage: null
-  },
-
-  profile: {
-    status: "NOT_EVALUATED",
-    resolved: false,
-    userId: null,
-    role: null,
-    errorCode: null,
-    errorMessage: null
-  },
-
-  distributorProfile: {
-    status: "NOT_EVALUATED",
-    resolved: false,
-    userId: null,
-    errorCode: null,
-    errorMessage: null
-  },
-
-  currentUser: {
-    status: "NOT_EVALUATED",
-    resolved: false,
-    userId: null,
-    role: null,
-    synchronized: false,
-    errorCode: null,
-    errorMessage: null
+  profileLoaded: false,
+  distributorProfileLoaded: false,
+  errorCode: null,
+  errorMessage: null,
+  initializedAt: null,
+  resolvedAt: null,
+  execution: { state: "not_started", startedAt: null, completedAt: null },
+  trace: {
+    session: { status: "not_started", ms: null, detail: null },
+    authUser: { status: "not_started", ms: null, detail: null },
+    profile: { status: "not_started", ms: null, detail: null },
+    role: { status: "not_started", ms: null, detail: null },
+    distributorProfile: { status: "not_started", ms: null, detail: null },
+    currentUser: { status: "not_started", ms: null, detail: null }
   }
 };
 
 let goodsbarnxAuthResolutionPromise = null;
 
-
-/* --------------------------------------------------------------------------
-   Internal helpers
--------------------------------------------------------------------------- */
-
-function setAuthContextState(patch) {
+function resetAuthContext() {
   window.goodsbarnxAuthContext = {
-    ...window.goodsbarnxAuthContext,
-    ...patch
-  };
-}
-
-
-function setTraceStage(stage, patch) {
-  window.goodsbarnxAuthResolutionTrace[stage] = {
-    ...window.goodsbarnxAuthResolutionTrace[stage],
-    ...patch
-  };
-}
-
-
-function makeAuthError(code, message) {
-  const error = new Error(message);
-  error.code = code;
-  return error;
-}
-
-
-function getErrorMessage(error) {
-  if (!error) return null;
-
-  return (
-    error.message ||
-    error.error_description ||
-    error.details ||
-    String(error)
-  );
-}
-
-
-/* --------------------------------------------------------------------------
-   Resolution trace accessor
--------------------------------------------------------------------------- */
-
-function getGoodsbarnXAuthResolutionTrace() {
-  return window.goodsbarnxAuthResolutionTrace;
-}
-
-window.getGoodsbarnXAuthResolutionTrace =
-  getGoodsbarnXAuthResolutionTrace;
-
-
-/* --------------------------------------------------------------------------
-   Auth context accessor
--------------------------------------------------------------------------- */
-
-function getGoodsbarnXAuthContext() {
-  return window.goodsbarnxAuthContext;
-}
-
-window.getGoodsbarnXAuthContext =
-  getGoodsbarnXAuthContext;
-
-
-/* --------------------------------------------------------------------------
-   Authoritative current-user resolution
--------------------------------------------------------------------------- */
-
-async function loadCurrentUser() {
-
-  const trace = window.goodsbarnxAuthResolutionTrace;
-
-  trace.startedAt = new Date().toISOString();
-  trace.completedAt = null;
-  trace.durationMs = null;
-
-  setAuthContextState({
-    status: "AUTH_INITIALIZING",
-    code: "AUTH_INITIALIZING",
+    state: "initializing",
+    ready: false,
     authenticated: false,
     userId: null,
     role: null,
-    profileResolved: false,
-    distributorResolved: false,
-    currentUserResolved: false,
-    error: null
-  });
-
-  /*
-   * ------------------------------------------------------------------------
-   * STEP 1 — Supabase session
-   * ------------------------------------------------------------------------
-   */
-
-  try {
-
-    const {
-      data: { session },
-      error
-    } = await sb.auth.getSession();
-
-    if (error) {
-      setTraceStage("session", {
-        status: "FAILED",
-        resolved: false,
-        errorCode: "AUTH_SESSION_FAILED",
-        errorMessage: getErrorMessage(error)
-      });
-
-      throw makeAuthError(
-        "AUTH_SESSION_FAILED",
-        getErrorMessage(error) || "Unable to resolve Supabase session."
-      );
+    profileLoaded: false,
+    distributorProfileLoaded: false,
+    errorCode: null,
+    errorMessage: null,
+    initializedAt: new Date().toISOString(),
+    resolvedAt: null,
+    execution: { state: "not_started", startedAt: null, completedAt: null },
+    trace: {
+      session: { status: "not_started", ms: null, detail: null },
+      authUser: { status: "not_started", ms: null, detail: null },
+      profile: { status: "not_started", ms: null, detail: null },
+      role: { status: "not_started", ms: null, detail: null },
+      distributorProfile: { status: "not_started", ms: null, detail: null },
+      currentUser: { status: "not_started", ms: null, detail: null }
     }
-
-    if (!session || !session.user) {
-
-      setTraceStage("session", {
-        status: "RESOLVED_NO_SESSION",
-        resolved: false,
-        errorCode: "NO_AUTH_SESSION",
-        errorMessage: "No authenticated Supabase session exists."
-      });
-
-      setAuthContextState({
-        status: "NO_AUTH_SESSION",
-        code: "NO_AUTH_SESSION",
-        authenticated: false,
-        error: "No authenticated Supabase session exists."
-      });
-
-      trace.completedAt = new Date().toISOString();
-      trace.durationMs =
-        new Date(trace.completedAt).getTime() -
-        new Date(trace.startedAt).getTime();
-
-      return null;
-    }
-
-    setTraceStage("session", {
-      status: "RESOLVED",
-      resolved: true,
-      errorCode: null,
-      errorMessage: null
-    });
-
-  } catch (error) {
-
-    if (error && error.code === "AUTH_SESSION_FAILED") {
-      throw error;
-    }
-
-    throw makeAuthError(
-      "AUTH_SESSION_FAILED",
-      getErrorMessage(error) || "Supabase session resolution failed."
-    );
-  }
-
-
-  /*
-   * ------------------------------------------------------------------------
-   * STEP 2 — Authenticated Supabase user
-   * ------------------------------------------------------------------------
-   */
-
-  let authUser = null;
-
-  try {
-
-    const {
-      data: { user },
-      error
-    } = await sb.auth.getUser();
-
-    if (error) {
-
-      setTraceStage("authUser", {
-        status: "FAILED",
-        resolved: false,
-        userId: null,
-        errorCode: "AUTH_GET_USER_FAILED",
-        errorMessage: getErrorMessage(error)
-      });
-
-      throw makeAuthError(
-        "AUTH_GET_USER_FAILED",
-        getErrorMessage(error) || "Unable to resolve authenticated user."
-      );
-    }
-
-    if (!user) {
-
-      setTraceStage("authUser", {
-        status: "FAILED",
-        resolved: false,
-        userId: null,
-        errorCode: "NO_AUTH_USER",
-        errorMessage: "Supabase session exists but authenticated user is unavailable."
-      });
-
-      throw makeAuthError(
-        "NO_AUTH_USER",
-        "Supabase session exists but authenticated user is unavailable."
-      );
-    }
-
-    authUser = user;
-
-    setTraceStage("authUser", {
-      status: "RESOLVED",
-      resolved: true,
-      userId: user.id,
-      errorCode: null,
-      errorMessage: null
-    });
-
-    setAuthContextState({
-      status: "AUTH_USER_RESOLVED",
-      code: "AUTH_USER_RESOLVED",
-      authenticated: true,
-      userId: user.id,
-      error: null
-    });
-
-  } catch (error) {
-
-    trace.completedAt = new Date().toISOString();
-    trace.durationMs =
-      new Date(trace.completedAt).getTime() -
-      new Date(trace.startedAt).getTime();
-
-    setAuthContextState({
-      status: "AUTH_GET_USER_FAILED",
-      code: error.code || "AUTH_GET_USER_FAILED",
-      authenticated: false,
-      error: getErrorMessage(error)
-    });
-
-    throw error;
-  }
-
-
-  /*
-   * ------------------------------------------------------------------------
-   * STEP 3 — Canonical profiles row
-   * ------------------------------------------------------------------------
-   */
-
-  let profile = null;
-
-  try {
-
-    const {
-      data,
-      error
-    } = await sb
-      .from("profiles")
-      .select("*")
-      .eq("id", authUser.id)
-      .single();
-
-    if (error) {
-
-      setTraceStage("profile", {
-        status: "FAILED",
-        resolved: false,
-        userId: authUser.id,
-        role: null,
-        errorCode: "PROFILE_LOAD_FAILED",
-        errorMessage: getErrorMessage(error)
-      });
-
-      throw makeAuthError(
-        "PROFILE_LOAD_FAILED",
-        getErrorMessage(error) || "Unable to load canonical profile."
-      );
-    }
-
-    if (!data) {
-
-      setTraceStage("profile", {
-        status: "FAILED",
-        resolved: false,
-        userId: authUser.id,
-        role: null,
-        errorCode: "PROFILE_MISSING",
-        errorMessage: "Authenticated user has no canonical profiles row."
-      });
-
-      throw makeAuthError(
-        "PROFILE_MISSING",
-        "Authenticated user has no canonical profiles row."
-      );
-    }
-
-    profile = data;
-
-    const role = String(profile.role || "").trim().toLowerCase();
-
-    setTraceStage("profile", {
-      status: "RESOLVED",
-      resolved: true,
-      userId: authUser.id,
-      role: role || null,
-      errorCode: null,
-      errorMessage: null
-    });
-
-    setAuthContextState({
-      status: "PROFILE_RESOLVED",
-      code: "PROFILE_RESOLVED",
-      authenticated: true,
-      userId: authUser.id,
-      role: role || null,
-      profileResolved: true,
-      error: null
-    });
-
-  } catch (error) {
-
-    trace.completedAt = new Date().toISOString();
-    trace.durationMs =
-      new Date(trace.completedAt).getTime() -
-      new Date(trace.startedAt).getTime();
-
-    setAuthContextState({
-      status: error.code || "PROFILE_LOAD_FAILED",
-      code: error.code || "PROFILE_LOAD_FAILED",
-      authenticated: true,
-      userId: authUser.id,
-      profileResolved: false,
-      error: getErrorMessage(error)
-    });
-
-    throw error;
-  }
-
-
-  /*
-   * ------------------------------------------------------------------------
-   * STEP 4 — Distributor principal
-   * ------------------------------------------------------------------------
-   */
-
-  if (String(profile.role || "").trim().toLowerCase() === "distributor") {
-
-    let distributorProfile = null;
-
-    try {
-
-      const {
-        data,
-        error
-      } = await sb
-        .from("distributor_profiles")
-        .select("*")
-        .eq("id", authUser.id)
-        .single();
-
-      if (error) {
-
-        setTraceStage("distributorProfile", {
-          status: "FAILED",
-          resolved: false,
-          userId: authUser.id,
-          errorCode: "DISTRIBUTOR_PROFILE_LOAD_FAILED",
-          errorMessage: getErrorMessage(error)
-        });
-
-        throw makeAuthError(
-          "DISTRIBUTOR_PROFILE_LOAD_FAILED",
-          getErrorMessage(error) ||
-            "Unable to load distributor profile."
-        );
-      }
-
-      if (!data) {
-
-        setTraceStage("distributorProfile", {
-          status: "FAILED",
-          resolved: false,
-          userId: authUser.id,
-          errorCode: "DISTRIBUTOR_PROFILE_MISSING",
-          errorMessage:
-            "Distributor role exists but distributor_profiles row is missing."
-        });
-
-        throw makeAuthError(
-          "DISTRIBUTOR_PROFILE_MISSING",
-          "Distributor role exists but distributor_profiles row is missing."
-        );
-      }
-
-      distributorProfile = data;
-
-      setTraceStage("distributorProfile", {
-        status: "RESOLVED",
-        resolved: true,
-        userId: authUser.id,
-        errorCode: null,
-        errorMessage: null
-      });
-
-      currentUser = {
-        id: authUser.id,
-        ...profile,
-        ...distributorProfile
-      };
-
-      const synchronized =
-        !!currentUser &&
-        String(currentUser.id) === String(authUser.id) &&
-        String(currentUser.role || "").trim().toLowerCase() ===
-          "distributor";
-
-      if (!synchronized) {
-
-        setTraceStage("currentUser", {
-          status: "FAILED",
-          resolved: false,
-          userId: currentUser ? currentUser.id : null,
-          role: currentUser ? currentUser.role : null,
-          synchronized: false,
-          errorCode: "CURRENT_USER_SYNC_FAILED",
-          errorMessage:
-            "currentUser does not contain the authenticated distributor identity."
-        });
-
-        throw makeAuthError(
-          "CURRENT_USER_SYNC_FAILED",
-          "currentUser does not contain the authenticated distributor identity."
-        );
-      }
-
-      setTraceStage("currentUser", {
-        status: "RESOLVED",
-        resolved: true,
-        userId: currentUser.id,
-        role: currentUser.role,
-        synchronized: true,
-        errorCode: null,
-        errorMessage: null
-      });
-
-      setAuthContextState({
-        status: "AUTHENTICATED_DISTRIBUTOR",
-        code: "AUTHENTICATED_DISTRIBUTOR",
-        authenticated: true,
-        userId: authUser.id,
-        role: "distributor",
-        profileResolved: true,
-        distributorResolved: true,
-        currentUserResolved: true,
-        error: null
-      });
-
-    } catch (error) {
-
-      currentUser = null;
-
-      trace.completedAt = new Date().toISOString();
-      trace.durationMs =
-        new Date(trace.completedAt).getTime() -
-        new Date(trace.startedAt).getTime();
-
-      setAuthContextState({
-        status: error.code || "DISTRIBUTOR_CONTEXT_FAILED",
-        code: error.code || "DISTRIBUTOR_CONTEXT_FAILED",
-        authenticated: true,
-        userId: authUser.id,
-        role: "distributor",
-        profileResolved: true,
-        distributorResolved: false,
-        currentUserResolved: false,
-        error: getErrorMessage(error)
-      });
-
-      throw error;
-    }
-
-  }
-
-
-  /*
-   * ------------------------------------------------------------------------
-   * STEP 5 — Buyer
-   * ------------------------------------------------------------------------
-   */
-
-  if (String(profile.role || "").trim().toLowerCase() === "buyer") {
-
-    try {
-
-      const {
-        data: buyerProfile,
-        error
-      } = await sb
-        .from("buyer_profiles")
-        .select("*")
-        .eq("id", authUser.id)
-        .single();
-
-      if (error) {
-
-        setTraceStage("currentUser", {
-          status: "FAILED",
-          resolved: false,
-          userId: authUser.id,
-          role: "buyer",
-          synchronized: false,
-          errorCode: "BUYER_PROFILE_LOAD_FAILED",
-          errorMessage: getErrorMessage(error)
-        });
-
-        throw makeAuthError(
-          "BUYER_PROFILE_LOAD_FAILED",
-          getErrorMessage(error) || "Unable to load buyer profile."
-        );
-      }
-
-      currentUser = {
-        id: authUser.id,
-        ...profile,
-        ...(buyerProfile || {})
-      };
-
-      setTraceStage("currentUser", {
-        status: "RESOLVED",
-        resolved: true,
-        userId: currentUser.id,
-        role: currentUser.role,
-        synchronized: true,
-        errorCode: null,
-        errorMessage: null
-      });
-
-      setAuthContextState({
-        status: "AUTHENTICATED_BUYER",
-        code: "AUTHENTICATED_BUYER",
-        authenticated: true,
-        userId: authUser.id,
-        role: "buyer",
-        profileResolved: true,
-        distributorResolved: false,
-        currentUserResolved: true,
-        error: null
-      });
-
-    } catch (error) {
-
-      currentUser = null;
-
-      trace.completedAt = new Date().toISOString();
-      trace.durationMs =
-        new Date(trace.completedAt).getTime() -
-        new Date(trace.startedAt).getTime();
-
-      throw error;
-    }
-
-  }
-
-
-  /*
-   * ------------------------------------------------------------------------
-   * Other roles
-   * ------------------------------------------------------------------------
-   */
-
-  if (
-    !["distributor", "buyer"].includes(
-      String(profile.role || "").trim().toLowerCase()
-    )
-  ) {
-
-    currentUser = {
-      id: authUser.id,
-      ...profile
-    };
-
-    setTraceStage("currentUser", {
-      status: "RESOLVED",
-      resolved: true,
-      userId: currentUser.id,
-      role: currentUser.role || null,
-      synchronized: true,
-      errorCode: null,
-      errorMessage: null
-    });
-
-    setAuthContextState({
-      status: "AUTHENTICATED_OTHER_ROLE",
-      code: "AUTHENTICATED_OTHER_ROLE",
-      authenticated: true,
-      userId: authUser.id,
-      role: profile.role || null,
-      profileResolved: true,
-      distributorResolved: false,
-      currentUserResolved: true,
-      error: null
-    });
-  }
-
-
-  trace.completedAt = new Date().toISOString();
-  trace.durationMs =
-    new Date(trace.completedAt).getTime() -
-    new Date(trace.startedAt).getTime();
-
-  return currentUser;
+  };
 }
 
+function publishAuthContext(patch) {
+  window.goodsbarnxAuthContext = Object.assign({}, window.goodsbarnxAuthContext || {}, patch, {
+    resolvedAt: patch && patch.ready ? new Date().toISOString() : (window.goodsbarnxAuthContext && window.goodsbarnxAuthContext.resolvedAt) || null
+  });
+}
 
-/* --------------------------------------------------------------------------
-   Auth-resolution promise
--------------------------------------------------------------------------- */
+function traceStage(stage, status, detail, ms) {
+  const ctx = window.goodsbarnxAuthContext || {};
+  const trace = Object.assign({}, ctx.trace || {});
+  trace[stage] = { status: status, ms: Number.isFinite(ms) ? Math.round(ms) : null, detail: detail == null ? null : String(detail) };
+  publishAuthContext({ trace });
+}
 
-window.goodsbarnxAuthResolutionPromise =
-  (async function () {
+function traceError(error) {
+  return error && error.message ? error.message : String(error || "Unknown error");
+}
 
+// ---------- Current user / resolution trace ----------
+async function loadCurrentUser() {
+  if (goodsbarnxAuthResolutionPromise) return goodsbarnxAuthResolutionPromise;
+
+  goodsbarnxAuthResolutionPromise = (async function() {
+    resetAuthContext();
+    publishAuthContext({
+      execution: {
+        state: "running",
+        startedAt: new Date().toISOString(),
+        completedAt: null
+      }
+    });
+    currentUser = null;
+
+    // Stage 1: Supabase client/session boundary.
+    let t = performance.now();
     try {
-      return await loadCurrentUser();
+      const sessionResult = await sb.auth.getSession();
+      const session = sessionResult && sessionResult.data && sessionResult.data.session;
+      if (sessionResult && sessionResult.error) throw sessionResult.error;
+      traceStage("session", session ? "resolved" : "absent", session ? "Supabase session present." : "No active Supabase session.", performance.now() - t);
     } catch (error) {
-
-      console.error(
-        "[GoodsbarnX Auth Resolution]",
-        error
-      );
-
-      return null;
+      traceStage("session", "failed", traceError(error), performance.now() - t);
+      publishAuthContext({ state: "error", ready: true, authenticated: false, errorCode: "AUTH_SESSION_FAILED", errorMessage: traceError(error) });
+      throw error;
     }
 
+    // Stage 2: authoritative Supabase auth user.
+    t = performance.now();
+    let authResult;
+    try {
+      authResult = await sb.auth.getUser();
+      if (authResult.error) throw authResult.error;
+    } catch (error) {
+      traceStage("authUser", "failed", traceError(error), performance.now() - t);
+      publishAuthContext({ state: "error", ready: true, authenticated: false, errorCode: "AUTH_GET_USER_FAILED", errorMessage: traceError(error) });
+      throw error;
+    }
+
+    const user = authResult.data && authResult.data.user;
+    if (!user) {
+      traceStage("authUser", "absent", "Supabase returned no authenticated user.", performance.now() - t);
+      publishAuthContext({ state: "unauthenticated", ready: true, authenticated: false, errorCode: null, errorMessage: null, execution: { state: "completed", startedAt: (window.goodsbarnxAuthContext.execution || {}).startedAt || null, completedAt: new Date().toISOString() } });
+      return null;
+    }
+    traceStage("authUser", "resolved", "Authenticated user resolved.", performance.now() - t);
+    publishAuthContext({ state: "auth_user_resolved", ready: false, authenticated: true, userId: user.id });
+
+    // Stage 3: canonical profiles row.
+    t = performance.now();
+    let profileResult;
+    try {
+      profileResult = await sb.from("profiles").select("*").eq("id", user.id).single();
+      if (profileResult.error) throw profileResult.error;
+    } catch (error) {
+      traceStage("profile", "failed", traceError(error), performance.now() - t);
+      publishAuthContext({ state: "error", ready: true, authenticated: true, userId: user.id, errorCode: "PROFILE_LOAD_FAILED", errorMessage: traceError(error) });
+      throw error;
+    }
+    if (!profileResult.data) {
+      traceStage("profile", "missing", "Authenticated user has no profiles row.", performance.now() - t);
+      publishAuthContext({ state: "error", ready: true, authenticated: true, userId: user.id, errorCode: "PROFILE_MISSING", errorMessage: "Authenticated user has no profiles row." });
+      throw new Error("Authenticated user profile is missing.");
+    }
+    traceStage("profile", "resolved", "Canonical profiles row resolved.", performance.now() - t);
+    currentUser = { id: user.id, ...profileResult.data };
+    publishAuthContext({ state: "profile_resolved", ready: false, authenticated: true, userId: user.id, role: currentUser.role || null, profileLoaded: true });
+
+    // Stage 4: role contract.
+    const role = String(currentUser.role || "").toLowerCase();
+    traceStage("role", role ? "resolved" : "missing", role ? "Role = " + role + "." : "profiles.role is empty.", 0);
+    if (!role) {
+      currentUser = null;
+      publishAuthContext({ state: "error", ready: true, authenticated: true, userId: user.id, profileLoaded: true, errorCode: "PROFILE_ROLE_MISSING", errorMessage: "Authenticated profile has no role." });
+      throw new Error("Authenticated profile role is missing.");
+    }
+
+    // Stage 5: distributor principal profile when role requires it.
+    if (role === "distributor") {
+      t = performance.now();
+      let distResult;
+      try {
+        distResult = await sb.from("distributor_profiles").select("*").eq("id", currentUser.id).single();
+        if (distResult.error) throw distResult.error;
+      } catch (error) {
+        traceStage("distributorProfile", "failed", traceError(error), performance.now() - t);
+        currentUser = null;
+        publishAuthContext({ state: "error", ready: true, authenticated: true, userId: user.id, role: "distributor", profileLoaded: true, distributorProfileLoaded: false, errorCode: "DISTRIBUTOR_PROFILE_LOAD_FAILED", errorMessage: traceError(error) });
+        throw error;
+      }
+      if (!distResult.data) {
+        traceStage("distributorProfile", "missing", "Distributor role has no distributor_profiles row.", performance.now() - t);
+        currentUser = null;
+        publishAuthContext({ state: "error", ready: true, authenticated: true, userId: user.id, role: "distributor", profileLoaded: true, distributorProfileLoaded: false, errorCode: "DISTRIBUTOR_PROFILE_MISSING", errorMessage: "Distributor role has no distributor_profiles row." });
+        throw new Error("Distributor profile is missing.");
+      }
+      traceStage("distributorProfile", "resolved", "Distributor principal profile resolved.", performance.now() - t);
+      currentUser = { ...currentUser, ...distResult.data };
+      publishAuthContext({ state: "authenticated_distributor", ready: true, authenticated: true, userId: user.id, role: "distributor", profileLoaded: true, distributorProfileLoaded: true, errorCode: null, errorMessage: null });
+    } else if (role === "buyer") {
+      t = performance.now();
+      const buyerResult = await sb.from("buyer_profiles").select("*").eq("id", currentUser.id).single();
+      if (buyerResult.error) {
+        traceStage("distributorProfile", "not_applicable", "Buyer role; distributor profile not required.", performance.now() - t);
+        publishAuthContext({ state: "error", ready: true, authenticated: true, userId: user.id, role: "buyer", profileLoaded: true, errorCode: "BUYER_PROFILE_LOAD_FAILED", errorMessage: buyerResult.error.message || String(buyerResult.error) });
+        throw buyerResult.error;
+      }
+      currentUser = { ...currentUser, ...(buyerResult.data || {}) };
+      traceStage("distributorProfile", "not_applicable", "Buyer role; distributor profile not required.", performance.now() - t);
+      publishAuthContext({ state: "authenticated_user", ready: true, authenticated: true, userId: user.id, role: "buyer", profileLoaded: true, errorCode: null, errorMessage: null });
+    } else {
+      traceStage("distributorProfile", "not_applicable", "Role does not require distributor profile.", 0);
+      publishAuthContext({ state: "authenticated_user", ready: true, authenticated: true, userId: user.id, role: role, profileLoaded: true, errorCode: null, errorMessage: null });
+    }
+
+    // Stage 6: application object synchronization invariant.
+    const syncMs = 0;
+    if (!currentUser || currentUser.id !== user.id || String(currentUser.role || "").toLowerCase() !== role) {
+      traceStage("currentUser", "failed", "currentUser does not match authoritative auth user/profile role.", syncMs);
+      publishAuthContext({ state: "error", ready: true, authenticated: true, userId: user.id, role: role, errorCode: "CURRENT_USER_SYNC_FAILED", errorMessage: "Application currentUser is not synchronized with authenticated identity." });
+      throw new Error("currentUser synchronization failed.");
+    }
+    traceStage("currentUser", "resolved", "currentUser matches auth user ID and profile role.", syncMs);
+
+    const logoutHolder = document.getElementById("logout-btn-holder");
+    if (logoutHolder) logoutHolder.innerHTML = '<span class="logout-btn" onclick="handleLogout()">Log out</span>';
+    if (currentUser.role === "distributor") {
+      const navProducts = document.getElementById("nav-products");
+      const navStaff = document.getElementById("nav-staff");
+      if (navProducts) navProducts.style.display = "flex";
+      if (navStaff) navStaff.style.display = "flex";
+    }
+    if (currentUser.role === "agent") {
+      const navAgent = document.getElementById("nav-agent");
+      if (navAgent) navAgent.style.display = "flex";
+    }
+    publishAuthContext({
+      execution: {
+        state: "completed",
+        startedAt: (window.goodsbarnxAuthContext.execution || {}).startedAt || null,
+        completedAt: new Date().toISOString()
+      }
+    });
+    return currentUser;
   })();
 
-
-/* --------------------------------------------------------------------------
-   Existing authentication UI
--------------------------------------------------------------------------- */
-
-function selectRole(el) {
-
-  document
-    .querySelectorAll("#signup-role-picker .role-pick")
-    .forEach(function (r) {
-      r.classList.remove("sel");
-    });
-
-  el.classList.add("sel");
-
-  selectedSignupRole = el.dataset.role;
-
-  const company =
-    document.getElementById("auth-company");
-
-  if (company) {
-    company.style.display =
-      selectedSignupRole === "agent"
-        ? "block"
-        : "none";
+  window.goodsbarnxAuthContextPromise = goodsbarnxAuthResolutionPromise;
+  try {
+    return await goodsbarnxAuthResolutionPromise;
+  } catch (error) {
+    const existing = window.goodsbarnxAuthContext || {};
+    if (!existing.execution || existing.execution.state !== "completed") {
+      publishAuthContext({
+        execution: {
+          state: "failed",
+          startedAt: existing.execution ? existing.execution.startedAt : null,
+          completedAt: new Date().toISOString()
+        }
+      });
+    }
+    throw error;
+  } finally {
+    // A successful resolution remains authoritative for this page session.
+    // A failed resolution may be retried only by an explicit caller after a new auth action.
   }
 }
 
+window.getGoodsbarnXAuthContext = function() {
+  return window.goodsbarnxAuthContext || null;
+};
+window.getGoodsbarnXAuthResolutionTrace = function() {
+  const c = window.goodsbarnxAuthContext || {};
+  return { version: GBX_AUTH_CONTEXT_VERSION, state: c.state, ready: c.ready, authenticated: c.authenticated, userId: c.userId, role: c.role, trace: c.trace || {}, errorCode: c.errorCode, errorMessage: c.errorMessage };
+};
 
-function showLogin() {
+// ---------- Signup ----------
 
-  document
-    .getElementById("auth-shell")
-    .classList.add("hidden");
+async function handleSignup() {
+  const name = document.getElementById("auth-name").value;
+  const phone = document.getElementById("auth-phone").value;
+  const email = document.getElementById("auth-email").value;
+  const password = document.getElementById("auth-password").value;
+  const confirm = document.getElementById("auth-password-confirm").value;
+  const err = document.getElementById("auth-error");
 
-  document
-    .getElementById("login-shell")
-    .classList.remove("hidden");
+  err.innerText = "";
+  if (!name || !phone || !email || !password || !confirm) {
+    err.innerText = "Please fill in every field.";
+    return;
+  }
+  if (password !== confirm) {
+    err.innerText = "Passwords do not match.";
+    return;
+  }
+
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if (error) {
+    err.innerText = error.message;
+    return;
+  }
+
+  const userId = data.user.id;
+  await sb.from("profiles").insert({ id: userId, full_name: name, phone: phone, role: selectedSignupRole });
+
+  if (selectedSignupRole === "distributor") {
+    await sb.from("distributor_profiles").insert({ id: userId, business_name: name });
+  } else if (selectedSignupRole === "buyer") {
+    await sb.from("buyer_profiles").insert({ id: userId });
+  }
+
+  goodsbarnxAuthResolutionPromise = null;
+  await loadCurrentUser();
+  document.getElementById("auth-shell").classList.add("hidden");
+  document.getElementById("app").style.display = "block";
 }
 
+// ---------- Login ----------
 
-function showSignup() {
+async function handleLogin() {
+  const email = document.getElementById("login-email").value;
+  const password = document.getElementById("login-password").value;
+  const err = document.getElementById("login-error");
 
-  document
-    .getElementById("login-shell")
-    .classList.add("hidden");
+  err.innerText = "";
+  if (!email || !password) {
+    err.innerText = "Please fill in both fields.";
+    return;
+  }
 
-  document
-    .getElementById("auth-shell")
-    .classList.remove("hidden");
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    err.innerText = error.message;
+    return;
+  }
+
+  goodsbarnxAuthResolutionPromise = null;
+  await loadCurrentUser();
+  document.getElementById("login-shell").classList.add("hidden");
+  document.getElementById("app").style.display = "block";
 }
 
+// ---------- Forgot password ----------
 
-function continueAsGuest() {
-
-  document
-    .getElementById("auth-shell")
-    .classList.add("hidden");
-
-  document
-    .getElementById("login-shell")
-    .classList.add("hidden");
-
-  document
-    .getElementById("app")
-    .style.display = "block";
+function openForgotPasswordModal() {
+  document.getElementById("forgot-password-email").value = "";
+  document.getElementById("forgot-password-status").innerText = "";
+  document.getElementById("forgot-password-modal").classList.add("active");
 }
 
-
-function toggleLoginPassword() {
-
-  const pw =
-    document.getElementById("login-password");
-
-  if (!pw) return;
-
-  pw.type =
-    pw.type === "password"
-      ? "text"
-      : "password";
+function closeForgotPasswordModal() {
+  document.getElementById("forgot-password-modal").classList.remove("active");
 }
 
+async function sendPasswordReset() {
+  const email = document.getElementById("forgot-password-email").value.trim();
+  const status = document.getElementById("forgot-password-status");
 
-async function handleLogout() {
+  if (!email) {
+    status.innerText = "Enter your email address.";
+    return;
+  }
 
-  await sb.auth.signOut();
+  status.innerText = "Sending...";
 
-  location.reload();
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin
+  });
+
+  if (error) {
+    status.innerText = "Error: " + error.message;
+  } else {
+    status.innerText = "Check your email for a reset link.";
+    setTimeout(closeForgotPasswordModal, 2500);
+  }
 }
 
+// ---------- Set new password ----------
 
-console.log(
-  "GoodsbarnX auth loaded — V1.8.2.6.4 Auth Resolution Trace"
-);
+sb.auth.onAuthStateChange((event) => {
+  if (event === "PASSWORD_RECOVERY") {
+    document.getElementById("new-password").value = "";
+    document.getElementById("new-password-confirm").value = "";
+    document.getElementById("reset-password-status").innerText = "";
+    document.getElementById("reset-password-modal").classList.add("active");
+  }
+});
+
+async function submitNewPassword() {
+  const password = document.getElementById("new-password").value;
+  const confirm = document.getElementById("new-password-confirm").value;
+  const status = document.getElementById("reset-password-status");
+
+  if (!password || !confirm) {
+    status.innerText = "Fill in both fields.";
+    return;
+  }
+  if (password !== confirm) {
+    status.innerText = "Passwords do not match.";
+    return;
+  }
+  if (password.length < 6) {
+    status.innerText = "Password must be at least 6 characters.";
+    return;
+  }
+
+  status.innerText = "Saving...";
+
+  const { error } = await sb.auth.updateUser({ password });
+
+  if (error) {
+    status.innerText = "Error: " + error.message;
+  } else {
+    status.innerText = "Password updated! Redirecting...";
+    setTimeout(() => {
+      document.getElementById("reset-password-modal").classList.remove("active");
+      location.href = window.location.origin;
+    }, 1500);
+  }
+}
