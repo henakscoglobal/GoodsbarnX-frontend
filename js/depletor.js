@@ -2,38 +2,20 @@
 // GoodsbarnX — Master Stock Depletor
 // V1.8.2.6 — Allocation & Routing Runtime
 //
-// PURPOSE
-// -------
-// Converts validated Master Stock Depletor opportunities into
-// evidence-backed allocation candidates.
+// Purpose:
+//   Convert evidence-backed stock + demand + relationship intelligence
+//   into allocation candidates and routing readiness.
 //
-// PIPELINE
-// --------
-// Opportunity
-//      ↓
-// Evidence Validation
-//      ↓
-// Allocation Candidate
-//      ↓
-// Relationship Route
-//      ↓
-// Execution Handoff
+// IMPORTANT:
+//   - READ ONLY
+//   - No stock mutations
+//   - No relationship mutations
+//   - No order creation
+//   - No allocation persistence
+//   - No synthetic events
+//   - Canonical relationship evidence only
 //
-// IMPORTANT
-// ---------
-// • READ-ONLY
-// • No stock mutation
-// • No order creation
-// • No fake opportunity IDs
-// • No buyer assignment without evidence
-// • No relationship bypass
-// • No agent routing without explicit routing evidence
-//
-// ARCHITECTURE
-// ------------
-// This file runs in the browser and uses the existing global Supabase
-// client `sb` supplied by js/config.js.
-//
+// This file is intentionally separate from the Supabase SQL validation.
 // ==========================================================================
 
 (function () {
@@ -41,17 +23,13 @@
 
   const VERSION = "V1.8.2.6";
 
-  // ------------------------------------------------------------------------
-  // Runtime state
-  // ------------------------------------------------------------------------
-
   const state = {
     candidates: [],
     error: null
   };
 
   // ------------------------------------------------------------------------
-  // Utility helpers
+  // Helpers
   // ------------------------------------------------------------------------
 
   function esc(value) {
@@ -64,97 +42,92 @@
   }
 
   function tokens(value) {
-    return String(value || "")
+    return String(value ?? "")
       .toLowerCase()
-      .split(/[^a-z0-9]+/)
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
       .filter(Boolean);
   }
 
-  function linked(inquiryItem, productName) {
-    const inquiryTokens = tokens(inquiryItem);
-    const productTokens = tokens(productName);
+  function linked(a, b) {
+    const left = new Set(tokens(a));
+    const right = tokens(b);
 
-    if (!inquiryTokens.length || !productTokens.length) {
-      return false;
-    }
+    if (!left.size || !right.length) return false;
 
-    return inquiryTokens.some(token =>
-      productTokens.includes(token)
-    );
+    return right.some(token => left.has(token));
   }
 
   function ageHours(createdAt) {
     if (!createdAt) return Infinity;
 
-    const created = new Date(createdAt).getTime();
+    const timestamp = new Date(createdAt).getTime();
 
-    if (!Number.isFinite(created)) {
-      return Infinity;
-    }
+    if (!Number.isFinite(timestamp)) return Infinity;
 
-    return Math.max(
-      0,
-      (Date.now() - created) / (1000 * 60 * 60)
+    return Math.max(0, (Date.now() - timestamp) / 3600000);
+  }
+
+  function numeric(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function activeRelationship(relationships, buyerId, distributorId) {
+    if (!buyerId || !distributorId) return null;
+
+    return (
+      relationships.find(row =>
+        row &&
+        row.buyer_id === buyerId &&
+        row.distributor_id === distributorId &&
+        row.status === "active" &&
+        row.is_primary === true
+      ) || null
     );
   }
 
-  // ------------------------------------------------------------------------
-  // Opportunity score
-  // ------------------------------------------------------------------------
-  //
-  // Score is deliberately evidence-based.
-  //
-  // Product-demand match       +40
-  // Stock available            +25
-  // Quantity known             +20
-  // Stock covers demand         +5
-  // Demand freshness            +2/+6/+10
-  //
-  // ------------------------------------------------------------------------
-
-  function score({
-    matched,
+  function scoreCandidate({
+    productMatch,
     stockAvailable,
     quantityKnown,
-    stockCovers,
-    freshnessHours
+    stockCoversDemand,
+    demandAgeHours
   }) {
-    let total = 0;
+    let score = 0;
 
-    if (matched) total += 40;
-    if (stockAvailable) total += 25;
-    if (quantityKnown) total += 20;
-    if (stockCovers) total += 5;
+    if (productMatch) score += 40;
+    if (stockAvailable) score += 25;
+    if (quantityKnown) score += 20;
+    if (stockCoversDemand) score += 5;
 
-    if (freshnessHours <= 24) {
-      total += 10;
-    } else if (freshnessHours <= 72) {
-      total += 6;
-    } else if (freshnessHours <= 168) {
-      total += 2;
+    if (Number.isFinite(demandAgeHours)) {
+      if (demandAgeHours <= 24) {
+        score += 10;
+      } else if (demandAgeHours <= 72) {
+        score += 6;
+      } else {
+        score += 2;
+      }
     }
 
-    return total;
+    return score;
   }
 
   function tier({
-    matched,
+    productMatch,
     stockAvailable,
-    opportunityScore
+    score
   }) {
-    if (
-      matched &&
-      stockAvailable &&
-      opportunityScore >= 75
-    ) {
+    if (productMatch && stockAvailable && score >= 75) {
       return "ACT NOW";
     }
 
-    if (matched && stockAvailable) {
+    if (productMatch && stockAvailable) {
       return "READY";
     }
 
-    if (matched) {
+    if (productMatch) {
       return "WATCH";
     }
 
@@ -165,407 +138,336 @@
     return "MONITOR";
   }
 
-  // ------------------------------------------------------------------------
-  // Relationship validation
-  // ------------------------------------------------------------------------
-
-  function activeRelationship(
-    buyerId,
-    relationships
-  ) {
-    if (!buyerId) {
-      return null;
-    }
-
-    return (
-      relationships.find(
-        relationship =>
-          relationship.buyer_id === buyerId &&
-          relationship.status === "active" &&
-          relationship.is_primary === true
-      ) || null
-    );
-  }
-
-  // ------------------------------------------------------------------------
-  // Determine why an allocation cannot proceed
-  // ------------------------------------------------------------------------
-
   function blockReason({
-    matched,
+    productMatch,
     stockAvailable,
-    quantityKnown,
+    requestedQuantity,
     buyerId,
     relationship
   }) {
-    if (!matched) {
-      return "No product-demand match";
+    if (!productMatch) {
+      return "NO_PRODUCT_DEMAND_MATCH";
     }
 
     if (!stockAvailable) {
-      return "No available stock";
+      return "NO_AVAILABLE_STOCK";
     }
 
-    if (!quantityKnown) {
-      return "Demand quantity unavailable";
+    if (!requestedQuantity || requestedQuantity <= 0) {
+      return "INVALID_OR_UNKNOWN_DEMAND_QUANTITY";
     }
 
     if (!buyerId) {
-      return "Buyer identity unavailable";
+      return "BUYER_IDENTITY_MISSING";
     }
 
     if (!relationship) {
-      return "No active primary relationship";
+      return "ACTIVE_PRIMARY_RELATIONSHIP_MISSING";
     }
 
     return null;
   }
 
   // ------------------------------------------------------------------------
-  // Read authoritative evidence
+  // Evidence reader
   // ------------------------------------------------------------------------
 
-  async function readEvidence() {
-    if (
-      typeof sb === "undefined" ||
-      !sb ||
-      typeof sb.from !== "function"
-    ) {
-      throw new Error(
-        "Supabase client `sb` is not available."
-      );
+  async function readEvidence(distributorId) {
+    if (!window.sb) {
+      throw new Error("Supabase client is unavailable.");
     }
 
-    if (!window.currentUser || !window.currentUser.id) {
-      throw new Error(
-        "Authenticated distributor context is unavailable."
-      );
+    if (!distributorId) {
+      throw new Error("Distributor context is unavailable.");
     }
 
-    const distributorId = window.currentUser.id;
+    const [
+      productsResult,
+      inquiriesResult,
+      relationshipsResult,
+      agentsResult
+    ] = await Promise.all([
+      sb
+        .from("products")
+        .select(
+          "id,name,price,stock_quantity,status,category"
+        )
+        .eq("distributor_id", distributorId),
 
-    // ----------------------------------------------------------------------
-    // Products / Stock
-    // ----------------------------------------------------------------------
+      sb
+        .from("inquiries")
+        .select(
+          "id,item,quantity,status,created_at,buyer_id,distributor_id,inquirer_id"
+        )
+        .eq("distributor_id", distributorId)
+        .order("created_at", { ascending: false }),
 
-    const {
-      data: products,
-      error: productsError
-    } = await sb
-      .from("products")
-      .select(
-        "id,name,price,stock_quantity,status,category"
-      )
-      .eq("distributor_id", distributorId);
+      sb
+        .from("trade_relationships")
+        .select(
+          "id,buyer_id,distributor_id,status,is_primary"
+        )
+        .eq("distributor_id", distributorId),
 
-    if (productsError) {
-      throw productsError;
+      sb
+        .from("agent_distributor_attachments")
+        .select(
+          "id,agent_id,status"
+        )
+        .eq("distributor_id", distributorId)
+        .eq("status", "accepted")
+    ]);
+
+    if (productsResult.error) {
+      throw productsResult.error;
     }
 
-    // ----------------------------------------------------------------------
-    // Demand / Inquiries
-    // ----------------------------------------------------------------------
-
-    const {
-      data: inquiries,
-      error: inquiriesError
-    } = await sb
-      .from("inquiries")
-      .select(
-        "id,item,quantity,status,created_at,buyer_id,distributor_id,inquirer_id"
-      )
-      .eq("distributor_id", distributorId)
-      .order("created_at", {
-        ascending: false
-      });
-
-    if (inquiriesError) {
-      throw inquiriesError;
+    if (inquiriesResult.error) {
+      throw inquiriesResult.error;
     }
 
-    // ----------------------------------------------------------------------
-    // Canonical relationships
-    // ----------------------------------------------------------------------
-
-    const {
-      data: relationships,
-      error: relationshipsError
-    } = await sb
-      .from("trade_relationships")
-      .select(
-        "id,buyer_id,distributor_id,status,is_primary"
-      )
-      .eq("distributor_id", distributorId);
-
-    if (relationshipsError) {
-      throw relationshipsError;
+    if (relationshipsResult.error) {
+      throw relationshipsResult.error;
     }
 
-    // ----------------------------------------------------------------------
-    // Accepted agent attachments
-    // ----------------------------------------------------------------------
-
-    const {
-      data: agentAttachments,
-      error: agentError
-    } = await sb
-      .from("agent_distributor_attachments")
-      .select(
-        "id,agent_id,status"
-      )
-      .eq("distributor_id", distributorId)
-      .eq("status", "accepted");
-
-    if (agentError) {
-      throw agentError;
+    if (agentsResult.error) {
+      throw agentsResult.error;
     }
 
     return {
-      distributorId,
-      products: products || [],
-      inquiries: inquiries || [],
-      relationships: relationships || [],
-      agentAttachments: agentAttachments || []
+      products: productsResult.data || [],
+      inquiries: inquiriesResult.data || [],
+      relationships: relationshipsResult.data || [],
+      agents: agentsResult.data || []
     };
   }
 
   // ------------------------------------------------------------------------
-  // Build allocation candidates
+  // Candidate generation
   // ------------------------------------------------------------------------
 
-  function buildCandidates(evidence) {
-    const {
-      distributorId,
-      products,
-      inquiries,
-      relationships,
-      agentAttachments
-    } = evidence;
+  function generateCandidates(evidence, distributorId) {
+    const products = evidence.products || [];
+    const inquiries = evidence.inquiries || [];
+    const relationships = evidence.relationships || [];
 
-    const openInquiries = inquiries.filter(
-      inquiry =>
-        inquiry.status === "open" ||
-        inquiry.status === "pending"
-    );
+    const openInquiries = inquiries.filter(inquiry => {
+      const status = String(inquiry.status || "").toLowerCase();
+
+      return (
+        status === "open" ||
+        status === "pending"
+      );
+    });
 
     const candidates = [];
 
-    for (const inquiry of openInquiries) {
-      for (const product of products) {
-        const matched = linked(
-          inquiry.item,
-          product.name
-        );
+    openInquiries.forEach(inquiry => {
+      const requestedQuantity = numeric(inquiry.quantity);
 
-        if (!matched) {
-          continue;
+      products.forEach(product => {
+        const productMatch =
+          linked(product.name, inquiry.item) ||
+          linked(product.category, inquiry.item);
+
+        if (!productMatch) {
+          return;
         }
 
-        const requestedQuantity =
-          Number(inquiry.quantity) || 0;
-
         const availableQuantity =
-          Number(product.stock_quantity) || 0;
+          Math.max(0, numeric(product.stock_quantity) || 0);
 
-        const stockAvailable =
-          availableQuantity > 0;
+        const stockAvailable = availableQuantity > 0;
 
         const quantityKnown =
+          requestedQuantity !== null &&
           requestedQuantity > 0;
 
-        const stockCovers =
+        const stockCoversDemand =
           quantityKnown &&
           availableQuantity >= requestedQuantity;
 
-        const buyerId =
-          inquiry.buyer_id || null;
+        const relationship = activeRelationship(
+          relationships,
+          inquiry.buyer_id,
+          distributorId
+        );
 
-        const relationship =
-          activeRelationship(
-            buyerId,
-            relationships
-          );
+        const opportunityScore = scoreCandidate({
+          productMatch,
+          stockAvailable,
+          quantityKnown,
+          stockCoversDemand,
+          demandAgeHours: ageHours(inquiry.created_at)
+        });
 
-        const freshnessHours =
-          ageHours(inquiry.created_at);
+        const opportunityTier = tier({
+          productMatch,
+          stockAvailable,
+          score: opportunityScore
+        });
 
-        const opportunityScore =
-          score({
-            matched,
-            stockAvailable,
-            quantityKnown,
-            stockCovers,
-            freshnessHours
-          });
+        const reason = blockReason({
+          productMatch,
+          stockAvailable,
+          requestedQuantity,
+          buyerId: inquiry.buyer_id,
+          relationship
+        });
 
-        const opportunityTier =
-          tier({
-            matched,
-            stockAvailable,
-            opportunityScore
-          });
-
-        const reason =
-          blockReason({
-            matched,
-            stockAvailable,
-            quantityKnown,
-            buyerId,
-            relationship
-          });
-
-        // ------------------------------------------------------------------
-        // Allocation is only considered executable when ALL critical
-        // evidence exists.
-        // ------------------------------------------------------------------
+        const ready =
+          !reason &&
+          relationship &&
+          quantityKnown &&
+          stockAvailable;
 
         const allocatableQuantity =
-          matched &&
-          stockAvailable &&
-          quantityKnown &&
-          buyerId &&
-          relationship
+          ready
             ? Math.min(
                 requestedQuantity,
                 availableQuantity
               )
             : 0;
 
-        const ready =
-          allocatableQuantity > 0;
-
-        // ------------------------------------------------------------------
-        // Routing rule
-        // ------------------------------------------------------------------
-        //
-        // Direct buyer routing is authoritative when the inquiry already
-        // identifies a buyer and that buyer has an active primary
-        // relationship with the distributor.
-        //
-        // Accepted agents are detected as network capacity, but are NOT
-        // silently selected because the inquiry schema does not currently
-        // provide explicit agent-routing evidence.
-        // ------------------------------------------------------------------
-
-        let routeType = "NONE";
-
-        if (ready && relationship) {
-          routeType = "DIRECT_BUYER";
-        }
-
-        const routeStatus =
-          ready
-            ? "READY"
-            : "BLOCKED";
-
         candidates.push({
           inquiryId: inquiry.id,
-
           productId: product.id,
-
           distributorId,
 
-          buyerId,
+          buyerId: inquiry.buyer_id || null,
+          inquirerId: inquiry.inquirer_id || null,
 
           relationshipId:
-            relationship
-              ? relationship.id
-              : null,
+            relationship?.id || null,
 
-          agentId: null,
+          productName: product.name || null,
+          inquiryItem: inquiry.item || null,
 
           requestedQuantity,
-
           availableQuantity,
-
           allocatableQuantity,
 
-          opportunityScore,
+          productMatch,
+          quantityKnown,
+          stockAvailable,
+          stockCoversDemand,
 
+          opportunityScore,
           opportunityTier,
 
-          routeType,
+          routeType:
+            ready
+              ? "DIRECT_BUYER"
+              : "NONE",
 
-          routeStatus,
+          routeStatus:
+            ready
+              ? "READY"
+              : "BLOCKED",
+
+          blockReason: reason,
 
           evidence: {
-            demandMatched: matched,
+            inquiryId: inquiry.id,
+            productId: product.id,
+            distributorId,
+            buyerId: inquiry.buyer_id || null,
+            relationshipId:
+              relationship?.id || null,
 
-            stockAvailable,
+            productDemandMatch:
+              productMatch,
 
-            quantityKnown,
-
-            stockCovers,
-
-            buyerIdentified: !!buyerId,
+            requestedQuantity,
+            availableQuantity,
 
             activePrimaryRelationship:
-              !!relationship,
+              Boolean(relationship),
 
             acceptedAgentCapacity:
-              agentAttachments.length > 0,
-
-            demandAgeHours:
-              Number.isFinite(freshnessHours)
-                ? Number(
-                    freshnessHours.toFixed(2)
-                  )
-                : null
-          },
-
-          blockReason: reason
+              (evidence.agents || []).length
+          }
         });
-      }
-    }
-
-    // ----------------------------------------------------------------------
-    // Ready candidates first.
-    // Then highest opportunity score.
-    // Then newest demand.
-    // ----------------------------------------------------------------------
-
-    candidates.sort((a, b) => {
-      if (
-        a.routeStatus !== b.routeStatus
-      ) {
-        return (
-          a.routeStatus === "READY"
-            ? -1
-            : 1
-        );
-      }
-
-      if (
-        b.opportunityScore !==
-        a.opportunityScore
-      ) {
-        return (
-          b.opportunityScore -
-          a.opportunityScore
-        );
-      }
-
-      return (
-        a.requestedQuantity -
-        b.requestedQuantity
-      );
+      });
     });
 
-    return candidates;
+    return candidates.sort((a, b) => {
+      if (a.routeStatus !== b.routeStatus) {
+        return a.routeStatus === "READY" ? -1 : 1;
+      }
+
+      return b.opportunityScore - a.opportunityScore;
+    });
   }
 
   // ------------------------------------------------------------------------
-  // Render allocation section
+  // Public runtime
   // ------------------------------------------------------------------------
 
-  function renderCandidates(candidates) {
-    const existing =
-      document.getElementById(
-        "depletor-allocation"
+  async function refreshDepletorAllocation() {
+    state.error = null;
+
+    try {
+      if (!window.currentUser) {
+        throw new Error(
+          "Authenticated distributor context is required."
+        );
+      }
+
+      const distributorId =
+        window.currentUser.id;
+
+      const evidence =
+        await readEvidence(distributorId);
+
+      const candidates =
+        generateCandidates(
+          evidence,
+          distributorId
+        );
+
+      state.candidates = candidates;
+
+      renderAllocationRuntime(
+        candidates,
+        evidence
       );
 
-    if (existing) {
-      existing.remove();
+      window.goodsbarnxAllocationCandidates =
+        candidates;
+
+      return candidates;
+
+    } catch (error) {
+      console.error(
+        "GoodsbarnX V1.8.2.6 Allocation Runtime:",
+        error
+      );
+
+      state.error =
+        error?.message ||
+        String(error);
+
+      renderAllocationError(
+        state.error
+      );
+
+      return [];
+    }
+  }
+
+  // ------------------------------------------------------------------------
+  // UI
+  // ------------------------------------------------------------------------
+
+  function ensureAllocationContainer() {
+    let container =
+      document.getElementById(
+        "depletor-allocation-runtime"
+      );
+
+    if (container) {
+      return container;
     }
 
     const opportunities =
@@ -574,314 +476,376 @@
       );
 
     if (!opportunities) {
-      return;
+      return null;
     }
 
-    const section =
+    container =
       document.createElement("section");
 
-    section.id =
-      "depletor-allocation";
+    container.id =
+      "depletor-allocation-runtime";
 
-    section.className =
+    container.className =
       "depletor-section";
-
-    const readyCount =
-      candidates.filter(
-        candidate =>
-          candidate.routeStatus === "READY"
-      ).length;
-
-    const blockedCount =
-      candidates.filter(
-        candidate =>
-          candidate.routeStatus === "BLOCKED"
-      ).length;
-
-    section.innerHTML = `
-      <div class="depletor-heading">
-        <div>
-          <span class="eyebrow">
-            MASTER STOCK DEPLETOR
-          </span>
-
-          <h3>
-            Allocation &amp; Routing
-          </h3>
-
-          <p>
-            Evidence-backed fulfillment paths.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          id="depletor-allocation-refresh"
-        >
-          Refresh
-        </button>
-      </div>
-
-      <div class="depletor-stock-meta">
-        <span>
-          ${esc(VERSION)}
-        </span>
-
-        <span>
-          ${readyCount} ready
-        </span>
-
-        <span>
-          ${blockedCount} blocked
-        </span>
-      </div>
-
-      <div
-        id="depletor-allocation-list"
-        class="depletor-opportunities"
-      ></div>
-    `;
 
     opportunities.insertAdjacentElement(
       "afterend",
-      section
+      container
     );
 
-    const list =
-      section.querySelector(
-        "#depletor-allocation-list"
-      );
+    return container;
+  }
 
-    if (!candidates.length) {
-      list.innerHTML = `
-        <div class="depletor-empty">
-          <strong>
-            No allocation candidates
-          </strong>
+  function renderAllocationRuntime(
+    candidates,
+    evidence
+  ) {
+    const container =
+      ensureAllocationContainer();
 
-          <p>
-            No open demand currently has
-            evidence-backed product matching.
-          </p>
-        </div>
-      `;
-
+    if (!container) {
       return;
     }
 
-    list.innerHTML =
-      candidates
-        .map(candidate => {
-          const ready =
-            candidate.routeStatus === "READY";
-
-          const statusClass =
-            ready
-              ? "stock-healthy"
-              : "stock-attention";
-
-          const routeText =
-            ready
-              ? "DIRECT BUYER ROUTE"
-              : "ROUTE BLOCKED";
-
-          const detail =
-            ready
-              ? `${candidate.allocatableQuantity} units allocatable`
-              : candidate.blockReason;
-
-          return `
-            <article
-              class="opportunity ${statusClass}"
-            >
-              <div class="op-icon">
-                ${ready ? "→" : "!"}
-              </div>
-
-              <div class="op-copy">
-
-                <div class="op-name">
-                  ${esc(
-                    candidate.routeType ||
-                    "Allocation Candidate"
-                  )}
-                </div>
-
-                <div class="op-detail">
-                  ${esc(detail)}
-                </div>
-
-                <div class="op-detail">
-                  Product:
-                  ${esc(candidate.productId)}
-                </div>
-
-                <div class="op-detail">
-                  Inquiry:
-                  ${esc(candidate.inquiryId)}
-                </div>
-
-                <div class="op-detail">
-                  Relationship:
-                  ${esc(
-                    candidate.relationshipId ||
-                    "None"
-                  )}
-                </div>
-
-                <div class="op-detail">
-                  Score:
-                  ${esc(candidate.opportunityScore)}
-                  ·
-                  ${esc(candidate.opportunityTier)}
-                </div>
-
-              </div>
-            </article>
-          `;
-        })
-        .join("");
-
-    const refreshButton =
-      section.querySelector(
-        "#depletor-allocation-refresh"
+    const ready =
+      candidates.filter(
+        candidate =>
+          candidate.routeStatus === "READY"
       );
 
-    if (refreshButton) {
-      refreshButton.addEventListener(
-        "click",
-        () => {
-          refreshAllocationRuntime();
-        }
-      );
-    }
-  }
-
-  // ------------------------------------------------------------------------
-  // Runtime refresh
-  // ------------------------------------------------------------------------
-
-  async function refreshAllocationRuntime() {
-    state.error = null;
-
-    try {
-      const evidence =
-        await readEvidence();
-
-      state.candidates =
-        buildCandidates(evidence);
-
-      window.goodsbarnxAllocationCandidates =
-        state.candidates;
-
-      renderCandidates(
-        state.candidates
+    const blocked =
+      candidates.filter(
+        candidate =>
+          candidate.routeStatus === "BLOCKED"
       );
 
-      return state.candidates;
-
-    } catch (error) {
-      console.error(
-        `[GoodsbarnX ${VERSION}] Allocation runtime failed:`,
-        error
+    const allocatableUnits =
+      ready.reduce(
+        (sum, candidate) =>
+          sum +
+          (numeric(
+            candidate.allocatableQuantity
+          ) || 0),
+        0
       );
 
-      state.error = error;
+    const relationshipMissing =
+      blocked.filter(
+        candidate =>
+          candidate.blockReason ===
+          "ACTIVE_PRIMARY_RELATIONSHIP_MISSING"
+      ).length;
 
-      const existing =
-        document.getElementById(
-          "depletor-allocation"
-        );
+    container.innerHTML = `
+      <div class="depletor-card">
 
-      if (existing) {
-        existing.remove();
-      }
-
-      const opportunities =
-        document.getElementById(
-          "depletor-opportunities"
-        );
-
-      if (opportunities) {
-        const section =
-          document.createElement("section");
-
-        section.id =
-          "depletor-allocation";
-
-        section.className =
-          "depletor-section";
-
-        section.innerHTML = `
-          <div class="depletor-heading">
-            <div>
-              <span class="eyebrow">
-                MASTER STOCK DEPLETOR
-              </span>
-
-              <h3>
-                Allocation &amp; Routing
-              </h3>
-
-              <p>
-                Runtime could not validate
-                allocation evidence.
-              </p>
+        <div class="depletor-card-header">
+          <div>
+            <div class="depletor-eyebrow">
+              V1.8.2.6 · ALLOCATION & ROUTING RUNTIME
             </div>
-          </div>
 
-          <div class="depletor-empty">
-            <strong>
-              Evidence read failed
-            </strong>
+            <h3>
+              Evidence-backed fulfillment paths
+            </h3>
 
             <p>
-              ${esc(
-                error?.message ||
-                "Unknown runtime error."
-              )}
+              Allocation is permitted only when
+              stock, demand, buyer identity and
+              canonical relationship evidence align.
             </p>
           </div>
-        `;
 
-        opportunities.insertAdjacentElement(
-          "afterend",
-          section
-        );
-      }
+          <div class="depletor-runtime-version">
+            ${esc(VERSION)}
+          </div>
+        </div>
 
-      return [];
+        <div class="depletor-metrics">
+
+          <div class="depletor-metric">
+            <strong>${candidates.length}</strong>
+            <span>Candidates</span>
+          </div>
+
+          <div class="depletor-metric">
+            <strong>${ready.length}</strong>
+            <span>Ready</span>
+          </div>
+
+          <div class="depletor-metric">
+            <strong>${blocked.length}</strong>
+            <span>Blocked</span>
+          </div>
+
+          <div class="depletor-metric">
+            <strong>${allocatableUnits}</strong>
+            <span>Allocatable Units</span>
+          </div>
+
+          <div class="depletor-metric">
+            <strong>${relationshipMissing}</strong>
+            <span>Relationship Evidence Missing</span>
+          </div>
+
+        </div>
+
+        <div class="depletor-runtime-boundary">
+          <strong>Runtime boundary:</strong>
+
+          Read-only.
+          No allocation persisted.
+          No stock depleted.
+          No relationship activated.
+          No order created.
+
+          Accepted agent capacity is detected as
+          evidence only; it is not silently selected
+          as a route because the current inquiry
+          schema does not provide explicit agent
+          routing evidence.
+        </div>
+
+        <div class="depletor-allocation-list">
+
+          ${
+            candidates.length
+              ? candidates
+                  .map(renderCandidate)
+                  .join("")
+              : `
+                <div class="depletor-empty">
+                  No evidence-backed allocation
+                  candidates were generated.
+                </div>
+              `
+          }
+
+        </div>
+
+      </div>
+    `;
+  }
+
+  function renderCandidate(candidate) {
+    const statusClass =
+      candidate.routeStatus === "READY"
+        ? "ready"
+        : "blocked";
+
+    const routeLabel =
+      candidate.routeStatus === "READY"
+        ? "READY"
+        : "BLOCKED";
+
+    const relationshipText =
+      candidate.relationshipId
+        ? `Canonical relationship: ${esc(
+            candidate.relationshipId
+          )}`
+        : "Canonical active primary relationship: missing";
+
+    return `
+      <article
+        class="depletor-allocation-candidate ${statusClass}"
+      >
+
+        <div class="depletor-candidate-header">
+
+          <div>
+            <strong>
+              ${esc(
+                candidate.productName ||
+                "Unnamed product"
+              )}
+            </strong>
+
+            <span>
+              Demand:
+              ${esc(
+                candidate.inquiryItem ||
+                "Unspecified"
+              )}
+            </span>
+          </div>
+
+          <span class="depletor-route-status">
+            ${routeLabel}
+          </span>
+
+        </div>
+
+        <div class="depletor-candidate-grid">
+
+          <div>
+            <small>Requested</small>
+            <strong>
+              ${
+                candidate.requestedQuantity ??
+                "Unknown"
+              }
+            </strong>
+          </div>
+
+          <div>
+            <small>Available</small>
+            <strong>
+              ${candidate.availableQuantity}
+            </strong>
+          </div>
+
+          <div>
+            <small>Allocatable</small>
+            <strong>
+              ${candidate.allocatableQuantity}
+            </strong>
+          </div>
+
+          <div>
+            <small>Score</small>
+            <strong>
+              ${candidate.opportunityScore}
+            </strong>
+          </div>
+
+        </div>
+
+        <div class="depletor-candidate-evidence">
+
+          <div>
+            <strong>Product-demand match</strong>
+            <span>
+              ${
+                candidate.productMatch
+                  ? "Verified"
+                  : "Not verified"
+              }
+            </span>
+          </div>
+
+          <div>
+            <strong>Buyer identity</strong>
+            <span>
+              ${
+                candidate.buyerId
+                  ? "Identified"
+                  : "Missing"
+              }
+            </span>
+          </div>
+
+          <div>
+            <strong>Relationship</strong>
+            <span>
+              ${relationshipText}
+            </span>
+          </div>
+
+          <div>
+            <strong>Route</strong>
+            <span>
+              ${
+                candidate.routeType ===
+                "DIRECT_BUYER"
+                  ? "Direct buyer"
+                  : "No authorized route"
+              }
+            </span>
+          </div>
+
+        </div>
+
+        ${
+          candidate.blockReason
+            ? `
+              <div class="depletor-block-reason">
+                Block reason:
+                <strong>
+                  ${esc(candidate.blockReason)}
+                </strong>
+              </div>
+            `
+            : `
+              <div class="depletor-ready-reason">
+                Authorized direct-buyer
+                fulfillment path verified by
+                current evidence.
+              </div>
+            `
+        }
+
+      </article>
+    `;
+  }
+
+  function renderAllocationError(message) {
+    const container =
+      ensureAllocationContainer();
+
+    if (!container) {
+      return;
     }
+
+    container.innerHTML = `
+      <div class="depletor-card">
+
+        <div class="depletor-eyebrow">
+          V1.8.2.6 · ALLOCATION & ROUTING RUNTIME
+        </div>
+
+        <h3>
+          Runtime could not execute
+        </h3>
+
+        <p>
+          ${esc(message)}
+        </p>
+
+      </div>
+    `;
   }
 
   // ------------------------------------------------------------------------
   // Public API
   // ------------------------------------------------------------------------
 
+  window.GoodsbarnXDepletorAllocation = {
+    version: VERSION,
+    refresh: refreshDepletorAllocation,
+    getState: function () {
+      return {
+        version: VERSION,
+        candidates: state.candidates,
+        error: state.error
+      };
+    }
+  };
+
   window.refreshDepletorAllocation =
-    refreshAllocationRuntime;
+    refreshDepletorAllocation;
 
   window.goodsbarnxAllocationCandidates =
     state.candidates;
 
-  window.goodsbarnxDepletorAllocationVersion =
-    VERSION;
-
   // ------------------------------------------------------------------------
-  // Boot
+  // Automatic execution
   // ------------------------------------------------------------------------
 
   function boot() {
-    // Allow the existing GoodsbarnX application
-    // initialization to establish currentUser first.
+    if (!window.sb) {
+      return;
+    }
 
-    setTimeout(() => {
-      refreshAllocationRuntime();
-    }, 1000);
+    if (!window.currentUser) {
+      return;
+    }
+
+    refreshDepletorAllocation();
   }
 
   if (
-    document.readyState === "loading"
+    document.readyState ===
+    "loading"
   ) {
     document.addEventListener(
       "DOMContentLoaded",
