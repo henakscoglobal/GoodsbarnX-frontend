@@ -1,10 +1,10 @@
-/* GoodsbarnX V1.8.2.6.8 — Allocation Evidence Integrity Boundary
+/* GoodsbarnX V1.8.2.6.8.1.1.1 — Allocation Evidence Integrity Boundary
    Diagnostic only. Raw evidence validation. No writes, no stock mutation, no runtime changes.
 */
 (function(){
   "use strict";
-  var VERSION="V1.8.2.6.8.1.1";
-  var EXPECTED={build:"GBX-V1.8.2.6.8.1.1-EVIDENCE-INTEGRITY-20260915",authVersion:"V1.8.2.6.6.4",allocationVersion:"V1.8.2.6"};
+  var VERSION="V1.8.2.6.8.1.1.1";
+  var EXPECTED={build:"GBX-V1.8.2.6.8.1.1.1-EVIDENCE-INTEGRITY-20260916",authVersion:"V1.8.2.6.6.4",allocationVersion:"V1.8.2.6"};
   var running=false,started=false,waiting=false,waitStarted=0;
   var MAX_AUTH_WAIT_MS=15000,AUTH_RETRY_MS=250;
   function el(id){return document.getElementById(id)}
@@ -29,13 +29,13 @@
       checks.push({kind:marker===EXPECTED.build?"VALID":"INVALID",name:"Deployment marker",detail:marker});
       checks.push({kind:window.goodsbarnxAuthContextVersion===EXPECTED.authVersion?"VALID":"INVALID",name:"Auth runtime version",detail:safe(window.goodsbarnxAuthContextVersion)});
       checks.push({kind:window.goodsbarnxDepletorAllocationVersion===EXPECTED.allocationVersion?"VALID":"INVALID",name:"Allocation runtime version",detail:safe(window.goodsbarnxDepletorAllocationVersion)});
-      // V1.8.2.6.8.1: synchronize with the existing authentication resolver.
+      // V1.8.2.6.8.1.1.1: preserve runtime identity while synchronizing with the existing authentication resolver.
       // The diagnostic must not convert asynchronous initialization into a false
       // integrity failure. Wait while the authoritative context is still resolving.
       if(!c || c.ready !== true){
         if(!waitStarted) waitStarted=performance.now();
         status.className="gbx-v18268-status gbx-v18268-warn";
-        status.textContent="V1.8.2.6.8.1 WAITING FOR AUTH CONTEXT\n\nAuthentication resolver is still initializing. No allocation evidence evaluated.";
+        status.textContent=VERSION+" WAITING FOR AUTH CONTEXT\n\nAuthentication resolver is still initializing. No allocation evidence evaluated.";
         output.textContent="Waiting for the existing authentication boundary to resolve.\nNo database write executed.\nNo stock mutation executed.\nAllocation runtime remains V1.8.2.6 and read-only.";
         if(performance.now()-waitStarted < MAX_AUTH_WAIT_MS){
           waiting=true;
@@ -59,18 +59,18 @@
       checks.push({kind:same?"VALID":"INVALID",name:"Context identity continuity",detail:same?"authContext.userId matches currentUser.id":"identity mismatch"});
       if(!authReady||!currentReady||!same){
         status.className="gbx-v18268-status gbx-v18268-warn";
-        status.textContent="V1.8.2.6.8 AWAITING VALID ALLOCATION CONTEXT\n\n"+checks.map(function(x){return line(x.kind,x.name,x.detail)}).join("\n")+"\n\n⚠ WAIT — Raw evidence integrity is not evaluated until the authenticated distributor boundary is valid.";
+        status.textContent=VERSION+" AWAITING VALID ALLOCATION CONTEXT\n\n"+checks.map(function(x){return line(x.kind,x.name,x.detail)}).join("\n")+"\n\n⚠ WAIT — Raw evidence integrity is not evaluated until the authenticated distributor boundary is valid.";
         output.textContent="No allocation evidence evaluated.\nNo database write executed.\nNo stock mutation executed.\nAllocation runtime remains V1.8.2.6 and read-only.";
         return;
       }
-      var id=u.id,started=performance.now();
+      var id=u.id,queryStarted=performance.now();
       var rs=await Promise.all([
         sb.from("products").select("id,name,price,stock_quantity,status,category,distributor_id").eq("distributor_id",id),
         sb.from("inquiries").select("id,item,quantity,status,created_at,buyer_id,distributor_id,inquirer_id").eq("distributor_id",id).order("created_at",{ascending:false}),
         sb.from("trade_relationships").select("id,buyer_id,distributor_id,status,is_primary").eq("distributor_id",id),
         sb.from("agent_distributor_attachments").select("id,agent_id,distributor_id,status").eq("distributor_id",id)
       ]);
-      var queryMs=Math.round(performance.now()-started), errors=rs.map(function(r){return r.error||null});
+      var queryMs=Math.round(performance.now()-queryStarted), errors=rs.map(function(r){return r.error||null});
       var records=[];
       if(errors.some(Boolean)){push(records,"INVALID","Raw evidence query execution",errors.map(function(e){return e?e.message:"ok"}).join(" | "));}
       else push(records,"VALID","Raw evidence queries","4/4 read-only queries returned without error");
@@ -113,9 +113,9 @@
       var summary=summarize(records),hardFail=summary.INVALID>0||summary.AMBIGUOUS>0||summary.UNSUPPORTED>0;
       metrics.innerHTML='<div class="gbx-v18268-grid"><div><strong>'+products.length+'</strong><span>PRODUCTS</span></div><div><strong>'+inquiries.length+'</strong><span>INQUIRIES</span></div><div><strong>'+rels.length+'</strong><span>RELATIONSHIPS</span></div><div><strong>'+agents.length+'</strong><span>AGENT ATTACHMENTS</span></div></div><div class="gbx-v18268-summary"><b>VALID '+summary.VALID+'</b> · <b>INVALID '+summary.INVALID+'</b> · <b>MISSING '+summary.MISSING+'</b> · <b>AMBIGUOUS '+summary.AMBIGUOUS+'</b> · <b>UNSUPPORTED '+summary.UNSUPPORTED+'</b></div>';
       status.className="gbx-v18268-status "+(hardFail?"gbx-v18268-fail":"gbx-v18268-pass");
-      status.textContent=(hardFail?"V1.8.2.6.8 EVIDENCE INTEGRITY BLOCKED":"V1.8.2.6.8 EVIDENCE INTEGRITY PASSED")+"\n\n"+records.map(function(x){return line(x.kind,x.name,x.detail)}).join("\n");
+      status.textContent=(hardFail?VERSION+" EVIDENCE INTEGRITY BLOCKED":VERSION+" EVIDENCE INTEGRITY PASSED")+"\n\n"+records.map(function(x){return line(x.kind,x.name,x.detail)}).join("\n");
       output.textContent="ALLOCATION EVIDENCE INTEGRITY TRACE\n\nPage URL: "+location.href+"\nBuild marker: "+marker+"\nAuth runtime: "+safe(window.goodsbarnxAuthContextVersion)+"\nAllocation runtime: "+safe(window.goodsbarnxDepletorAllocationVersion)+"\n\nRAW EVIDENCE\nproducts="+products.length+"\ninquiries="+inquiries.length+"\ntrade_relationships="+rels.length+"\nagent_distributor_attachments="+agents.length+"\nquery_time_ms="+queryMs+"\n\nCLASSIFICATION\nVALID="+summary.VALID+"\nINVALID="+summary.INVALID+"\nMISSING="+summary.MISSING+"\nAMBIGUOUS="+summary.AMBIGUOUS+"\nUNSUPPORTED="+summary.UNSUPPORTED+"\n\nNo data repaired.\nNo database write executed.\nNo stock mutation executed.\nNo relationship activated.\nNo order created.\nAllocation runtime remains V1.8.2.6 and read-only.";
-    }catch(e){status.className="gbx-v18268-status gbx-v18268-fail";status.textContent="V1.8.2.6.8 EVIDENCE INTEGRITY FAILED\n\n✗ INVALID — Diagnostic execution exception: "+safe(e&&e.message||e);output.textContent="No evidence repaired.\nNo database write executed.\nNo stock mutation executed."}
+    }catch(e){status.className="gbx-v18268-status gbx-v18268-fail";status.textContent=VERSION+" EVIDENCE INTEGRITY FAILED\n\n✗ INVALID — Diagnostic execution exception: "+safe(e&&e.message||e);output.textContent="No evidence repaired.\nNo database write executed.\nNo stock mutation executed."}
     finally{running=false}
   }
   document.addEventListener("DOMContentLoaded",function(){setTimeout(run,400)});
