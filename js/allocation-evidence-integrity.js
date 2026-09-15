@@ -3,9 +3,10 @@
 */
 (function(){
   "use strict";
-  var VERSION="V1.8.2.6.8";
-  var EXPECTED={build:"GBX-V1.8.2.6.8-EVIDENCE-INTEGRITY-20260915",authVersion:"V1.8.2.6.6.4",allocationVersion:"V1.8.2.6"};
-  var running=false;
+  var VERSION="V1.8.2.6.8.1";
+  var EXPECTED={build:"GBX-V1.8.2.6.8.1-EVIDENCE-INTEGRITY-20260915",authVersion:"V1.8.2.6.6.4",allocationVersion:"V1.8.2.6"};
+  var running=false,started=false,waiting=false,waitStarted=0;
+  var MAX_AUTH_WAIT_MS=15000,AUTH_RETRY_MS=250;
   function el(id){return document.getElementById(id)}
   function safe(v){return v==null?"none":String(v)}
   function line(kind,name,detail){var mark=kind==="VALID"?"✓ VALID":kind==="INVALID"?"✗ INVALID":kind==="MISSING"?"⚠ MISSING":kind==="AMBIGUOUS"?"⚠ AMBIGUOUS":"? UNSUPPORTED";return mark+" — "+name+(detail?": "+detail:"")}
@@ -18,7 +19,7 @@
   function summarize(records){var s={VALID:0,INVALID:0,MISSING:0,AMBIGUOUS:0,UNSUPPORTED:0};records.forEach(function(r){s[r.kind]++});return s}
   function push(records,kind,name,detail){records.push({kind:kind,name:name,detail:detail});}
   async function run(){
-    if(running)return; running=true;
+    if(running||started||waiting)return;
     var panel=el("v18268-evidence-integrity"),status=el("v18268-test-status"),metrics=el("v18268-test-metrics"),output=el("v18268-test-output");
     try{
       if(!panel||!status||!metrics||!output)return;
@@ -28,10 +29,32 @@
       checks.push({kind:marker===EXPECTED.build?"VALID":"INVALID",name:"Deployment marker",detail:marker});
       checks.push({kind:window.goodsbarnxAuthContextVersion===EXPECTED.authVersion?"VALID":"INVALID",name:"Auth runtime version",detail:safe(window.goodsbarnxAuthContextVersion)});
       checks.push({kind:window.goodsbarnxDepletorAllocationVersion===EXPECTED.allocationVersion?"VALID":"INVALID",name:"Allocation runtime version",detail:safe(window.goodsbarnxDepletorAllocationVersion)});
+      // V1.8.2.6.8.1: synchronize with the existing authentication resolver.
+      // The diagnostic must not convert asynchronous initialization into a false
+      // integrity failure. Wait while the authoritative context is still resolving.
+      if(!c || c.ready !== true){
+        if(!waitStarted) waitStarted=performance.now();
+        status.className="gbx-v18268-status gbx-v18268-warn";
+        status.textContent="V1.8.2.6.8.1 WAITING FOR AUTH CONTEXT\n\nAuthentication resolver is still initializing. No allocation evidence evaluated.";
+        output.textContent="Waiting for the existing authentication boundary to resolve.\nNo database write executed.\nNo stock mutation executed.\nAllocation runtime remains V1.8.2.6 and read-only.";
+        if(performance.now()-waitStarted < MAX_AUTH_WAIT_MS){
+          waiting=true;
+          setTimeout(function(){waiting=false;run()},AUTH_RETRY_MS);
+          return;
+        }
+        // The resolver did not become ready within the diagnostic wait window.
+        // This is now a genuine missing context condition, not a timing race.
+        started=true;
+        running=true;
+      } else {
+        started=true;
+        running=true;
+      }
+      c=ctx(); u=user();
       var authReady=!!c&&c.ready===true&&c.authenticated===true&&validId(c.userId)&&String(c.role||"").toLowerCase()==="distributor";
       var currentReady=!!u&&validId(u.id)&&String(u.role||"").toLowerCase()==="distributor";
       var same=authReady&&currentReady&&String(c.userId)===String(u.id);
-      checks.push({kind:authReady?"VALID":"MISSING",name:"Authenticated distributor context",detail:authReady?"ready · "+c.userId:"context unavailable"});
+      checks.push({kind:authReady?"VALID":"MISSING",name:"Authenticated distributor context",detail:authReady?"ready · "+c.userId:(c&&c.state?"context state = "+c.state:"context unavailable")});
       checks.push({kind:currentReady?"VALID":"MISSING",name:"Application currentUser distributor principal",detail:currentReady?u.id:"currentUser unavailable"});
       checks.push({kind:same?"VALID":"INVALID",name:"Context identity continuity",detail:same?"authContext.userId matches currentUser.id":"identity mismatch"});
       if(!authReady||!currentReady||!same){
