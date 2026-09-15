@@ -3,8 +3,8 @@
 */
 (function(){
   "use strict";
-  var VERSION="V1.8.2.6.8.1";
-  var EXPECTED={build:"GBX-V1.8.2.6.8.1-EVIDENCE-INTEGRITY-20260915",authVersion:"V1.8.2.6.6.4",allocationVersion:"V1.8.2.6"};
+  var VERSION="V1.8.2.6.8.1.1";
+  var EXPECTED={build:"GBX-V1.8.2.6.8.1.1-EVIDENCE-INTEGRITY-20260915",authVersion:"V1.8.2.6.6.4",allocationVersion:"V1.8.2.6"};
   var running=false,started=false,waiting=false,waitStarted=0;
   var MAX_AUTH_WAIT_MS=15000,AUTH_RETRY_MS=250;
   function el(id){return document.getElementById(id)}
