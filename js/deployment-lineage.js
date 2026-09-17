@@ -126,9 +126,52 @@
       }
     }
 
-    // 9. CSS lineage asset is loaded exactly once.
-    const lineageCss = paths.filter(p => p.endsWith("css/deployment-lineage.css"));
-    add("Lineage CSS uniqueness", lineageCss.length === 1, lineageCss.join(" | ") || "0 lineage CSS assets");
+    // 9. Surgical CSS lineage load-resolution boundary. Do not infer CSS
+    // presence from script paths. Prove the actual HTML link, the browser
+    // stylesheet entry, and the served CSS identity independently.
+    const cssLinks = Array.from(document.querySelectorAll('link[rel~="stylesheet"]'));
+    const expectedCssPath = "css/deployment-lineage.css";
+    const expectedCssUrl = new URL(expectedCssPath, document.baseURI).href;
+    const matchingCssLinks = cssLinks.filter(link => {
+      try { return new URL(link.getAttribute("href") || "", document.baseURI).href === expectedCssUrl; }
+      catch (_) { return false; }
+    });
+    add(
+      "Lineage CSS HTML link",
+      matchingCssLinks.length === 1,
+      matchingCssLinks.length === 1 ? expectedCssPath : (matchingCssLinks.length + " matching link(s)")
+    );
+
+    const stylesheetEntries = Array.from(document.styleSheets || []);
+    const matchingSheets = stylesheetEntries.filter(sheet => {
+      try { return new URL(sheet.href || "", document.baseURI).href === expectedCssUrl; }
+      catch (_) { return false; }
+    });
+    add(
+      "Lineage CSS stylesheet loaded",
+      matchingSheets.length === 1,
+      matchingSheets.length === 1 ? expectedCssUrl : (matchingSheets.length + " matching stylesheet(s)")
+    );
+
+    try {
+      const cssResponse = await fetch(expectedCssPath + "?gbx_lineage_css=" + Date.now(), {
+        cache: "no-store",
+        credentials: "same-origin"
+      });
+      if (!cssResponse.ok) throw new Error(expectedCssPath + " returned HTTP " + cssResponse.status);
+      const cssText = await cssResponse.text();
+      const cssIdentityOk =
+        cssText.includes("V1.8.2.6.8.1.1.4") &&
+        cssText.includes("gbx-lineage") &&
+        cssText.length > 0;
+      add(
+        "Lineage CSS served identity",
+        cssIdentityOk,
+        cssIdentityOk ? "served CSS contains V1.8.2.6.8.1.1.4 lineage identity" : "served CSS identity mismatch"
+      );
+    } catch (e) {
+      add("Lineage CSS served identity", false, e.message || String(e));
+    }
 
     // 10. No duplicate core runtime asset paths.
     const duplicates = [...new Set(paths.filter(p => p.startsWith("js/")).filter((p, i, a) => a.indexOf(p) !== i))];
