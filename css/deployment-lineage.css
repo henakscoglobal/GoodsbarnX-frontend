@@ -1,0 +1,17 @@
+/* ========================================================================
+   GoodsbarnX — V1.8.2.6.8.1.1.4
+   Deployment Lineage Integrity Boundary
+   ======================================================================== */
+#gbx-v18268114-lineage-test{display:none;margin:18px 16px 120px;padding:18px;border:1px solid rgba(200,138,52,.30);border-radius:18px;background:#121A15;color:#F5F3EC;box-shadow:0 12px 32px rgba(0,0,0,.18)}
+#gbx-v18268114-lineage-test.gbx-lineage-visible{display:block}
+.gbx-lineage-kicker{font-size:9px;letter-spacing:.18em;color:#E3A94F;font-weight:800}
+.gbx-lineage-title{font-size:19px;font-weight:800;margin-top:6px}
+.gbx-lineage-copy{font-size:10px;line-height:1.5;opacity:.70;margin-top:5px}
+.gbx-lineage-status{margin-top:12px;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.08);font-size:10px;line-height:1.5;white-space:pre-wrap}
+.gbx-lineage-pass{border-color:rgba(85,217,150,.30)!important}
+.gbx-lineage-block{border-color:rgba(166,61,47,.48)!important}
+.gbx-lineage-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}
+.gbx-lineage-stat{padding:10px;border:1px solid rgba(214,168,58,.16);border-radius:11px}
+.gbx-lineage-stat strong{display:block;font-size:15px}
+.gbx-lineage-stat span{display:block;font-size:8px;opacity:.58;letter-spacing:.09em;margin-top:3px}
+.gbx-lineage-mono{font-family:'DM Mono',monospace;font-size:9px;word-break:break-word;opacity:.72}
