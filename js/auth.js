@@ -1,7 +1,7 @@
 // ==========================================================================
 // GoodsbarnX — auth.js
 // Signup, login, logout, role selection, guest mode, current user loading.
-// V1.8.2.6.6.4 — Auth Session Termination Boundary.
+// V1.8.2.6.5 — Auth Resolution Execution Boundary.
 // Plain global script — depends on js/config.js (for `sb`) being loaded first.
 // ===========================================================================
 
@@ -35,10 +35,10 @@ function toggleLoginPassword() {
   pw.type = pw.type === "password" ? "text" : "password";
 }
 
-// ---------- V1.8.2.6.6 Supabase Auth State Trace ----------
+// ---------- V1.8.2.6.5 Auth Resolution Execution Boundary ----------
 // Diagnostic-only boundary over the existing Supabase auth/profile flow.
 // No second authentication mechanism. No database writes.
-const GBX_AUTH_CONTEXT_VERSION = "V1.8.2.6.6.4";
+const GBX_AUTH_CONTEXT_VERSION = "V1.8.2.6.5";
 window.goodsbarnxAuthContextVersion = GBX_AUTH_CONTEXT_VERSION;
 
 window.goodsbarnxAuthContext = {
@@ -54,31 +54,6 @@ window.goodsbarnxAuthContext = {
   initializedAt: null,
   resolvedAt: null,
   execution: { state: "not_started", startedAt: null, completedAt: null },
-  authStateTrace: {
-    listenerInstalledAt: null,
-    events: [],
-    lastEvent: null
-  },
-  sessionPersistenceTrace: {
-    loginAttemptAt: null,
-    loginResultAt: null,
-    loginStatus: "not_started",
-    loginUserId: null,
-    loginError: null,
-    postLoginSession: { status: "not_started", detail: null, userId: null },
-    storage: { inspected: false, authKeyCount: 0, authKeyNames: [] },
-    reloadBoundary: { status: "not_observed", detail: null }
-  },
-  loginExecutionTrace: {
-    handlerEnteredAt: null, validation: "not_started", signInMethod: "not_started",
-    signInInvokedAt: null, signInReturnedAt: null, signInStatus: "not_started",
-    returnedUserId: null, returnedSessionPresent: false, exception: null, resolverReentryAt: null, resolverStatus: "not_started"
-  },
-  logoutExecutionTrace: {
-    handlerEnteredAt: null, signOutMethod: "not_started", signOutInvokedAt: null, signOutReturnedAt: null,
-    signOutStatus: "not_started", signedOutEventObserved: false, sessionAfterSignOut: "not_started",
-    currentUserCleared: false, uiReset: false, exception: null
-  },
   trace: {
     session: { status: "not_started", ms: null, detail: null },
     authUser: { status: "not_started", ms: null, detail: null },
@@ -105,21 +80,6 @@ function resetAuthContext() {
     initializedAt: new Date().toISOString(),
     resolvedAt: null,
     execution: { state: "not_started", startedAt: null, completedAt: null },
-    sessionPersistenceTrace: {
-      loginAttemptAt: null,
-      loginResultAt: null,
-      loginStatus: "not_started",
-      loginUserId: null,
-      loginError: null,
-      postLoginSession: { status: "not_started", detail: null, userId: null },
-      storage: { inspected: false, authKeyCount: 0, authKeyNames: [] },
-      reloadBoundary: { status: "not_observed", detail: null }
-    },
-    logoutExecutionTrace: {
-      handlerEnteredAt: null, signOutMethod: "not_started", signOutInvokedAt: null, signOutReturnedAt: null,
-      signOutStatus: "not_started", signedOutEventObserved: false, sessionAfterSignOut: "not_started",
-      currentUserCleared: false, uiReset: false, exception: null
-    },
     trace: {
       session: { status: "not_started", ms: null, detail: null },
       authUser: { status: "not_started", ms: null, detail: null },
@@ -148,55 +108,12 @@ function traceError(error) {
   return error && error.message ? error.message : String(error || "Unknown error");
 }
 
-// ---------- V1.8.2.6.6 Supabase Auth State Trace ----------
-// Diagnostic-only. Records auth lifecycle events without exposing tokens or
-// creating a second authentication mechanism. The resolver remains authoritative.
-function recordAuthStateEvent(event, session) {
-  const ctx = window.goodsbarnxAuthContext || {};
-  const trace = Object.assign({}, ctx.authStateTrace || {});
-  const events = Array.isArray(trace.events) ? trace.events.slice(-19) : [];
-  const userId = session && session.user ? session.user.id : null;
-  const entry = {
-    event: String(event || "UNKNOWN"),
-    at: new Date().toISOString(),
-    hasSession: !!session,
-    userId: userId || null
-  };
-  events.push(entry);
-  trace.events = events;
-  trace.lastEvent = entry;
-  publishAuthContext({ authStateTrace: trace });
-}
-
-function installAuthStateTrace() {
-  if (!window.sb || !sb.auth || typeof sb.auth.onAuthStateChange !== "function") return;
-  if (window.goodsbarnxAuthStateTraceSubscription) return;
-  const installedAt = new Date().toISOString();
-  publishAuthContext({
-    authStateTrace: Object.assign({}, window.goodsbarnxAuthContext.authStateTrace || {}, {
-      listenerInstalledAt: installedAt
-    })
-  });
-  const result = sb.auth.onAuthStateChange(function(event, session) {
-    recordAuthStateEvent(event, session);
-  });
-  window.goodsbarnxAuthStateTraceSubscription = result && result.data && result.data.subscription ? result.data.subscription : result;
-}
-
-// Listener installation is intentionally deferred to loadCurrentUser() so the
-// trace state is initialized first and cannot be wiped by resetAuthContext().
-
 // ---------- Current user / resolution trace ----------
 async function loadCurrentUser() {
   if (goodsbarnxAuthResolutionPromise) return goodsbarnxAuthResolutionPromise;
 
   goodsbarnxAuthResolutionPromise = (async function() {
     resetAuthContext();
-    // V1.8.2.6.6.1: install/rebind the diagnostic listener AFTER trace state
-    // initialization but BEFORE the first getSession() call. This preserves the
-    // listener marker/events and guarantees the lifecycle trace belongs to this
-    // resolver execution.
-    installAuthStateTrace();
     publishAuthContext({
       execution: {
         state: "running",
@@ -367,40 +284,6 @@ window.getGoodsbarnXAuthResolutionTrace = function() {
   return { version: GBX_AUTH_CONTEXT_VERSION, state: c.state, ready: c.ready, authenticated: c.authenticated, userId: c.userId, role: c.role, trace: c.trace || {}, errorCode: c.errorCode, errorMessage: c.errorMessage };
 };
 
-function inspectSupabaseAuthStorage() {
-  const names = [];
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && (/supabase/i.test(key) || /^sb-/i.test(key))) names.push(key);
-    }
-  } catch (e) {}
-  return { inspected: true, authKeyCount: names.length, authKeyNames: names.slice(0, 20) };
-}
-
-async function tracePostLoginSession(userId) {
-  const trace = Object.assign({}, (window.goodsbarnxAuthContext || {}).sessionPersistenceTrace || {});
-  trace.loginResultAt = new Date().toISOString();
-  trace.loginUserId = userId || null;
-  trace.storage = inspectSupabaseAuthStorage();
-  try {
-    const result = await sb.auth.getSession();
-    const session = result && result.data && result.data.session;
-    if (result && result.error) throw result.error;
-    trace.postLoginSession = {
-      status: session && session.user ? "present" : "absent",
-      detail: session && session.user ? "Session available immediately after sign-in." : "No session returned immediately after sign-in.",
-      userId: session && session.user ? session.user.id : null
-    };
-  } catch (e) {
-    trace.postLoginSession = { status: "failed", detail: traceError(e), userId: null };
-  }
-  publishAuthContext({ sessionPersistenceTrace: trace });
-  return trace;
-}
-
-// ---------- Session persistence trace ----------
-
 // ---------- Signup ----------
 
 async function handleSignup() {
@@ -426,9 +309,6 @@ async function handleSignup() {
     err.innerText = error.message;
     return;
   }
-  publishAuthContext({ sessionPersistenceTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).sessionPersistenceTrace || {}, {
-    loginAttemptAt: new Date().toISOString(), loginResultAt: new Date().toISOString(), loginStatus: "signup_succeeded", loginUserId: data && data.user ? data.user.id : null, storage: inspectSupabaseAuthStorage()
-  }) });
 
   const userId = data.user.id;
   await sb.from("profiles").insert({ id: userId, full_name: name, phone: phone, role: selectedSignupRole });
@@ -448,12 +328,6 @@ async function handleSignup() {
 // ---------- Login ----------
 
 async function handleLogin() {
-  const executionStartedAt = new Date().toISOString();
-  publishAuthContext({ loginExecutionTrace: {
-    handlerEnteredAt: executionStartedAt, validation: "running", signInMethod: "available",
-    signInInvokedAt: null, signInReturnedAt: null, signInStatus: "not_started",
-    returnedUserId: null, returnedSessionPresent: false, exception: null, resolverReentryAt: null, resolverStatus: "not_started"
-  }});
   const email = document.getElementById("login-email").value;
   const password = document.getElementById("login-password").value;
   const err = document.getElementById("login-error");
@@ -461,135 +335,19 @@ async function handleLogin() {
   err.innerText = "";
   if (!email || !password) {
     err.innerText = "Please fill in both fields.";
-    publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, { validation: "blocked" }) });
     return;
   }
-  publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, { validation: "passed", signInMethod: typeof sb.auth.signInWithPassword === "function" ? "available" : "missing" }) });
 
-  const startedAt = new Date().toISOString();
-  publishAuthContext({ sessionPersistenceTrace: {
-    loginAttemptAt: startedAt, loginResultAt: null, loginStatus: "running", loginUserId: null, loginError: null,
-    postLoginSession: { status: "not_started", detail: null, userId: null },
-    storage: { inspected: false, authKeyCount: 0, authKeyNames: [] }, reloadBoundary: { status: "not_observed", detail: null }
-  }});
-
-  publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, { signInInvokedAt: new Date().toISOString(), signInStatus: "running" }) });
-  let data, error;
-  try {
-    const result = await sb.auth.signInWithPassword({ email, password });
-    data = result && result.data;
-    error = result && result.error;
-  } catch (e) {
-    error = e;
-    publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, { signInReturnedAt: new Date().toISOString(), signInStatus: "exception", exception: traceError(e) }) });
-    err.innerText = traceError(e);
-    return;
-  }
-  publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, {
-    signInReturnedAt: new Date().toISOString(), signInStatus: error ? "failed" : "succeeded",
-    returnedUserId: data && data.user ? data.user.id : null, returnedSessionPresent: !!(data && data.session), exception: error ? null : null
-  }) });
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if (error) {
     err.innerText = error.message;
-    const failedTrace = Object.assign({}, (window.goodsbarnxAuthContext || {}).sessionPersistenceTrace || {}, {
-      loginResultAt: new Date().toISOString(), loginStatus: "failed", loginError: error.message, storage: inspectSupabaseAuthStorage()
-    });
-    publishAuthContext({ sessionPersistenceTrace: failedTrace });
     return;
   }
-
-  await tracePostLoginSession(data && data.user ? data.user.id : null);
-  const successTrace = Object.assign({}, (window.goodsbarnxAuthContext || {}).sessionPersistenceTrace || {}, { loginStatus: "succeeded" });
-  publishAuthContext({ sessionPersistenceTrace: successTrace });
 
   goodsbarnxAuthResolutionPromise = null;
-  publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, { resolverReentryAt: new Date().toISOString(), resolverStatus: "running" }) });
-  try {
-    await loadCurrentUser();
-    publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, { resolverStatus: "completed" }) });
-  } catch (e) {
-    publishAuthContext({ loginExecutionTrace: Object.assign({}, (window.goodsbarnxAuthContext || {}).loginExecutionTrace || {}, { resolverStatus: "failed", exception: traceError(e) }) });
-    throw e;
-  }
+  await loadCurrentUser();
   document.getElementById("login-shell").classList.add("hidden");
   document.getElementById("app").style.display = "block";
-}
-
-// ---------- Logout / Auth Session Termination Boundary ----------
-// Surgical runtime path: the existing logout UI invokes this real handler.
-// No local credential manipulation; Supabase remains the authoritative session owner.
-async function handleLogout() {
-  const startedAt = new Date().toISOString();
-  const trace = {
-    handlerEnteredAt: startedAt, signOutMethod: (window.sb && sb.auth && typeof sb.auth.signOut === "function") ? "available" : "missing",
-    signOutInvokedAt: null, signOutReturnedAt: null, signOutStatus: "not_started",
-    signedOutEventObserved: false, sessionAfterSignOut: "not_started", currentUserCleared: false, uiReset: false, exception: null
-  };
-  publishAuthContext({ logoutExecutionTrace: trace });
-
-  if (trace.signOutMethod !== "available") {
-    trace.signOutStatus = "missing";
-    trace.exception = "Supabase signOut method is unavailable.";
-    publishAuthContext({ logoutExecutionTrace: trace });
-    return;
-  }
-
-  trace.signOutInvokedAt = new Date().toISOString();
-  trace.signOutStatus = "running";
-  publishAuthContext({ logoutExecutionTrace: trace });
-
-  let result;
-  try {
-    result = await sb.auth.signOut();
-  } catch (error) {
-    trace.signOutReturnedAt = new Date().toISOString();
-    trace.signOutStatus = "exception";
-    trace.exception = traceError(error);
-    publishAuthContext({ logoutExecutionTrace: trace });
-    return;
-  }
-
-  trace.signOutReturnedAt = new Date().toISOString();
-  if (result && result.error) {
-    trace.signOutStatus = "failed";
-    trace.exception = traceError(result.error);
-    publishAuthContext({ logoutExecutionTrace: trace });
-    return;
-  }
-  trace.signOutStatus = "succeeded";
-  publishAuthContext({ logoutExecutionTrace: trace });
-
-  // Give Supabase's auth-state listener a microtask boundary to observe SIGNED_OUT.
-  await new Promise(resolve => setTimeout(resolve, 0));
-  const ctxAfterSignOut = window.goodsbarnxAuthContext || {};
-  const events = ctxAfterSignOut.authStateTrace && Array.isArray(ctxAfterSignOut.authStateTrace.events) ? ctxAfterSignOut.authStateTrace.events : [];
-  trace.signedOutEventObserved = events.some(e => e.event === "SIGNED_OUT" && !e.hasSession);
-
-  try {
-    const sessionResult = await sb.auth.getSession();
-    if (sessionResult && sessionResult.error) throw sessionResult.error;
-    trace.sessionAfterSignOut = sessionResult && sessionResult.data && sessionResult.data.session ? "present" : "absent";
-  } catch (error) {
-    trace.sessionAfterSignOut = "failed";
-    trace.exception = trace.exception || traceError(error);
-  }
-
-  currentUser = null;
-  trace.currentUserCleared = currentUser === null;
-
-  const authShell = document.getElementById("auth-shell");
-  const loginShell = document.getElementById("login-shell");
-  const app = document.getElementById("app");
-  if (authShell) authShell.classList.remove("hidden");
-  if (loginShell) loginShell.classList.add("hidden");
-  if (app) app.style.display = "none";
-  const logoutHolder = document.getElementById("logout-btn-holder");
-  if (logoutHolder) logoutHolder.innerHTML = "";
-  trace.uiReset = !!(authShell && loginShell && app);
-
-  // Preserve the diagnostic result after resetting the authoritative auth context.
-  resetAuthContext();
-  publishAuthContext({ state: "signed_out", ready: true, authenticated: false, userId: null, role: null, errorCode: null, errorMessage: null, logoutExecutionTrace: trace });
 }
 
 // ---------- Forgot password ----------
