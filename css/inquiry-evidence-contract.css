@@ -4,3 +4,10 @@
 .gbx-evidence-copy{margin:8px 0 14px;max-width:760px}
 .gbx-evidence-status{white-space:pre-wrap;margin:12px 0;padding:14px;border:1px solid currentColor;font:700 13px/1.45 "JetBrains Mono",monospace}
 .gbx-evidence-output{white-space:pre-wrap;overflow:auto;padding:14px;font:12px/1.55 "JetBrains Mono",monospace}
+
+/* V1.8.2.6.8.1.1.7.3.1 — diagnostic visibility: top-of-Depletor test surface */
+#gbx-v18268-gate-test{display:block;margin:0 0 18px;padding:16px;background:rgba(8,12,10,.92);border:1px solid rgba(227,169,79,.32);border-radius:16px;position:relative;z-index:2}
+#gbx-v18268-gate-test .gbx-evidence-kicker{font-size:10px;font-weight:800;letter-spacing:.12em;line-height:1.45}
+#gbx-v18268-gate-test .gbx-evidence-status{white-space:pre-wrap;font-family:Inter,system-ui,sans-serif;font-size:12px;line-height:1.55;margin-top:8px}
+#gbx-v18268-gate-test #v18268-gate-metrics{margin-top:8px;font-family:monospace;font-size:10px;letter-spacing:.04em;opacity:.78}
+#gbx-v18268-gate-test .gbx-evidence-output{margin-top:12px;max-height:420px;overflow:auto;white-space:pre-wrap;font:10px/1.55 "JetBrains Mono",monospace;opacity:.88}
