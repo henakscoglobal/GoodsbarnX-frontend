@@ -27,13 +27,14 @@
     var products=rs[0].data||[],inquiries=(rs[1].data||[]).filter(function(i){return!["closed","resolved","completed"].includes(String(i.status||"").toLowerCase())}),rels=rs[2].data||[],agents=rs[3].data||[];
     var out=[];
     inquiries.forEach(function(i){
-      /* V1.8.2.6.8.1.1.8 — invalid demand evidence isolation.
-         Classification remains upstream; invalid demand must not cross into
-         allocation candidate construction. Preserve the inquiry unchanged. */
-      var rawQuantity=i.quantity,parsedQuantity=Number(rawQuantity);
-      var quantityValid=rawQuantity!==null&&rawQuantity!==undefined&&String(rawQuantity).trim()!==""&&Number.isFinite(parsedQuantity)&&parsedQuantity>0;
-      if(!quantityValid)return;
-      var matches=products.filter(function(p){return linked(i,p)}),qty=parsedQuantity,age=ageHours(i.created_at),rel=activeRelationship(i,rels);
+      // V1.8.2.6.8.1.1.8 — invalid demand evidence isolation.
+      // Invalid demand remains in the inquiry ledger but MUST NOT cross the
+      // allocation candidate-construction boundary.
+      var quantityNumber=Number(i.quantity);
+      var itemKnown=String(i.item||"").trim().length>0;
+      var quantityValid=Number.isFinite(quantityNumber)&&quantityNumber>0;
+      if(!itemKnown||!quantityValid)return;
+      var matches=products.filter(function(p){return linked(i,p)}),qty=quantityNumber,age=ageHours(i.created_at),rel=activeRelationship(i,rels);
       matches.forEach(function(p){
         var stock=Number(p.stock_quantity)||0,sc=score(matches.length,stock,qty,age);
         var evidence={demandIdentity:!!i.buyer_id,activePrimaryRelationship:!!rel,productDemandMatch:true,stockAvailable:stock>0,requestedQuantityKnown:qty>0,stockCoversRequest:qty>0&&stock>=qty,acceptedAgentCapacity:agents.length>0,freshnessHours:Math.round(age*10)/10};
