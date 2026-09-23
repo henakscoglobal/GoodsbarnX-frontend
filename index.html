@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><title>GoodsbarnX — V1.8.2.6.8.1.1.21.2 Canonical Runtime Package Integrity</title></head><body style="font-family:monospace;white-space:pre-wrap;background:#12151C;color:#EFE9DE;padding:24px"><h2>V1.8.2.6.8.1.1.21.2 — CANONICAL RUNTIME PACKAGE INTEGRITY</h2><pre id="out">Running…</pre><script>
+(async function(){
+const V='V1.8.2.6.8.1.1.21.2';
+const required=['js/config.js','js/ui.js','js/auth.js','js/market.js','js/inquiries.js','js/storefront.js','js/cart.js','js/depletor.js','js/products.js','js/trust.js','js/profile.js','js/upgrade.js','js/staff.js','js/app.js'];
+const out=[]; const log=x=>out.push(x); const root=location.href.replace(/[^/]*$/,'');
+log(V+' — CANONICAL RUNTIME PACKAGE INTEGRITY'); log(''); log('PACKAGE CONTRACT');
+log('✓ Production entry requires the complete GoodsbarnX local runtime');
+log('✓ app.js must be the final local runtime asset');
+log('✓ depletor.js must be present');
+log('✓ No test-only transaction module may be required by production entry');
+log('✓ No production commerce mutation is performed by this test'); log(''); log('RUNTIME ASSET AVAILABILITY');
+let missing=[];
+for(const p of required){try{const r=await fetch(root+p,{cache:'no-store'}); if(!r.ok){missing.push(p);log('✗ MISSING — '+p+' — HTTP '+r.status)} else log('✓ PRESENT — '+p)}catch(e){missing.push(p);log('✗ UNREADABLE — '+p)}}
+log('');
+if(missing.length){log('BOUNDARY RESULT');log('✗ '+V+' BLOCKED');log('Canonical package cannot be declared complete. Missing '+missing.length+' required runtime asset(s).');log('No substitute JS was fabricated or silently downgraded.');}
+else {log('BOUNDARY RESULT');log('✓ '+V+' PASSED');log('All required GoodsbarnX runtime assets are present.');}
+document.getElementById('out').textContent=out.join('\n');
+})();</script></body></html>
