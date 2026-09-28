@@ -466,20 +466,3 @@ nav.bottom{
   main.screen{padding-left:14px!important;padding-right:14px!important}
   .depletor-metrics{gap:6px}
 }
-
-/* ================================================================
-   GOODSBARNX — 21.3.4.3 CSS RUNTIME CLOSURE
-   Static presentation rules previously carried by index.html inline
-   style attributes. No behavior is encoded here.
-   ================================================================ */
-.gbx-hidden{display:none!important}
-.gbx-password-field{position:relative}
-#app{display:none}
-#gbx-v1721-buyer-evidence{margin-top:16px}
-.trust-summary{margin-bottom:16px}
-.profile-saved-banner{display:none;background:var(--ok);color:#fff;padding:8px;border-radius:8px;text-align:center;margin-bottom:12px}
-.plan-cards{display:flex;flex-direction:column;gap:16px;margin-bottom:16px}
-.current-plan-info{padding:14px}
-.action-spaced{margin-top:16px}
-.gbx-v1727-evidence-modal{display:none;position:fixed;inset:0;z-index:100001;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.58)}
-.file-input-padded{padding:8px}
