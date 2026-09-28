@@ -41,7 +41,6 @@ async function loadDistributorsAndBuyers() {
     await updateNetworkLinks();
     applyFilters();
     await updateStats();
-    await loadDistributorDashboard();
   } catch (err) {
     console.error("GoodsbarnX market runtime:", err);
   }
