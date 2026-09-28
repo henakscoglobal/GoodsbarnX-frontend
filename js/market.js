@@ -41,6 +41,7 @@ async function loadDistributorsAndBuyers() {
     await updateNetworkLinks();
     applyFilters();
     await updateStats();
+    await loadDistributorDashboard();
   } catch (err) {
     console.error("GoodsbarnX market runtime:", err);
   }
@@ -230,4 +231,14 @@ function toggleFavourite(event, id) {
   if (el) el.textContent = userFavourites.has(id) ? "â¤ï¸" : "ðŸ¤";
 }
 
-// Distributor dashboard remains owned by the prototype-locked inline runtime in index.html.
+window.loadDistributorsAndBuyers = loadDistributorsAndBuyers;
+window.applyFilters = applyFilters;
+window.selectCategory = selectCategory;
+window.clearSearch = clearSearch;
+window.toggleSearchClear = toggleSearchClear;
+window.updateGreeting = updateGreeting;
+window.updateStats = updateStats;
+window.renderDistributors = renderDistributors;
+window.renderBuyers = renderBuyers;
+window.openWhatsApp = openWhatsApp;
+window.toggleFavourite = toggleFavourite;
