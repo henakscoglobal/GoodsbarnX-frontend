@@ -1,7 +1,6 @@
 // ==========================================================================
-// GoodsbarnX — market.js
-// Canonical distributor/buyer market runtime.
-// Distributor dashboard remains owned by the prototype-locked inline runtime in index.html.
+// GoodsbarnX â€” market.js
+// Canonical distributor/buyer market runtime + distributor network dashboard.
 // Depends on config.js (`sb`) and app.js global state (`currentUser`,
 // `allDistributors`, `allBuyers`, `activeCategory`, `userFavourites`).
 // app.js remains the final loaded JS source.
@@ -35,7 +34,7 @@ async function loadDistributorsAndBuyers() {
 
     const { count, error: inquiryError } = await sb.from("inquiries").select("*", { count: "exact", head: true });
     if (!inquiryError) {
-      const el = document.getElementById("inquiry-count-ring"); if (el) el.textContent = count ?? "–";
+      const el = document.getElementById("inquiry-count-ring"); if (el) el.textContent = count ?? "â€“";
     }
 
     if (currentUser?.role === "distributor") await loadPendingRequests();
@@ -101,7 +100,7 @@ async function updateNetworkLinks() {
       const pending = relationships.filter(r => ["pending", "pending_consent"].includes(r.status));
       const el = document.getElementById("my-buyers-count"); if (el) el.textContent = relationships.length;
       const sub = document.getElementById("my-buyers-sub");
-      if (sub) sub.textContent = `${active.length} active • ${pending.length} pending`;
+      if (sub) sub.textContent = `${active.length} active â€¢ ${pending.length} pending`;
     }
 
     const { data: agents, error: agentError } = await sb
@@ -113,7 +112,7 @@ async function updateNetworkLinks() {
     if (!agentError && agents) {
       const el = document.getElementById("my-agents-count"); if (el) el.textContent = agents.length;
       const sub = document.getElementById("my-agents-sub");
-      if (sub) sub.textContent = `${agents.length} active • 0 pending`;
+      if (sub) sub.textContent = `${agents.length} active â€¢ 0 pending`;
     }
   } catch (err) {
     console.error("GoodsbarnX network runtime:", err);
@@ -188,18 +187,18 @@ function renderDistributors(list) {
   const container = document.getElementById("distributor-list");
   if (!container) return;
   if (!list?.length) {
-    container.innerHTML = '<div class="empty-state-illustration"><div class="icon">🏪</div><div class="title">No distributors found</div><div class="sub">Check back later or adjust your filters</div></div>';
+    container.innerHTML = '<div class="empty-state-illustration"><div class="icon">ðŸª</div><div class="title">No distributors found</div><div class="sub">Check back later or adjust your filters</div></div>';
     return;
   }
   container.innerHTML = list.map(d => {
     const tier = d.verification_tier || "";
-    const verified = tier === "association" ? '<div class="m-verified">✓ Association Verified</div>'
-      : tier === "market board" ? '<div class="m-verified market-board">✓ Market Board Verified</div>'
+    const verified = tier === "association" ? '<div class="m-verified">âœ“ Association Verified</div>'
+      : tier === "market board" ? '<div class="m-verified market-board">âœ“ Market Board Verified</div>'
       : tier === "self-attested" ? '<div class="m-verified self-attested">Self-Attested</div>' : "";
     const phone = d.profiles?.phone || "";
     const fav = userFavourites?.has?.(d.id);
     const safeName = String(d.business_name || "Distributor").replace(/'/g, "\\'");
-    return `<div class="manifest"><div class="manifest-top"><div><div class="m-name">${d.business_name || "Distributor"}</div><div class="m-loc">${d.location || ""}${d.market ? " · " + d.market : ""}</div>${verified}</div><div style="display:flex;align-items:flex-start;gap:8px;"><button class="fav-btn" onclick="toggleFavourite(event,'${d.id}')"><span id="fav-${d.id}">${fav ? "❤️" : "🤍"}</span></button><div class="stamp-badge">${(d.category || "LISTED").toUpperCase()}</div></div></div><div class="m-meta">${phone ? `<button class="btn btn-whatsapp" onclick="openWhatsApp('${phone}','${safeName}')">WhatsApp</button>` : ""}<button class="btn btn-outline" onclick="openStorefrontModal('${d.id}')">Storefront</button><button class="btn btn-primary" onclick="openModal('${d.id}','${safeName}','distributor')">Inquire</button></div><div class="dispute-row"><span class="dispute-link" onclick="openDisputeModal('${d.id}','${safeName}')">Report an issue</span></div></div>`;
+    return `<div class="manifest"><div class="manifest-top"><div><div class="m-name">${d.business_name || "Distributor"}</div><div class="m-loc">${d.location || ""}${d.market ? " Â· " + d.market : ""}</div>${verified}</div><div style="display:flex;align-items:flex-start;gap:8px;"><button class="fav-btn" onclick="toggleFavourite(event,'${d.id}')"><span id="fav-${d.id}">${fav ? "â¤ï¸" : "ðŸ¤"}</span></button><div class="stamp-badge">${(d.category || "LISTED").toUpperCase()}</div></div></div><div class="m-meta">${phone ? `<button class="btn btn-whatsapp" onclick="openWhatsApp('${phone}','${safeName}')">WhatsApp</button>` : ""}<button class="btn btn-outline" onclick="openStorefrontModal('${d.id}')">Storefront</button><button class="btn btn-primary" onclick="openModal('${d.id}','${safeName}','distributor')">Inquire</button></div><div class="dispute-row"><span class="dispute-link" onclick="openDisputeModal('${d.id}','${safeName}')">Report an issue</span></div></div>`;
   }).join("");
 }
 
@@ -207,14 +206,14 @@ function renderBuyers(list) {
   const container = document.getElementById("buyer-list");
   if (!container) return;
   if (!list?.length) {
-    container.innerHTML = '<div class="empty-state-illustration"><div class="icon">👤</div><div class="title">No buyers found</div><div class="sub">Start by inviting buyers to your network</div></div>';
+    container.innerHTML = '<div class="empty-state-illustration"><div class="icon">ðŸ‘¤</div><div class="title">No buyers found</div><div class="sub">Start by inviting buyers to your network</div></div>';
     return;
   }
   container.innerHTML = list.map(b => {
     const name = b.name || b.profiles?.full_name || "Buyer";
     const phone = b.profiles?.phone || "";
     const safeName = String(name).replace(/'/g, "\\'");
-    return `<div class="manifest"><div class="manifest-top"><div><div class="m-name">${name}</div><div class="m-loc">${b.location || ""}${b.market ? " · " + b.market : ""}</div>${b.verification_status ? `<div class="m-verified ${String(b.verification_status).toLowerCase().replace(" ","-")}">✓ ${b.verification_status}</div>` : ""}</div><div class="stamp-badge" style="border-color:var(--brass);color:var(--brass);">${(b.looking_for || "BUYER").toUpperCase()}</div></div><div class="m-meta">${phone ? `<button class="btn btn-whatsapp" onclick="openWhatsApp('${phone}','${safeName}')">WhatsApp</button>` : ""}<button class="btn btn-primary" onclick="openModal('${b.id}','${safeName}','buyer')">Inquire</button></div></div>`;
+    return `<div class="manifest"><div class="manifest-top"><div><div class="m-name">${name}</div><div class="m-loc">${b.location || ""}${b.market ? " Â· " + b.market : ""}</div>${b.verification_status ? `<div class="m-verified ${String(b.verification_status).toLowerCase().replace(" ","-")}">âœ“ ${b.verification_status}</div>` : ""}</div><div class="stamp-badge" style="border-color:var(--brass);color:var(--brass);">${(b.looking_for || "BUYER").toUpperCase()}</div></div><div class="m-meta">${phone ? `<button class="btn btn-whatsapp" onclick="openWhatsApp('${phone}','${safeName}')">WhatsApp</button>` : ""}<button class="btn btn-primary" onclick="openModal('${b.id}','${safeName}','buyer')">Inquire</button></div></div>`;
   }).join("");
 }
 
@@ -228,7 +227,7 @@ function toggleFavourite(event, id) {
   event?.stopPropagation();
   if (userFavourites.has(id)) userFavourites.delete(id); else userFavourites.add(id);
   const el = document.getElementById(`fav-${id}`);
-  if (el) el.textContent = userFavourites.has(id) ? "❤️" : "🤍";
+  if (el) el.textContent = userFavourites.has(id) ? "â¤ï¸" : "ðŸ¤";
 }
 
 window.loadDistributorsAndBuyers = loadDistributorsAndBuyers;
@@ -242,3 +241,4 @@ window.renderDistributors = renderDistributors;
 window.renderBuyers = renderBuyers;
 window.openWhatsApp = openWhatsApp;
 window.toggleFavourite = toggleFavourite;
+
