@@ -1,15 +1,20 @@
 /* ==========================================================================
-   GoodsbarnX — js/behaviour.js
+   GoodsbarnX — js/behaviour.js  (rev. 1)
    Buyer behaviour instrumentation (Canon §28, §29, D1, D11, D25–D28).
 
    Version: V1.8.2.6
-   Load position: 16 (per D25). Loaded after the seven MSD files, before
+   Load position: 15 (per D25). Loaded after the seven MSD files, before
    js/products.js.
 
+   rev. 1 — dead-code remediation (declared in File 25 §1):
+     contextFromSelectedContact() previously contained a branch that wrote
+     a UUID to a field name "buyer_placeholder_noop" which no consumer ever
+     read. buyer_id is not a buyer_behavior_events column; the buyer identity
+     for an event is established by the server from auth.uid() via RLS, not
+     by a client-passed field. The branch is removed. No behaviour change.
+
    Canon basis:
-     §28  behaviour events preserve their commercial context. Each event
-          carries p_product_id, p_distributor_id, p_inquiry_id,
-          p_relationship_id, p_cart_id, p_order_id where obtainable.
+     §28  behaviour events preserve their commercial context.
      §29  evidence integrity — an event without a context field is recorded
           with metadata.missing_context naming the absent field. An event is
           never silently discarded.
@@ -23,20 +28,6 @@
          retries once with a reduced payload (null context fields removed,
          metadata.s4_unavailable = true). If that also rejects, the event is
          recorded in the module's failed count and named in the console.
-
-   This file owns:
-     - sessionId              : one per page-session via sessionStorage.
-     - track()                : emit one event.
-     - hookProducerFunctions(): wrap the five canonical producers once.
-     - attachListeners()      : data-gbx-event click/change/input handling.
-     - state()                : telemetry accessor.
-
-   This file does NOT:
-     - write to the DOM.
-     - infer a context field from anything other than the exact DOM element
-       the user interacted with, or from ui.js's selectedContactId/etc.,
-       which ui.js set from that same element's data at click time.
-     - re-hook functions on an interval.
    ========================================================================== */
 
 (function () {
@@ -77,10 +68,6 @@
   var CANON_EVENT_SET = Object.create(null);
   CANON_EVENT_TYPES.forEach(function (t) { CANON_EVENT_SET[t] = true; });
 
-  // The five producer functions we wrap. Each is optional — a producer that
-  // is not yet defined at DOM-ready will be picked up by the periodic
-  // reconciliation pass in hookProducerFunctions(). Only one wrap is
-  // installed per function; the module never re-wraps.
   var PRODUCER_EVENT_MAP = {
     "openModal":       "inquiry_start",
     "submitInquiry":   "inquiry_submit",
@@ -89,7 +76,6 @@
     "startCheckout":   "checkout_start"
   };
 
-  // Module telemetry — D28.
   var telemetry = {
     emitted: 0,
     emitted_with_missing_context: 0,
@@ -111,7 +97,6 @@
     if (window.crypto && typeof window.crypto.randomUUID === "function") {
       return window.crypto.randomUUID();
     }
-    // RFC4122-ish fallback. Only used when crypto.randomUUID is unavailable.
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
       var r = (Math.random() * 16) | 0;
       var v = c === "x" ? r : ((r & 0x3) | 0x8);
@@ -146,13 +131,6 @@
 
   // ------------------------------------------------------------------------
   // CONTEXT EXTRACTION
-  //
-  // Every field is read from one of two sources:
-  //   1. The DOM element the user interacted with (data-* attributes).
-  //   2. ui.js's selectedContactId / selectedContactName / selectedContactType,
-  //      which ui.js set from the same element's data at click time.
-  //
-  // Nothing is inferred. If neither source provides a field, it is absent.
   // ------------------------------------------------------------------------
 
   function contextFromElement(el) {
@@ -185,6 +163,10 @@
     // ui.js's selected* values were set from a click on an element that
     // carried the id. We read them here only when the click's own element
     // did not carry a data-* attribute for the same field.
+    //
+    // rev. 1: the buyer case is removed. buyer_id is not a column on
+    // buyer_behavior_events; the server derives buyer identity from
+    // auth.uid() under RLS. There is no client-passed buyer_id field.
     var out = {
       product_id: null,
       distributor_id: null,
@@ -200,7 +182,6 @@
     try { type = selectedContactType; } catch (e) {}
 
     if (type === "distributor") putIfUuid(out, "distributor_id", id);
-    else if (type === "buyer")  putIfUuid(out, "buyer_placeholder_noop", id); // buyer is not a context field on behaviour events
     return out;
   }
 
@@ -283,8 +264,7 @@
     }
 
     // Attempt 2 — S4-absent fallback: strip null context fields entirely
-    // and add metadata.s4_unavailable. Still does not drop the event
-    // without logging.
+    // and add metadata.s4_unavailable.
     var reducedPayload = {
       p_session_id:  payload.p_session_id,
       p_event_type:  payload.p_event_type,
@@ -292,8 +272,6 @@
       p_metadata: Object.assign({}, metadata, { s4_unavailable: true }),
       p_occurred_at: payload.p_occurred_at
     };
-    // Preserve any context fields that were present, so we still transmit
-    // whatever commercial truth we had.
     ["p_product_id","p_distributor_id","p_inquiry_id","p_relationship_id","p_cart_id","p_order_id"].forEach(function (k) {
       if (payload[k] != null) reducedPayload[k] = payload[k];
     });
@@ -338,45 +316,7 @@
 
   // ------------------------------------------------------------------------
   // PRODUCER HOOKS
-  //
-  // Wrap the five canonical producers once each. The wrapper reads the
-  // arguments the producer received and builds a context from them
-  // directly — it does not infer.
-  //
-  // A producer that is not yet defined at DOM-ready is skipped. A single
-  // reconciliation pass runs at DOM-ready + 500ms to catch late definitions
-  // (e.g. app.js's IIFE defines nothing; but storefront.js's openStorefrontModal
-  // is available by then). After that, we do NOT re-hook on an interval.
   // ------------------------------------------------------------------------
-
-  function argsContext(args) {
-    var ctx = {
-      product_id: null,
-      distributor_id: null,
-      inquiry_id: null,
-      relationship_id: null,
-      cart_id: null,
-      order_id: null,
-      category: null,
-      _source: "function_args"
-    };
-    // Some producers take (id, name, type). Some take (productId, name, price, distributorId, distributorName).
-    // We read positions where the arguments are known to be ids.
-    for (var i = 0; i < args.length && i < 5; i++) {
-      var v = args[i];
-      if (typeof v === "string" && isUuid(v)) {
-        // First UUID-looking argument is the primary id for the call.
-        if (ctx.product_id == null && ctx.inquiry_id == null && ctx.distributor_id == null) {
-          // We cannot know which field the UUID belongs to from position alone.
-          // The function name disambiguates: openModal takes a contact id +
-          // a type; addToCart takes productId + name + price + distributorId.
-          // We record the raw id under metadata and let the function-specific
-          // wrapper below assign the field.
-        }
-      }
-    }
-    return ctx;
-  }
 
   function wrapProducer(name, eventType) {
     if (window["__gbxBehaviourWrapped_" + name]) return;
@@ -386,9 +326,6 @@
     window[name] = function () {
       var args = Array.prototype.slice.call(arguments);
 
-      // Read the context the producer is about to use.
-      // For openModal(id, name, type):  id is the contact id; type tells us which field.
-      // For addToCart(productId, name, price, distributorId, distributorName): positions are fixed.
       var ctx = { product_id: null, distributor_id: null, inquiry_id: null,
                   relationship_id: null, cart_id: null, order_id: null,
                   category: null, _source: "producer_args" };
@@ -397,42 +334,28 @@
         var contactId = args[0];
         var contactType = args[2];
         if (contactType === "distributor") putIfUuid(ctx, "distributor_id", contactId);
-        // We do not emit inquiry_start without any context; it will carry
-        // missing_context instead.
       } else if (name === "addToCart" || name === "removeFromCart") {
         var productId = args[0];
         putIfUuid(ctx, "product_id", productId);
       } else if (name === "submitInquiry") {
-        // submitInquiry reads global selectedContactId / selectedContactType.
-        // Nothing is available from its arguments; merge in the ui.js state.
         ctx = mergeContext(ctx, contextFromSelectedContact());
       } else if (name === "startCheckout") {
-        // Not yet defined in the runtime; when it lands it will pass a cart id.
         putIfUuid(ctx, "cart_id", args[0]);
       }
 
-      // If still empty, merge the ui.js selected-contact state.
       if (!meaningfulContext(ctx)) {
         ctx = mergeContext(ctx, contextFromSelectedContact());
       }
 
       var result = original.apply(this, args);
 
-      // inquiry_submit carries the inquiry id only after the RPC resolved.
-      // Attach to result promise when possible so downstream observers can
-      // see the id; but the current producer does not return the id. We
-      // therefore emit with whatever context was available.
-      emitForProducer(name, eventType, ctx);
+      var meta = { function_name: name, instrumentation_version: VERSION };
+      track(eventType, ctx, meta, "producer");
 
       return result;
     };
 
     window["__gbxBehaviourWrapped_" + name] = true;
-  }
-
-  function emitForProducer(name, eventType, ctx) {
-    var meta = { function_name: name, instrumentation_version: VERSION };
-    track(eventType, ctx, meta, "producer");
   }
 
   function hookProducerFunctions() {
@@ -442,7 +365,7 @@
   }
 
   // ------------------------------------------------------------------------
-  // DOM LISTENERS — data-gbx-event and passive click instrumentation
+  // DOM LISTENERS
   // ------------------------------------------------------------------------
 
   function textOf(el) {
@@ -450,7 +373,6 @@
   }
 
   function passiveClickContext(el) {
-    // Nearest ancestor or self carrying any data-* context.
     var node = el;
     for (var depth = 0; node && depth < 6; depth++) {
       var c = contextFromElement(node);
@@ -462,15 +384,14 @@
 
   function instrumentPassiveClick(el) {
     if (!isBuyer() || !el) return;
-    if (el.closest && el.closest("[data-gbx-event]")) return; // handled by explicit listener
+    if (el.closest && el.closest("[data-gbx-event]")) return;
 
     var t = textOf(el);
     var ctx = passiveClickContext(el);
     var meta = { source_element: el.tagName.toLowerCase(), label: t.slice(0, 100) };
 
     if (/\bstorefront\b|view distributor|distributor profile/.test(t)) {
-      var dc = ctx;
-      if (dc.distributor_id) track("distributor_view", dc, meta, "ui");
+      if (ctx.distributor_id) track("distributor_view", ctx, meta, "ui");
       return;
     }
     if (/\bcheck stock\b|availability|stock/.test(t) && !/add to cart/.test(t)) {
@@ -489,9 +410,6 @@
       track("save", ctx, meta, "ui");
       return;
     }
-    // Buttons that trigger producers (Inquire, Add to Cart, etc.) are covered
-    // by the function wrappers, not here. This function only handles
-    // descriptive-text buttons that have no producer.
   }
 
   function activeScreen() {
@@ -520,15 +438,12 @@
   }
 
   function attachListeners() {
-    // Explicit data-gbx-event handlers.
     document.addEventListener("click", function (e) {
       if (!isBuyer()) return;
       var el = e.target && e.target.closest ? e.target.closest("[data-gbx-event]") : null;
       if (el) {
         var type = el.getAttribute("data-gbx-event");
         if (CANON_EVENT_SET[type]) {
-          // Function-backed types are handled by the producer wrappers,
-          // not here, to avoid double-emission.
           var functionBacked = {
             inquiry_start: true,
             inquiry_submit: true,
@@ -545,14 +460,12 @@
         }
         return;
       }
-      // Passive click fallback for descriptive buttons.
       var clickable = e.target && e.target.closest
         ? e.target.closest("button,a,[role=button],.product-card,.distributor-card,.buyer-card,.storefront-card")
         : null;
       if (clickable) instrumentPassiveClick(clickable);
     }, true);
 
-    // Search input debounce.
     var searchTimer = null;
     document.addEventListener("input", function (e) {
       if (!isBuyer()) return;
@@ -570,7 +483,6 @@
       }, 500);
     }, true);
 
-    // Filter change.
     document.addEventListener("change", function (e) {
       if (!isBuyer()) return;
       var el = e.target;
@@ -598,8 +510,6 @@
   }
 
   function reconcile() {
-    // A single reconciliation after 500ms to catch producers defined by
-    // modules whose parse order finished slightly after ours. Once.
     hookProducerFunctions();
     hookShowScreen();
   }
@@ -633,5 +543,5 @@
 
   window.goodsbarnxBehaviourTrack = track;
 
-  console.log("[GoodsbarnX] behaviour.js loaded (" + VERSION + ")");
+  console.log("[GoodsbarnX] behaviour.js loaded (" + VERSION + " rev.1)");
 })();
