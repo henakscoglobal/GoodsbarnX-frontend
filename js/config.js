@@ -1,27 +1,30 @@
 // ==========================================================================
-// GoodsbarnX — config.js
+// GoodsbarnX — config.js  (rev. 1)
 // Supabase client + app-wide constants.
-// Plain global script. Must load FIRST (Canon §10).
+// Plain global script. Loads FIRST (Canon §10).
 //
 // V1.8.2.6 remediation Phase 1+2 — D12:
-//   The plaintext SECRET constant has been removed. It was previously
-//   embedded in the client bundle and transmitted from js/inquiries.js
-//   to authenticate the /api/inquiries notification endpoint.
+//   SECRET constant removed. Notification requests authenticate with the
+//   buyer's Supabase JWT; backend deliverable S5 verifies it.
 //
-//   Replacement: notification requests are authenticated with the buyer's
-//   Supabase JWT (Authorization: Bearer <access_token>). The backend
-//   verifies the JWT. This removes the shared-secret exposure per
-//   Canon §3 (identity outside commercial intelligence) and §29
-//   (evidence integrity — no unauthenticated side channel).
+// Phase 5 rev. 1 — D33:
+//   MARKETS_LIVE is declared as an explicit configuration value. It replaces
+//   the hardcoded "4" that was inside the hero trust-strip in index.html.
+//   A boot helper writes it into #markets-live-value once the DOM is ready.
+//   If the element is absent, nothing is written and no default is fabricated.
 //
-//   Backend deliverable S5 (see Phase 1+2 plan): /api/inquiries must
-//   verify Supabase JWTs before accepting notification requests.
+//   This is a display constant, not a data value. It is the number of market
+//   verticals with a live GoodsbarnX presence at this deployment.
 // ==========================================================================
 
 const SUPABASE_URL = "https://zcxecnxirfdfvywnvcjp.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjeGVjbnhpcmZkZnZ5d252Y2pwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxMDIyMTMsImV4cCI6MjEwMDY3ODIxM30.ooKObFp6Mj_gKlVLZXnVyeDAdfdjzDJwqx2buimmBtI";
 
 const BACKEND = "https://shelfmatch-backend-5mjl.vercel.app/api";
+
+// D33 — declarative market-vertical count for the hero trust-strip.
+// This is the number of GoodsbarnX market verticals currently live.
+const MARKETS_LIVE = 4;
 
 // --------------------------------------------------------------------------
 // Global Supabase client with initialization check.
@@ -45,8 +48,6 @@ function createMockSupabase(reason) {
       if (prop === "maybeSingle" || prop === "single") {
         return reject;
       }
-      // Every chain method returns the same proxy so that
-      // .select().eq().order().limit() terminates in a rejected promise.
       return () => chainable;
     }
   });
@@ -98,14 +99,31 @@ function initializeSupabase() {
   }
 }
 
-// Initialize immediately (Canon §3 — identity bootstrap is not deferred).
 initializeSupabase();
 
 // --------------------------------------------------------------------------
-// Connection test with retry logic.
+// D33 — MARKETS_LIVE BOOT HELPER
 //
-// This remains a diagnostic surface only. It does not gate any feature;
-// callers must not treat its result as an authorization signal.
+// Writes MARKETS_LIVE into #markets-live-value if that element exists.
+// Called on DOMContentLoaded. If the element is not present, nothing is
+// written and no fallback value is produced — the display remains whatever
+// index.html declares.
+// --------------------------------------------------------------------------
+
+function bootMarketsLiveLabel() {
+  const el = document.getElementById("markets-live-value");
+  if (!el) return;
+  el.textContent = String(MARKETS_LIVE);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootMarketsLiveLabel);
+} else {
+  bootMarketsLiveLabel();
+}
+
+// --------------------------------------------------------------------------
+// Connection test with retry logic.
 // --------------------------------------------------------------------------
 
 async function testSupabaseConnection(retries = 3, delayMs = 1000) {
@@ -148,7 +166,6 @@ async function testSupabaseConnection(retries = 3, delayMs = 1000) {
         }
       );
 
-      // Do not retry authentication errors — they will not resolve by waiting.
       if (
         (err && err.message && err.message.includes("invalid api key")) ||
         (err && err.code === "PGRST301")
@@ -173,7 +190,6 @@ async function testSupabaseConnection(retries = 3, delayMs = 1000) {
   return false;
 }
 
-// Auto-test on load. Kept as a diagnostic; not a gate.
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", () => {
     testSupabaseConnection();
@@ -182,12 +198,16 @@ if (document.readyState === "loading") {
   testSupabaseConnection();
 }
 
+// --------------------------------------------------------------------------
 // Export for module usage if needed.
+// --------------------------------------------------------------------------
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     sb,
     SUPABASE_URL,
     BACKEND,
+    MARKETS_LIVE,
     testSupabaseConnection,
     initializeSupabase
   };
