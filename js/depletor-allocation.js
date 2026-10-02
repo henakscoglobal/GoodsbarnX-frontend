@@ -1,10 +1,17 @@
 /* ==========================================================================
-   GoodsbarnX — js/depletor-allocation.js
+   GoodsbarnX — js/depletor-allocation.js  (rev. 1)
    Master Stock Depletor · Stage 4 — Allocation / Matching (Canon §22).
 
    Version: V1.8.2.6
    Load position: 11 (per D13). Loads after js/depletor-opportunity.js,
    before js/depletor-depletion.js.
+
+   rev. 1 — dead-code remediation:
+     The original delivery introduced two functions
+     (computeNextAction and computeNextActionWithContext) where one was
+     needed. rev. 1 collapses them to a single computeNextAction that
+     takes (opportunity, constraints, context) explicitly. No behaviour
+     change. No other file is affected.
 
    Canon basis:
      §14  pipeline stage 4 of 7.
@@ -22,15 +29,7 @@
      §30  canonical object fields: commercial_fit, depletion_priority,
           next_action now populated.
      §31  pricing hierarchy: negotiated → relationship discount → public
-          → negotiable. This file is the only §22-stage consumer of §31.
-
-   This file owns:
-     - readCommercialContext(): §31 terms, prefs, products MOQ/terms,
-       accepted agents, distributor profile.
-     - computeCommercialFit() : §31 pricing hierarchy as a typed result.
-     - computeDepletionPriority(): evidence-band + reasons.
-     - computeNextAction()    : deterministic named operation.
-     - run()                  : returns the pipeline snapshot.
+          → negotiable.
 
    This file does NOT:
      - render UI.
@@ -48,8 +47,7 @@
   var STATE_ALLOCATED     = "ALLOCATED";
 
   // Canon §23 — allocation action names. Chosen deterministically from
-  // evidence; not a heuristic score. Each action has one and only one
-  // meaning and downstream stages read them as enums.
+  // evidence; not a heuristic score. Downstream stages read them as enums.
   var ACTION_CONTACT_BUYER          = "CONTACT_BUYER";
   var ACTION_RESOLVE_MOQ_SHORTFALL   = "RESOLVE_MOQ_SHORTFALL";
   var ACTION_VERIFY_PRICE           = "VERIFY_PRICE";
@@ -72,9 +70,6 @@
 
   // ------------------------------------------------------------------------
   // COMMERCIAL CONTEXT READ
-  //
-  // One batched read of §31-adjacent evidence. Read-only. Failures are named
-  // so the pipeline can degrade honestly.
   // ------------------------------------------------------------------------
 
   async function readCommercialContext(userId, opportunities) {
@@ -91,7 +86,7 @@
     relationshipIds = relationshipIds.filter(function (v, k, a) { return a.indexOf(v) === k; });
     productIds = productIds.filter(function (v, k, a) { return a.indexOf(v) === k; });
 
-    // Relationship trade terms — Canon §31 / current_relationship_trade_terms
+    // Relationship trade terms — Canon §31.
     var termsResult = { rows: [], state: "NONE" };
     if (relationshipIds.length) {
       var t = await sb
@@ -124,12 +119,14 @@
       }
     }
 
-    // Products — MOQ, trade terms, delivery, pickup, lead time.
+    // Products — MOQ, trade terms, delivery, pickup, lead time, negotiable,
+    // bulk_discount. Price is also read here so commercial fit can resolve
+    // public tier without a second round-trip.
     var productTermsResult = { byId: {}, state: "NONE" };
     if (productIds.length) {
       var pr = await sb
         .from("products")
-        .select("id,moq,lead_time,trade_terms,delivery_available,pickup_available,negotiable,bulk_discount")
+        .select("id,price,moq,lead_time,trade_terms,delivery_available,pickup_available,negotiable,bulk_discount")
         .in("id", productIds);
       if (pr.error) {
         productTermsResult.state = "UNAVAILABLE: " + pr.error.message;
@@ -178,38 +175,19 @@
 
   // ------------------------------------------------------------------------
   // COMMERCIAL FIT — Canon §31 pricing hierarchy
-  //
-  //   per-product negotiated price      (relationship_product_preferences)
-  //        ↓
-  //   relationship-level discount       (relationship_trade_terms.default_discount_percent)
-  //        ↓
-  //   public price                      (products.price)
-  //        ↓
-  //   negotiable                        (products.negotiable)
-  //
-  // Returns a typed result. Never fabricates a price tier that has no
-  // evidence.
   // ------------------------------------------------------------------------
 
   function computeCommercialFit(opportunity, context) {
     var relId = opportunity.relationship_id;
     var prodId = opportunity.product_id;
 
-    var publicPrice = num(opportunity.evidence && opportunity.evidence.public_price, NaN);
-    // public_price was not carried on the §16 opportunity; read from product terms.
     var productRow = context.productTerms.byId[prodId] || null;
 
-    // The public price is not in the §16 snapshot; the §15 snapshot has it but
-    // §22 does not receive §15 directly. Read it from the §16 opportunity's
-    // source evidence chain: §16 carries stock_health but not price. We
-    // therefore read public price from the products row we already fetched
-    // — but only if the product row includes price. If it does not (schema
-    // variance), the tier is "UNKNOWN".
+    // Public price — read from the product terms row (which now includes
+    // price). If absent, fall back to null and the tier becomes UNKNOWN.
     var publicPriceValue = null;
     if (productRow && productRow.price != null) {
       publicPriceValue = num(productRow.price, null);
-    } else if (isFinite(publicPrice)) {
-      publicPriceValue = publicPrice;
     }
 
     // Negotiated tier.
@@ -265,7 +243,7 @@
   }
 
   // ------------------------------------------------------------------------
-  // COMMERCIAL FIT / MOQ / DELIVERY — §22 inputs into allocatable quantity
+  // COMMERCIAL CONSTRAINTS — MOQ / delivery / pickup / lead time / trade terms
   // ------------------------------------------------------------------------
 
   function evaluateCommercialConstraints(opportunity, context) {
@@ -273,7 +251,6 @@
 
     var moq = productRow && productRow.moq != null ? num(productRow.moq, 1) : 1;
     var demanded = num(opportunity.demanded_quantity, 0);
-    var available = num(opportunity.stock_quantity, 0);
     var requested = demanded > 0 ? demanded : 0;
 
     // Canon §22: MOQ is an allocation input. If the demanded quantity is
@@ -281,7 +258,6 @@
     // silently rounded up (that would change the request).
     var moqSatisfied = requested >= moq;
 
-    // Delivery / pickup capability.
     var deliveryAvailable = productRow ? !!productRow.delivery_available : null;
     var pickupAvailable   = productRow ? !!productRow.pickup_available   : null;
 
@@ -297,10 +273,6 @@
 
   // ------------------------------------------------------------------------
   // DEPLETION PRIORITY — Canon §30
-  //
-  // Band + reasons. Derived from evidence already present in the §16
-  // opportunity (stock health from §16, demand strength from §18). No new
-  // signals; no decorative score.
   // ------------------------------------------------------------------------
 
   function computeDepletionPriority(opportunity) {
@@ -311,8 +283,6 @@
     var reasons = [];
     var band = "NORMAL";
 
-    // High-priority depletion: aging/at-risk/critical stock AND at least
-    // MODERATE demand. Both evidence classes must be present.
     var highHealth =
       health === "Aging" || health === "At Risk" || health === "Critical";
     var highDemand =
@@ -333,14 +303,20 @@
   }
 
   // ------------------------------------------------------------------------
-  // NEXT ACTION — Canon §20 / §23
+  // NEXT ACTION — Canon §20 / §23  (rev. 1: single function)
   //
-  // One named operation, chosen deterministically. Order of precedence is
-  // by blocker severity: an opportunity that cannot be routed cannot be
-  // contacted first. This is a decision procedure, not a heuristic.
+  // Precedence:
+  //   1. Blocker resolution (attribution → relationship → quantity → stock
+  //      → route → commercial terms). A blocked opportunity cannot be
+  //      contacted first.
+  //   2. MOQ shortfall. Commercial constraint.
+  //   3. Price verification. Unknown tier cannot be routed with confidence.
+  //   4. Contact buyer.
+  //
+  // The order is a decision procedure, not a heuristic.
   // ------------------------------------------------------------------------
 
-  function computeNextAction(opportunity, constraints) {
+  function computeNextAction(opportunity, constraints, context) {
     var blockers = opportunity.blockers || [];
     var codes = blockers.map(function (b) { return b.code; });
 
@@ -349,22 +325,18 @@
     if (codes.indexOf("MISSING QUANTITY") !== -1)           return ACTION_CLARIFY_QUANTITY;
     if (codes.indexOf("MISSING STOCK") !== -1)              return ACTION_REPLENISH_STOCK;
     if (codes.indexOf("MISSING ROUTE") !== -1)              return ACTION_NONE;
+    if (codes.indexOf("MISSING COMMERCIAL TERMS") !== -1)   return ACTION_VERIFY_PRICE;
 
-    if (!constraints.moq_satisfied) return ACTION_RESOLVE_MOQ_SHORTFALL;
+    if (!constraints.moq_satisfied)                         return ACTION_RESOLVE_MOQ_SHORTFALL;
 
-    var fit = computeCommercialFit(opportunity, { terms: { rows: [] }, prefs: { rows: [] }, productTerms: { byId: {} } });
-    // NOTE: this default-arg call is only used to detect the "UNKNOWN tier"
-    // case; the caller supplies the real context separately. See caller.
+    var fit = computeCommercialFit(opportunity, context);
+    if (fit.tier === "UNKNOWN")                             return ACTION_VERIFY_PRICE;
 
-    // If we reach here, evidence is complete enough to route.
     return ACTION_CONTACT_BUYER;
   }
 
   // ------------------------------------------------------------------------
   // BUILD ONE ALLOCATED OPPORTUNITY
-  //
-  // Takes a §16 opportunity and the commercial context. Returns a new object
-  // in the §30 shape with ALLOCATED fields populated.
   // ------------------------------------------------------------------------
 
   function buildAllocated(opportunity, context, acceptedAgents) {
@@ -372,8 +344,6 @@
     var constraints = evaluateCommercialConstraints(opportunity, context);
     var priority = computeDepletionPriority(opportunity);
 
-    // Allocatable quantity — §22 is authoritative here, §20 gave a
-    // provisional value. §22 applies MOQ and full commercial constraints.
     var demanded = num(opportunity.demanded_quantity, 0);
     var available = num(opportunity.stock_quantity, 0);
 
@@ -392,14 +362,10 @@
       nextState = STATE_ALLOCATED;
     }
 
-    // The next action is computed against the state that will result from
-    // this stage. If allocation succeeded, the action is to contact the
-    // buyer; otherwise it is the first blocker-resolution action.
     var nextAction = (nextState === STATE_ALLOCATED)
       ? ACTION_CONTACT_BUYER
-      : computeNextActionWithContext(opportunity, constraints, context);
+      : computeNextAction(opportunity, constraints, context);
 
-    // Accepted agents — §20 asks "who can move it". Empty array is a fact.
     var agentIds = (acceptedAgents || []).map(function (r) { return r.agent_id; }).filter(Boolean);
 
     // Clone the §16 opportunity into the §30 shape; override the fields §22
@@ -465,30 +431,6 @@
     };
   }
 
-  // The computeNextAction above had a default-arg call for a rare case; the
-  // real decision uses the caller-supplied context. This is a thin wrapper
-  // so the precedence table lives in one place.
-  function computeNextActionWithContext(opportunity, constraints, context) {
-    var blockers = opportunity.blockers || [];
-    var codes = blockers.map(function (b) { return b.code; });
-
-    if (codes.indexOf("MISSING BUYER") !== -1)              return ACTION_ATTRIBUTE_BUYER;
-    if (codes.indexOf("MISSING RELATIONSHIP") !== -1)       return ACTION_ESTABLISH_RELATIONSHIP;
-    if (codes.indexOf("MISSING QUANTITY") !== -1)           return ACTION_CLARIFY_QUANTITY;
-    if (codes.indexOf("MISSING STOCK") !== -1)              return ACTION_REPLENISH_STOCK;
-    if (codes.indexOf("MISSING ROUTE") !== -1)              return ACTION_NONE;
-
-    if (!constraints.moq_satisfied)                         return ACTION_RESOLVE_MOQ_SHORTFALL;
-
-    // Check whether any pricing tier was resolvable. If not, the next action
-    // is to verify price rather than to contact the buyer with an unknown
-    // commercial fit.
-    var fit = computeCommercialFit(opportunity, context);
-    if (fit.tier === "UNKNOWN")                             return ACTION_VERIFY_PRICE;
-
-    return ACTION_CONTACT_BUYER;
-  }
-
   // ------------------------------------------------------------------------
   // STAGE RUN
   // ------------------------------------------------------------------------
@@ -505,16 +447,12 @@
     var opportunities = (opportunitySnapshot && opportunitySnapshot.rows) || [];
     var opportunitySnapshotAvailable = !!opportunitySnapshot;
 
-    // Read commercial context for the routing-ready subset only — the rest
-    // cannot be allocated and reading terms for them would be wasted reads.
     var routable = opportunities.filter(function (o) {
       return o.opportunity_state === STATE_ROUTING_READY;
     });
 
     var context = await readCommercialContext(user.id, routable);
 
-    // Build allocated opportunities for the routable set; pass through
-    // non-routable opportunities untouched.
     var allocatedById = Object.create(null);
     routable.forEach(function (o) {
       var allocated = buildAllocated(o, context, context.agents.rows);
@@ -525,7 +463,6 @@
       return allocatedById[o.id] || o;
     });
 
-    // Summary.
     var byState = Object.create(null);
     var allocatedCount = 0;
     var totalAllocatable = 0;
@@ -573,5 +510,5 @@
     run: run
   };
 
-  console.log("[GoodsbarnX] depletor-allocation.js loaded (" + VERSION + ")");
+  console.log("[GoodsbarnX] depletar-allocation.js loaded (" + VERSION + " rev.1)");
 })();
