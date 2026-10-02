@@ -1,6 +1,7 @@
 // ==========================================================================
-// GoodsbarnX — market.js  (rev. 1)
-// Marketplace: distributor discovery, buyer discovery, filtering, rendering.
+// GoodsbarnX — market.js  (rev. 2)
+// Marketplace: distributor discovery, buyer discovery, filtering, rendering,
+// distributor_view emission, dynamic inquiry-count ring.
 // Plain global script. Loads fourth (Canon §10).
 //
 // V1.8.2.6 remediation Phase 1+2:
@@ -10,14 +11,17 @@
 //   - DOM lookups null-safe with named warnings.
 //   - Escaping for interpolated values inside rendered HTML.
 //
-// rev. 1 — R4-2 remediation:
-//   - Each distributor card carries data-distributor-id on its root element.
-//   - Each buyer card carries data-buyer-id on its root element.
-//   These are the attributes js/behaviour.js reads via contextFromElement()
-//   to populate p_distributor_id on behaviour events emitted from within
-//   the card. The buyer attribute is inert at v1.8.2.6 (buyer_behavior_events
-//   has no p_buyer_id column; the server derives buyer identity from auth.uid()
-//   under RLS), but is added for symmetry and future §7 use.
+// rev. 1 (R4-2):
+//   - Distributor and buyer card roots carry data-distributor-id /
+//     data-buyer-id so js/behaviour.js reads context via contextFromElement.
+//
+// rev. 2 (D33, D36):
+//   - distributor_view emitted via window.goodsbarnxBehaviourTrack when the
+//     buyer opens the Storefront or Inquire modal from a distributor card.
+//     Bounded per-session per-distributor.
+//   - Inquiry-count ring (.seal-ring .fg stroke-dashoffset and
+//     #inquiry-count-ring text) updated from the live inquiries count.
+//     No index.html change required.
 // ==========================================================================
 
 function escHtml(v) {
@@ -38,6 +42,71 @@ function warnMissingTarget(id) {
   if (__gbxMarketWarnedTargets[id]) return;
   __gbxMarketWarnedTargets[id] = true;
   console.warn("[GoodsbarnX/market] DOM target #" + id + " is missing from index.html.");
+}
+
+// --------------------------------------------------------------------------
+// D36 — BOUNDED distributor_view EMISSION
+//
+// Tracks which distributors have already had a distributor_view emitted in
+// this page-session. Emission is one per distributor per session; further
+// clicks on the same card do not re-emit. Emission goes through
+// window.goodsbarnxBehaviourTrack (behaviour.js's canonical entry point).
+// --------------------------------------------------------------------------
+
+const __gbxMarketDistributorViewSeen = Object.create(null);
+
+function emitDistributorView(distributorId) {
+  if (!distributorId) return;
+  if (__gbxMarketDistributorViewSeen[distributorId]) return;
+  __gbxMarketDistributorViewSeen[distributorId] = true;
+
+  if (typeof window.goodsbarnxBehaviourTrack !== "function") {
+    // behaviour.js absent — do not silently drop; name it once.
+    if (!__gbxMarketWarnedTargets["behaviour_track"]) {
+      __gbxMarketWarnedTargets["behaviour_track"] = true;
+      console.warn("[GoodsbarnX/market] goodsbarnxBehaviourTrack unavailable; distributor_view not emitted.");
+    }
+    return;
+  }
+  window.goodsbarnxBehaviourTrack(
+    "distributor_view",
+    { distributor_id: distributorId },
+    { source: "market_card" },
+    "market"
+  );
+}
+
+// --------------------------------------------------------------------------
+// D33 — INQUIRY-COUNT RING
+//
+// The hero's ring has a fixed stroke-dasharray of 150 (set in index.html).
+// This function maps the live inquiry count to a bounded ratio and updates
+// both the ring's stroke-dashoffset and the #inquiry-count-ring text.
+//
+// ROLLING_CAP is the number of inquiries at which the ring shows full.
+// It is a display constant, not a data value. If the count exceeds the cap,
+// the ring shows full and the text shows the true count.
+// --------------------------------------------------------------------------
+
+const ROLLING_CAP = 50;
+
+function updateInquiryCountRing(count) {
+  const ringFg = document.querySelector("#screen-market .seal-ring .fg");
+  const ringText = document.getElementById("inquiry-count-ring");
+
+  const c = Number.isFinite(Number(count)) ? Number(count) : 0;
+  const ratio = ROLLING_CAP > 0 ? Math.min(1, c / ROLLING_CAP) : 0;
+
+  // stroke-dasharray is 150 (declared in index.html). Offset = 150*(1-ratio).
+  if (ringFg) {
+    const dashArray = 150;
+    const offset = dashArray * (1 - ratio);
+    ringFg.setAttribute("stroke-dashoffset", String(Math.round(offset * 100) / 100));
+  }
+
+  if (ringText) {
+    ringText.innerText = c === 0 ? "0" : String(c);
+  }
 }
 
 // --------------------------------------------------------------------------
@@ -91,9 +160,11 @@ async function loadDistributorsAndBuyers() {
       .from("inquiries")
       .select("*", { count: "exact", head: true });
     if (!inquiryError) {
-      const ringEl = document.getElementById("inquiry-count-ring");
-      if (ringEl) ringEl.innerText = count == null ? "–" : count;
-      else warnMissingTarget("inquiry-count-ring");
+      updateInquiryCountRing(count);
+    } else {
+      // Ring is not updated if the count failed. It remains at its neutral
+      // initial state from index.html. No fabricated number is written.
+      console.warn("[GoodsbarnX/market] inquiry count unavailable; ring not updated.");
     }
 
     if (currentUser && currentUser.role === "distributor") {
@@ -295,9 +366,10 @@ function applyFilters() {
 // --------------------------------------------------------------------------
 // RENDER — DISTRIBUTORS
 //
-// rev. 1: the .manifest root carries data-distributor-id="${safeId}" so
-// js/behaviour.js's contextFromElement() can populate p_distributor_id on
-// events fired from within this card.
+// Card root carries data-distributor-id (rev. 1).
+// Storefront button and Inquire button carry data-distributor-id and call
+// marketOpenDistributorContext which emits distributor_view (rev. 2) before
+// dispatching to the producer.
 // --------------------------------------------------------------------------
 
 function renderDistributors(list) {
@@ -359,8 +431,12 @@ function renderDistributors(list) {
           (phone
             ? '<button class="btn btn-whatsapp" onclick="openWhatsApp(\'' + safePhone + '\', \'' + safeName + '\')">WhatsApp</button>'
             : "") +
-          '<button class="btn btn-outline" onclick="openStorefrontModal(\'' + safeId + '\')">Storefront</button>' +
-          '<button class="btn btn-primary" onclick="openModal(\'' + safeId + '\', \'' + safeName + '\', \'distributor\')">Inquire</button>' +
+          '<button class="btn btn-outline" ' +
+            'data-distributor-id="' + safeId + '" ' +
+            'onclick="marketOpenDistributorContext(this.dataset.distributorId, \'storefront\')">Storefront</button>' +
+          '<button class="btn btn-primary" ' +
+            'data-distributor-id="' + safeId + '" ' +
+            'onclick="marketOpenDistributorContext(this.dataset.distributorId, \'inquire\', \'' + safeName + '\')">Inquire</button>' +
         '</div>' +
         '<div class="dispute-row">' +
           '<span class="dispute-link" onclick="openDisputeModal(\'' + safeId + '\', \'' + safeName + '\')">Report an issue</span>' +
@@ -371,11 +447,30 @@ function renderDistributors(list) {
 }
 
 // --------------------------------------------------------------------------
-// RENDER — BUYERS
+// marketOpenDistributorContext
 //
-// rev. 1: the .manifest root carries data-buyer-id="${safeId}" for symmetry
-// and future §7 use. No behaviour event currently carries a p_buyer_id
-// column; the server derives buyer identity from auth.uid() under RLS.
+// Emits distributor_view (D36) then dispatches to the correct producer.
+// Kept as a small helper so both Storefront and Inquire use the same
+// emission path and the same bound (one event per distributor per session).
+// --------------------------------------------------------------------------
+
+function marketOpenDistributorContext(distributorId, action, distributorName) {
+  if (!distributorId) return;
+  emitDistributorView(distributorId);
+
+  if (action === "storefront") {
+    if (typeof openStorefrontModal === "function") {
+      openStorefrontModal(distributorId);
+    }
+  } else if (action === "inquire") {
+    if (typeof openModal === "function") {
+      openModal(distributorId, distributorName || "Distributor", "distributor");
+    }
+  }
+}
+
+// --------------------------------------------------------------------------
+// RENDER — BUYERS
 // --------------------------------------------------------------------------
 
 function renderBuyers(list) {
@@ -448,7 +543,7 @@ function openWhatsApp(phone, name) {
 }
 
 // --------------------------------------------------------------------------
-// SCREEN LOADER REGISTRATION (Phase 2.3)
+// SCREEN LOADER REGISTRATION
 // --------------------------------------------------------------------------
 
 (function registerMarketScreen() {
@@ -472,5 +567,7 @@ window.updateStats = updateStats;
 window.renderDistributors = renderDistributors;
 window.renderBuyers = renderBuyers;
 window.openWhatsApp = openWhatsApp;
+window.marketOpenDistributorContext = marketOpenDistributorContext;
+window.updateInquiryCountRing = updateInquiryCountRing;
 
-console.log("[GoodsbarnX] market.js loaded (V1.8.2.6 rev.1)");
+console.log("[GoodsbarnX] market.js loaded (V1.8.2.6 rev.2)");
