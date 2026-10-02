@@ -1,40 +1,56 @@
 /* ==========================================================================
-   GoodsbarnX — depletor.js
-   Master Stock Depletor: Allocation & Routing runtime (Phase 1+2 boundary).
+   GoodsbarnX — js/depletor.js
+   Master Stock Depletor · Conductor (Canon §14 §27).
 
-   Version markers (both preserved for compatibility with the removed inline
-   regression tests during the Phase 1+2 migration):
-     V1.8.2.6
-     V1.8.2.6.8.1.1.8
+   Version: V1.8.2.6
+   Load position: 14 (per D13). Loads after js/depletor-replenishment.js,
+   before js/products.js.
 
    Canon basis:
-     §14  seven-stage pipeline (Phase 3 will split this file into six
-          per-stage modules: stock, radar, opportunity, allocation,
-          depletion, replenishment — decision D8)
-     §19  relationship gate — a demand cannot route without an active
-          primary relationship
-     §20  opportunity shape
-     §21  structured blockers (MISSING BUYER / MISSING RELATIONSHIP /
-          MISSING QUANTITY / MISSING STOCK / MISSING ROUTE /
-          MISSING COMMERCIAL TERMS)
-     §22  allocation inputs
-     §29  evidence integrity — this file never fabricates evidence
-     §30  canonical Opportunity field contract (aliased alongside the
-          legacy camelCase surface during Phase 1+2)
+     §14  seven-stage pipeline: Stock Intelligence → Demand Radar →
+          Relationship Graph → Opportunity Engine → Allocation →
+          Depletion → Replenishment.
+     §27  the pipeline is a closed loop. This conductor sequences the
+          linear pass; the learning_signal objects emitted by §24 are the
+          feedback boundary a future revision will route back into §17.
+     §29  evidence integrity — this file does not produce evidence, it
+          carries it. Every value rendered comes from a stage snapshot.
+     §30  canonical Opportunity object; the conductor does not re-shape it.
+     §34  every element on the panel connects to a Canon stage. There is
+          no decorative card here.
 
-   Read-only runtime. No writes. No stock mutation. No invented
-   opportunity IDs or order IDs.
+   This file owns:
+     - runPipeline(): the full seven-stage sequence.
+     - render()     : the depletor console panel.
+     - public entry : window.refreshDepletorPipeline (full),
+                      window.refreshDepletorAllocation (compat — runs the
+                      full pipeline and returns the allocation rows).
+
+   This file does NOT:
+     - read the database directly.
+     - write to the database.
+     - mutate stock.
+     - own any stage's evidence construction.
    ========================================================================== */
 
 (function () {
   "use strict";
 
   var VERSION = "V1.8.2.6";
-  var ISOLATION_MARKER = "V1.8.2.6.8.1.1.8"; // temporary scaffold; see file header
+  var STAGE = "conductor";
+  var ISOLATION_MARKER = "V1.8.2.6.8.1.1.8"; // preserved for the isolated marker test
+
   window.goodsbarnxDepletorAllocationVersion = VERSION;
   window.goodsbarnxDepletorIsolationMarker = ISOLATION_MARKER;
+  window.goodsbarnxDepletorPipelineVersion = VERSION;
 
-  var state = { candidates: [], error: null };
+  var state = {
+    snapshot: null,
+    error: null,
+    running: false,
+    startedAt: null,
+    completedAt: null
+  };
 
   // ------------------------------------------------------------------------
   // SMALL HELPERS
@@ -46,231 +62,172 @@
     });
   }
 
-  function tokens(v) {
-    return String(v || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/).filter(function (x) { return x.length > 2; });
-  }
-
-  // Evidence-preserving name match: both sides must share at least one
-  // significant token. This is a heuristic, not a semantic matcher; it is
-  // labelled as such in the opportunity evidence so no consumer treats it
-  // as a fact (Canon §29).
-  function linked(i, p) {
-    var a = tokens(i.item), b = tokens(p.name);
-    if (!a.length || !b.length) return false;
-    var forward = a.some(function (t) { return b.indexOf(t) >= 0; });
-    var backward = b.some(function (t) { return a.indexOf(t) >= 0; });
-    return forward && backward;
-  }
-
-  function ageHours(v) {
-    var t = new Date(v || Date.now()).getTime();
-    return isFinite(t) ? Math.max(0, (Date.now() - t) / 3600000) : 999999;
-  }
-
-  function score(matches, stock, qty, age) {
-    var s = 0;
-    if (matches) s += 40;
-    if (stock > 0) s += 25;
-    if (qty > 0) {
-      s += 20;
-      if (stock >= qty) s += 5;
-    }
-    if (age <= 24) s += 10;
-    else if (age <= 168) s += 6;
-    else if (age <= 720) s += 2;
-    return Math.min(100, s);
-  }
-
-  // Tier taxonomy is carried forward unchanged from the payload. Canon §21
-  // replaces this in Phase 3 with the seven-state lifecycle.
-  function tier(s, stock, matches) {
-    if (matches && stock > 0 && s >= 75) return "ACT NOW";
-    if (matches && stock > 0) return "READY";
-    if (matches) return "WATCH";
-    if (stock <= 0) return "RESTOCK";
-    return "MONITOR";
-  }
-
-  // ------------------------------------------------------------------------
-  // RELATIONSHIP GATE (Canon §19)
-  //
-  // Returns the active primary relationship, or null. The lifecycle state
-  // is retained on the candidate so downstream stages do not flatten
-  // pending / paused / released / terminated into a single boolean.
-  // ------------------------------------------------------------------------
-
-  function activeRelationship(i, rels) {
-    if (!i.buyer_id) return null;
-    return rels.find(function (r) {
-      return r.buyer_id === i.buyer_id
-        && r.is_primary !== false
-        && String(r.status || "").toLowerCase() === "active";
-    }) || null;
-  }
-
-  function anyRelationship(i, rels) {
-    if (!i.buyer_id) return null;
-    return rels.find(function (r) {
-      return r.buyer_id === i.buyer_id && r.is_primary !== false;
-    }) || null;
-  }
-
-  // ------------------------------------------------------------------------
-  // BLOCKERS (Canon §21) — structured set, not a joined string
-  // ------------------------------------------------------------------------
-
-  function computeBlockers(e) {
-    var blockers = [];
-    if (!e.demandIdentity)                blockers.push("MISSING BUYER");
-    if (!e.activePrimaryRelationship)     blockers.push("MISSING RELATIONSHIP");
-    if (!e.requestedQuantityKnown)        blockers.push("MISSING QUANTITY");
-    if (!e.stockAvailable)                blockers.push("MISSING STOCK");
-    if (!e.productDemandMatch)            blockers.push("MISSING ROUTE");
-    // MISSING COMMERCIAL TERMS is not derivable from the current schema
-    // surface; it is reserved for Phase 3 when relationship trade terms are
-    // loaded by the allocation producer. Left absent here rather than
-    // fabricated (Canon §29).
-    return blockers;
-  }
-
-  // ------------------------------------------------------------------------
-  // EVIDENCE READ
-  //
-  // All reads are scoped to the authenticated distributor. No cross-tenant
-  // reads. No writes. sb-null is a named failure, not a silent skip.
-  // ------------------------------------------------------------------------
-
-  async function readEvidence() {
-    var user = null;
-    try { user = currentUser; } catch (e) {}
-    if (!user || String(user.role || "").toLowerCase() !== "distributor") {
-      throw new Error("AUTH_CONTEXT_UNAVAILABLE");
-    }
-    if (!window.sb || typeof window.sb.from !== "function") {
-      throw new Error("SUPABASE_UNAVAILABLE");
-    }
-
-    var rs = await Promise.all([
-      sb.from("products")
-        .select("id,name,price,stock_quantity,status,category")
-        .eq("distributor_id", user.id),
-      sb.from("inquiries")
-        .select("id,item,quantity,status,created_at,buyer_id,distributor_id,inquirer_id")
-        .eq("distributor_id", user.id)
-        .order("created_at", { ascending: false }),
-      sb.from("trade_relationships")
-        .select("id,buyer_id,distributor_id,status,is_primary")
-        .eq("distributor_id", user.id),
-      sb.from("agent_distributor_attachments")
-        .select("id,agent_id,status")
-        .eq("distributor_id", user.id)
-        .eq("status", "accepted")
-    ]);
-
-    rs.forEach(function (r) { if (r.error) throw r.error; });
-
-    var products = rs[0].data || [];
-    var inquiries = (rs[1].data || []).filter(function (i) {
-      return ["closed", "resolved", "completed"]
-        .indexOf(String(i.status || "").toLowerCase()) === -1;
-    });
-    var relationships = rs[2].data || [];
-    var agents = rs[3].data || [];
-
-    var out = [];
-
-    inquiries.forEach(function (i) {
-      var matches = products.filter(function (p) { return linked(i, p); });
-      var qty = Number(i.quantity) > 0 ? Number(i.quantity) : 0;
-      var age = ageHours(i.created_at);
-      var rel = activeRelationship(i, relationships);
-      var anyRel = anyRelationship(i, relationships);
-
-      matches.forEach(function (p) {
-        var stock = Number(p.stock_quantity) || 0;
-        var sc = score(matches.length, stock, qty, age);
-
-        var evidence = {
-          demandIdentity:           !!i.buyer_id,
-          activePrimaryRelationship:!!rel,
-          relationshipExists:       !!anyRel,
-          productDemandMatch:       true,
-          stockAvailable:           stock > 0,
-          requestedQuantityKnown:   qty > 0,
-          stockCoversRequest:       qty > 0 && stock >= qty,
-          acceptedAgentCapacity:    agents.length > 0,
-          freshnessHours:           Math.round(age * 10) / 10,
-          matchBasis:               "TOKEN_OVERLAP_HEURISTIC"
-        };
-
-        var allocatable =
-          evidence.productDemandMatch &&
-          evidence.stockAvailable &&
-          evidence.requestedQuantityKnown &&
-          evidence.demandIdentity &&
-          evidence.activePrimaryRelationship;
-
-        var blockers = allocatable ? [] : computeBlockers(evidence);
-        var blockReasonStr = allocatable ? null : blockers.join("; ");
-
-        var candidate = {
-          // Canon §30 canonical fields.
-          inquiry_id:           i.id,
-          product_id:           p.id,
-          distributor_id:       user.id,
-          buyer_id:             i.buyer_id || null,
-          relationship_id:      rel ? rel.id : null,
-          relationship_status:  anyRel ? anyRel.status : null,
-          stock_quantity:       stock,
-          demanded_quantity:    qty,
-          allocatable_quantity: allocatable ? Math.min(stock, qty) : 0,
-          opportunity_score:    sc,
-          route_state:          allocatable ? "READY" : "BLOCKED",
-          route_type:           allocatable ? "DIRECT_BUYER" : "NONE",
-          blockers:             blockers,
-          evidence:             evidence,
-
-          // Legacy camelCase aliases retained during Phase 1+2 so the
-          // renderer and any consumer ported from the payload continue
-          // to function. Phase 3 (D8 split) drops these.
-          inquiryId:            i.id,
-          productId:            p.id,
-          distributorId:        user.id,
-          buyerId:              i.buyer_id || null,
-          relationshipId:       rel ? rel.id : null,
-          requestedQuantity:    qty,
-          availableQuantity:    stock,
-          allocatableQuantity:  allocatable ? Math.min(stock, qty) : 0,
-          opportunityScore:     sc,
-          opportunityTier:      tier(sc, stock, matches.length),
-          routeType:            allocatable ? "DIRECT_BUYER" : "NONE",
-          routeStatus:          allocatable ? "READY" : "BLOCKED",
-          blockReason:          blockReasonStr
-        };
-
-        out.push(candidate);
-      });
-    });
-
-    out.sort(function (a, b) {
-      return (Number(b.allocatable_quantity > 0) - Number(a.allocatable_quantity > 0))
-        || (b.opportunity_score - a.opportunity_score);
-    });
-
-    return { candidates: out, acceptedAgents: agents.length };
-  }
-
-  // ------------------------------------------------------------------------
-  // PANEL
-  // ------------------------------------------------------------------------
-
   var __depletorWarned = Object.create(null);
   function depletWarnMissing(id) {
     if (__depletorWarned[id]) return;
     __depletorWarned[id] = true;
     console.warn("[GoodsbarnX/depletor] DOM target #" + id + " is missing.");
   }
+
+  // ------------------------------------------------------------------------
+  // STAGE AVAILABILITY
+  //
+  // Every stage is loaded before this file per D13. If any is missing, the
+  // conductor names which one and does not proceed silently — §29.
+  // ------------------------------------------------------------------------
+
+  function stagesAvailable() {
+    return {
+      stock:         !!(window.goodsbarnxDepletorStock && typeof window.goodsbarnxDepletorStock.run === "function"),
+      radar:         !!(window.goodsbarnxDepletorRadar && typeof window.goodsbarnxDepletorRadar.run === "function"),
+      opportunity:   !!(window.goodsbarnxDepletorOpportunity && typeof window.goodsbarnxDepletorOpportunity.run === "function"),
+      allocation:    !!(window.goodsbarnxDepletorAllocation && typeof window.goodsbarnxDepletorAllocation.run === "function"),
+      depletion:     !!(window.goodsbarnxDepletorDepletion && typeof window.goodsbarnxDepletorDepletion.run === "function"),
+      replenishment: !!(window.goodsbarnxDepletorReplenishment && typeof window.goodsbarnxDepletorReplenishment.run === "function")
+    };
+  }
+
+  // ------------------------------------------------------------------------
+  // RUN ONE STAGE
+  //
+  // Wraps a stage's run() so the conductor can:
+  //   - time it
+  //   - catch its error without aborting the entire pipeline
+  //   - record whether it succeeded, failed, or was skipped
+  //
+  // A failing stage does NOT abort the pipeline. Downstream stages receive
+  // whatever the upstream produced (possibly null). If a stage receives a
+  // null input because its predecessor failed, it emits its own named error
+  // state per its own §29 discipline, and the pipeline continues.
+  // ------------------------------------------------------------------------
+
+  async function runStage(name, fn, input) {
+    var t0 = Date.now();
+    try {
+      var result = await fn(input);
+      return { name: name, ok: true, ms: Date.now() - t0, result: result, error: null };
+    } catch (e) {
+      return { name: name, ok: false, ms: Date.now() - t0, result: null, error: e };
+    }
+  }
+
+  // ------------------------------------------------------------------------
+  // FULL PIPELINE — Canon §14 §27
+  // ------------------------------------------------------------------------
+
+  async function runPipeline() {
+    if (state.running) {
+      console.warn("[GoodsbarnX/depletor] pipeline already running; call ignored.");
+      return state.snapshot;
+    }
+    state.running = true;
+    state.startedAt = new Date().toISOString();
+    state.error = null;
+
+    var avail = stagesAvailable();
+    var missing = Object.keys(avail).filter(function (k) { return !avail[k]; });
+    if (missing.length) {
+      var msg = "MSD stage(s) not loaded: " + missing.join(", ") +
+                ". Verify index.html loads all seven depletor files in Canon §10 order.";
+      console.error("[GoodsbarnX/depletor] " + msg);
+      state.error = new Error(msg);
+      state.running = false;
+      state.completedAt = new Date().toISOString();
+      return null;
+    }
+
+    var user = null;
+    try { user = currentUser; } catch (e) {}
+    if (!user || String(user.role || "").toLowerCase() !== "distributor") {
+      state.error = new Error("AUTH_CONTEXT_UNAVAILABLE");
+      state.running = false;
+      state.completedAt = new Date().toISOString();
+      return null;
+    }
+
+    var trace = [];
+
+    // Stage 1 — §15 Stock Intelligence
+    var t1 = await runStage("stock", window.goodsbarnxDepletorStock.run, null);
+    trace.push({ stage: "stock", ok: t1.ok, ms: t1.ms, error: t1.error ? t1.error.message : null });
+    var stockSnapshot = t1.result;
+
+    // Stage 2 — §17 Demand Radar (needs stock for product matching)
+    var t2 = await runStage("radar", function () {
+      return window.goodsbarnxDepletorRadar.run(stockSnapshot);
+    }, null);
+    trace.push({ stage: "radar", ok: t2.ok, ms: t2.ms, error: t2.error ? t2.error.message : null });
+    var radarSnapshot = t2.result;
+
+    // Stage 3 — §20 Opportunity Engine (needs stock + radar)
+    var t3 = await runStage("opportunity", function () {
+      return Promise.resolve(window.goodsbarnxDepletorOpportunity.run(stockSnapshot, radarSnapshot));
+    }, null);
+    trace.push({ stage: "opportunity", ok: t3.ok, ms: t3.ms, error: t3.error ? t3.error.message : null });
+    var opportunitySnapshot = t3.result;
+
+    // Stage 4 — §22 Allocation (needs opportunity)
+    var t4 = await runStage("allocation", function () {
+      return window.goodsbarnxDepletorAllocation.run(opportunitySnapshot);
+    }, null);
+    trace.push({ stage: "allocation", ok: t4.ok, ms: t4.ms, error: t4.error ? t4.error.message : null });
+    var allocationSnapshot = t4.result;
+
+    // Stage 5 — §24 Depletion (needs allocation)
+    var t5 = await runStage("depletion", function () {
+      return window.goodsbarnxDepletorDepletion.run(allocationSnapshot);
+    }, null);
+    trace.push({ stage: "depletion", ok: t5.ok, ms: t5.ms, error: t5.error ? t5.error.message : null });
+    var depletionSnapshot = t5.result;
+
+    // Stage 6 — §26 Replenishment (needs depletion + radar)
+    var t6 = await runStage("replenishment", function () {
+      return Promise.resolve(window.goodsbarnxDepletorReplenishment.run(depletionSnapshot, radarSnapshot));
+    }, null);
+    trace.push({ stage: "replenishment", ok: t6.ok, ms: t6.ms, error: t6.error ? t6.error.message : null });
+    var replenishmentSnapshot = t6.result;
+
+    state.completedAt = new Date().toISOString();
+    state.running = false;
+
+    var snapshot = {
+      stage: STAGE,
+      version: VERSION,
+      generatedAt: state.completedAt,
+      startedAt: state.startedAt,
+      stages: {
+        stock:         stockSnapshot,
+        radar:         radarSnapshot,
+        opportunity:   opportunitySnapshot,
+        allocation:    allocationSnapshot,
+        depletion:     depletionSnapshot,
+        replenishment: replenishmentSnapshot
+      },
+      trace: trace,
+      ok: trace.every(function (t) { return t.ok; })
+    };
+
+    state.snapshot = snapshot;
+    window.goodsbarnxDepletorPipelineSnapshot = snapshot;
+
+    render(snapshot);
+    return snapshot;
+  }
+
+  // ------------------------------------------------------------------------
+  // RENDER — the depletor console panel
+  //
+  // Sections, in order:
+  //   1. Stock intelligence summary (§15)
+  //   2. Demand radar summary (§17)
+  //   3. Allocation & routing (§22) — candidates with their §21 state
+  //   4. Depletion observation (§24) — predicted vs observed
+  //   5. Replenishment signals (§26)
+  //
+  // Every section renders from a stage snapshot. Sections whose stage
+  // failed or produced no rows render a named empty state — never a
+  // fabricated summary.
+  // ------------------------------------------------------------------------
 
   function ensurePanel() {
     var root = document.getElementById("depletor-console");
@@ -285,139 +242,260 @@
     s.innerHTML =
       '<div class="depletor-heading">' +
         '<div>' +
-          '<span class="intel-label">ALLOCATION &amp; ROUTING</span>' +
-          '<h3>Evidence-backed fulfillment paths</h3>' +
+          '<span class="intel-label">MASTER STOCK DEPLETOR</span>' +
+          '<h3>Pipeline output</h3>' +
         '</div>' +
         '<button type="button" id="depletor-allocation-refresh">Refresh</button>' +
       '</div>' +
-      '<div id="depletor-allocation-status" class="depletor-empty">Waiting for allocation evidence…</div>' +
-      '<div id="depletor-allocation-list" class="depletor-opportunities"></div>';
+      '<div id="depletor-allocation-status" class="depletor-empty">Waiting for pipeline evidence…</div>' +
+      '<div id="depletor-stock-summary" class="depletor-empty">Stock intelligence not yet run.</div>' +
+      '<div id="depletor-radar-summary" class="depletor-empty">Demand radar not yet run.</div>' +
+      '<div id="depletor-allocation-list" class="depletor-opportunities"></div>' +
+      '<div id="depletor-depletion-summary" class="depletor-empty">Depletion observation not yet run.</div>' +
+      '<div id="depletor-replenishment-list" class="depletor-opportunities"></div>';
 
     var opportunitiesBox = document.getElementById("depletor-opportunities");
     if (opportunitiesBox && opportunitiesBox.parentNode) {
       opportunitiesBox.parentNode.insertBefore(s, opportunitiesBox.nextSibling);
     } else {
-      // File 11 removes the V1.6 inline depletor console markup that owned
-      // #depletor-opportunities. In that state the allocation panel is
-      // appended directly into #depletor-console.
       root.appendChild(s);
     }
 
     var refreshBtn = document.getElementById("depletor-allocation-refresh");
     if (refreshBtn) {
-      refreshBtn.addEventListener("click", function () {
-        window.refreshDepletorAllocation();
-      });
+      refreshBtn.addEventListener("click", function () { window.refreshDepletorPipeline(); });
     }
     return s;
   }
 
-  // ------------------------------------------------------------------------
-  // RENDER
-  // ------------------------------------------------------------------------
-
-  function render() {
+  function render(snapshot) {
     ensurePanel();
+
     var status = document.getElementById("depletor-allocation-status");
-    var list   = document.getElementById("depletor-allocation-list");
-    if (!status || !list) return;
+    if (!status) return;
 
-    if (state.error) {
-      var message = state.error.message || String(state.error);
-      if (message === "AUTH_CONTEXT_UNAVAILABLE") {
-        status.textContent = "Waiting for authenticated distributor context…";
-      } else if (message === "SUPABASE_UNAVAILABLE") {
-        status.textContent = "Connection service unavailable.";
-      } else {
-        status.textContent = "Allocation runtime unavailable. Existing intelligence remains read-only.";
-      }
-      list.innerHTML = "";
+    if (!snapshot) {
+      var message = state.error && state.error.message;
+      status.textContent = message === "AUTH_CONTEXT_UNAVAILABLE"
+        ? "Waiting for authenticated distributor context…"
+        : "Depletor pipeline unavailable. " + (message || "See console for details.");
       return;
     }
 
-    var c = state.candidates || [];
-    var ready = c.filter(function (x) {
-      return x.allocatable_quantity > 0 && x.route_state === "READY";
-    }).length;
+    var stages = snapshot.stages || {};
+    var allocation = stages.allocation;
+    var opportunity = stages.opportunity;
+    var stock = stages.stock;
+    var radar = stages.radar;
+    var depletion = stages.depletion;
+    var replenishment = stages.replenishment;
 
-    if (!c.length) {
-      status.textContent = "No evidence-backed allocation candidate is currently available.";
-      list.innerHTML = "";
-      return;
-    }
-
+    // Trace summary for the status line.
+    var okCount = snapshot.trace.filter(function (t) { return t.ok; }).length;
+    var totalMs = snapshot.trace.reduce(function (s, t) { return s + t.ms; }, 0);
     status.innerHTML =
-      "<strong>" + ready + "</strong> routing-ready candidate" + (ready === 1 ? "" : "s") +
-      " · " + c.length + " evidence-backed candidate" + (c.length === 1 ? "" : "s") +
+      "<strong>" + okCount + "/6</strong> stages ok · " +
+      totalMs + "ms · pipeline " +
+      (snapshot.ok ? "complete" : "partial") +
       " · read-only runtime";
 
-    list.innerHTML = c.slice(0, 8).map(function (x) {
-      var isReady = x.allocatable_quantity > 0 && x.route_state === "READY";
-      var icon = isReady ? "↗" : "⊘";
-      var detailQty = x.demanded_quantity
-        ? x.allocatable_quantity.toLocaleString() + " / " + x.demanded_quantity.toLocaleString() + " units allocatable"
-        : "Requested quantity unknown";
-      var blockerText = x.blockers && x.blockers.length
-        ? x.blockers.join(" · ")
-        : (isReady ? "Evidence complete. Route is ready for execution handoff." : "Evidence incomplete.");
-      return '<div class="opportunity">' +
-        '<div class="op-icon">' + icon + '</div>' +
-        '<div class="op-copy">' +
-          '<div class="op-name">Product ' + esc(x.product_id) + '</div>' +
+    // --- §15 Stock Intelligence ---
+    var stockEl = document.getElementById("depletor-stock-summary");
+    if (stockEl) {
+      if (!stock || !stock.summary) {
+        stockEl.textContent = "Stock intelligence did not complete; health bands unavailable.";
+      } else {
+        var b = stock.summary.bands || {};
+        stockEl.innerHTML =
+          '<span class="intel-label">STOCK HEALTH (§15)</span>' +
           '<div class="op-detail">' +
-            '<span class="' + (isReady ? "stock-healthy" : "stock-attention") + '">' +
-              esc(isReady ? x.route_type : "BLOCKED") +
-            '</span> · ' + esc(detailQty) + ' · score ' + x.opportunity_score + '/100' +
+            'Healthy ' + (b.Healthy || 0) + ' · ' +
+            'Watch ' + (b.Watch || 0) + ' · ' +
+            'Aging ' + (b.Aging || 0) + ' · ' +
+            'At Risk ' + (b["At Risk"] || 0) + ' · ' +
+            'Critical ' + (b.Critical || 0) +
           '</div>' +
           '<div class="op-detail">' +
-            'Inquiry ' + esc(x.inquiry_id) +
-            ' · relationship ' + esc(x.relationship_id || "none") +
-            (x.relationship_status ? ' (' + esc(x.relationship_status) + ')' : "") +
+            (stock.summary.productCount || 0) + ' product positions · ' +
+            (stock.summary.s1Applied
+              ? "temporal evidence available (S1 applied)"
+              : "temporal evidence MISSING (S1 not applied)") +
+          '</div>';
+      }
+    }
+
+    // --- §17 Demand Radar ---
+    var radarEl = document.getElementById("depletor-radar-summary");
+    if (radarEl) {
+      if (!radar || !radar.summary) {
+        radarEl.textContent = "Demand radar did not complete; signal strength unavailable.";
+      } else {
+        var rb = radar.summary.bands || {};
+        radarEl.innerHTML =
+          '<span class="intel-label">DEMAND RADAR (§17)</span>' +
+          '<div class="op-detail">' +
+            'Very high ' + (rb.VERY_HIGH || 0) + ' · ' +
+            'High ' + (rb.HIGH || 0) + ' · ' +
+            'Moderate ' + (rb.MODERATE || 0) + ' · ' +
+            'Low ' + (rb.LOW || 0) +
           '</div>' +
-          '<div class="op-detail">' + esc(blockerText) + '</div>' +
-        '</div>' +
-      '</div>';
-    }).join("");
+          '<div class="op-detail">' +
+            (radar.summary.signalCount || 0) + ' signals · ' +
+            (radar.summary.withBehaviour || 0) + ' with behaviour evidence · ' +
+            (radar.summary.withRelationship || 0) + ' with relationship evidence' +
+          '</div>' +
+          (radar.evidence && radar.evidence.behaviour_state && radar.evidence.behaviour_state !== "AVAILABLE"
+            ? '<div class="op-detail">Behaviour evidence: ' + esc(radar.evidence.behaviour_state) + '</div>'
+            : "");
+      }
+    }
+
+    // --- §22 Allocation & Routing (candidates with their §21 state) ---
+    var list = document.getElementById("depletor-allocation-list");
+    if (list) {
+      var opps = (opportunity && opportunity.rows) || [];
+      var routable = opps.filter(function (o) { return o.opportunity_state === "ROUTING-READY"; });
+      var allocated = (allocation && allocation.rows) || [];
+      var allocatedOnly = allocated.filter(function (o) {
+        return o.opportunity_state === "ALLOCATED" ||
+               o.opportunity_state === "IN-MOTION" ||
+               o.opportunity_state === "DEPLETED";
+      });
+
+      if (!opps.length) {
+        list.innerHTML = '<div class="depletor-empty">No evidence-backed opportunity yet.</div>';
+      } else {
+        list.innerHTML =
+          allocatedOnly.slice(0, 6).map(function (o) {
+            var isReady = o.opportunity_state === "ALLOCATED" || o.opportunity_state === "IN-MOTION" || o.opportunity_state === "DEPLETED";
+            var fit = o.commercial_fit || {};
+            var detailQty = o.demanded_quantity
+              ? (o.allocatable_quantity || 0).toLocaleString() + " / " + o.demanded_quantity.toLocaleString() + " units allocatable"
+              : "Requested quantity unknown";
+            var priority = o.depletion_priority && o.depletion_priority.band
+              ? o.depletion_priority.band : "NORMAL";
+            var nextAction = o.next_action || "NONE";
+            return '<div class="opportunity">' +
+              '<div class="op-icon">' + (isReady ? "↗" : "⊘") + '</div>' +
+              '<div class="op-copy">' +
+                '<div class="op-name">Product ' + esc(o.product_id) + '</div>' +
+                '<div class="op-detail">' +
+                  '<span class="' + (isReady ? "stock-healthy" : "stock-attention") + '">' +
+                    esc(o.opportunity_state) +
+                  '</span> · ' + esc(detailQty) + ' · priority ' + esc(priority) +
+                '</div>' +
+                '<div class="op-detail">' +
+                  'Tier ' + esc(fit.tier || "UNKNOWN") +
+                  (fit.unit_price != null ? ' · ' + esc(String(fit.unit_price)) : "") +
+                  ' · next action ' + esc(nextAction) +
+                '</div>' +
+                '<div class="op-detail">' +
+                  'Inquiry ' + esc(o.inquiry_id || "") +
+                  ' · relationship ' + esc(o.relationship_id || "none") +
+                  (o.relationship_state ? ' (' + esc(o.relationship_state) + ')' : "") +
+                '</div>' +
+              '</div>' +
+            '</div>';
+          }).join("") +
+          (!allocatedOnly.length
+            ? '<div class="depletor-empty">' +
+                (routable.length
+                  ? routable.length + ' opportunity(ies) are routing-ready but not yet allocated.'
+                  : 'No opportunity reached ROUTING-READY.') +
+              '</div>'
+            : "");
+      }
+    }
+
+    // --- §24 Depletion observation ---
+    var depletionEl = document.getElementById("depletor-depletion-summary");
+    if (depletionEl) {
+      if (!depletion || !depletion.summary) {
+        depletionEl.textContent = "Depletion observation did not complete.";
+      } else {
+        var od = depletion.summary.byOutcome || {};
+        var s2Note = depletion.evidence && depletion.evidence.movements_state;
+        depletionEl.innerHTML =
+          '<span class="intel-label">DEPLETION OBSERVATION (§24)</span>' +
+          '<div class="op-detail">' +
+            'Pending ' + (od.PENDING || 0) + ' · ' +
+            'Partial ' + (od.PARTIAL || 0) + ' · ' +
+            'Confirmed ' + (od.CONFIRMED || 0) + ' · ' +
+            'Not observed ' + (od.NOT_OBSERVED || 0) +
+          '</div>' +
+          (s2Note && s2Note !== "AVAILABLE"
+            ? '<div class="op-detail">Stock movement evidence: ' + esc(s2Note) + '</div>'
+            : "");
+      }
+    }
+
+    // --- §26 Replenishment signals ---
+    var repList = document.getElementById("depletor-replenishment-list");
+    if (repList) {
+      if (!replenishment || !replenishment.rows || !replenishment.rows.length) {
+        repList.innerHTML = '<div class="depletor-empty">No replenishment signals derived from current evidence.</div>';
+      } else {
+        repList.innerHTML =
+          '<div class="depletor-heading"><div><span class="intel-label">REPLENISHMENT SIGNALS (§26)</span></div></div>' +
+          replenishment.rows.slice(0, 6).map(function (s) {
+            var urgencyClass = s.urgency === "HIGH" ? "stock-attention" : "stock-healthy";
+            return '<div class="opportunity">' +
+              '<div class="op-icon">' + (s.urgency === "HIGH" ? "▲" : "▣") + '</div>' +
+              '<div class="op-copy">' +
+                '<div class="op-name">' + esc(s.product_name || ("Product " + s.product_id)) + '</div>' +
+                '<div class="op-detail">' +
+                  '<span class="' + urgencyClass + '">' + esc(s.signal_type) + '</span> · ' +
+                  'urgency ' + esc(s.urgency) +
+                  (s.recommended_quantity != null
+                    ? ' · recommend ' + esc(String(s.recommended_quantity)) + ' units'
+                    : "") +
+                '</div>' +
+                '<div class="op-detail">' + esc(s.signal_reason || "") + '</div>' +
+              '</div>' +
+            '</div>';
+          }).join("");
+      }
+    }
   }
 
   // ------------------------------------------------------------------------
   // PUBLIC ENTRY
   // ------------------------------------------------------------------------
 
-  window.refreshDepletorAllocation = async function () {
+  window.refreshDepletorPipeline = async function () {
     var root = document.getElementById("depletor-console");
+    if (!root) { depletWarnMissing("depletor-console"); return null; }
+
     var user = null;
     try { user = currentUser; } catch (e) {}
-
-    if (!root) { depletWarnMissing("depletor-console"); return; }
     if (!user || String(user.role || "").toLowerCase() !== "distributor") {
       state.error = new Error("AUTH_CONTEXT_UNAVAILABLE");
-      state.candidates = [];
-      render();
-      return;
+      state.snapshot = null;
+      render(null);
+      return null;
     }
 
     ensurePanel();
-    state.error = null;
-
-    var status = document.getElementById("depletor-allocation-status");
-    var list   = document.getElementById("depletor-allocation-list");
-    if (status) status.textContent = "Validating allocation evidence…";
-    if (list) list.innerHTML = "";
 
     try {
-      var r = await readEvidence();
-      state.candidates = r.candidates || [];
-      window.goodsbarnxAllocationCandidates = state.candidates;
-      render();
-      return state.candidates;
+      return await runPipeline();
     } catch (e) {
       state.error = e;
-      state.candidates = [];
-      console.warn("[GoodsbarnX/depletor] " + VERSION + ":", e);
-      render();
-      throw e;
+      state.running = false;
+      state.completedAt = new Date().toISOString();
+      console.warn("[GoodsbarnX/depletor] pipeline threw:", e);
+      render(null);
+      return null;
     }
+  };
+
+  // Compat alias: the payload's `refreshDepletorAllocation` now runs the full
+  // pipeline and returns the §22 allocation rows (the previous shape).
+  window.refreshDepletorAllocation = async function () {
+    var snapshot = await window.refreshDepletorPipeline();
+    return snapshot && snapshot.stages && snapshot.stages.allocation
+      ? snapshot.stages.allocation.rows
+      : [];
   };
 
   // ------------------------------------------------------------------------
@@ -425,8 +503,9 @@
   // ------------------------------------------------------------------------
 
   document.addEventListener("DOMContentLoaded", function () {
-    setTimeout(window.refreshDepletorAllocation, 1000);
-    setTimeout(window.refreshDepletorAllocation, 2200);
+    setTimeout(window.refreshDepletorPipeline, 1000);
+    setTimeout(window.refreshDepletorPipeline, 2200);
   });
 
+  console.log("[GoodsbarnX] depletar.js conductor loaded (" + VERSION + ")");
 })();
