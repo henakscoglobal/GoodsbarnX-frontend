@@ -631,4 +631,1183 @@ async function loadMyTradeRelationships() {
     });
 
     relationshipLayerInitialized = true;
-  } catch
+  } catch (error) {
+    console.error("[GoodsbarnX/relationship] loadMyTradeRelationships failed:", error);
+    container.innerHTML = inviteBtnHtml +
+      '<div style="padding:20px; text-align:center;">' +
+        '<div style="color:var(--stamp); font-weight:600; margin-bottom:10px;">Failed to load relationships</div>' +
+        '<div style="font-size:12px; color:rgba(18,21,28,0.6);">' + relationshipEscapeHtml(error.message || "Unknown error") + '</div>' +
+        '<button class="btn btn-outline" style="margin-top:15px;" onclick="loadMyTradeRelationships()">Retry</button>' +
+      '</div>';
+  } finally {
+    relationshipLoadInProgress = false;
+  }
+}
+
+// ==========================================================================
+// RELATIONSHIP STATUS ACTIONS
+// ==========================================================================
+
+function renderRelationshipActions(relationshipId, status) {
+  const actions = RELATIONSHIP_ACTIONS[status];
+  if (!actions) return "";
+  return '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">' +
+    actions.map(action =>
+      '<button class="btn btn-outline"' +
+        ' data-relationship-id="' + relationshipEscapeAttribute(relationshipId) + '"' +
+        ' data-new-status="' + relationshipEscapeAttribute(action.newStatus) + '"' +
+        ' onclick="updateRelationshipStatus(this.dataset.relationshipId, this.dataset.newStatus)">' +
+        relationshipEscapeHtml(action.label) +
+      '</button>'
+    ).join("") +
+  '</div>';
+}
+
+async function updateRelationshipStatus(relationshipId, newStatus) {
+  if (!window.sb) return;
+  if (!Object.prototype.hasOwnProperty.call(RELATIONSHIP_STATUS_LABELS, newStatus)) return;
+
+  const payload = { status: newStatus };
+  const timestampFields = {
+    active:     "activated_at",
+    paused:     "paused_at",
+    released:   "released_at",
+    terminated: "terminated_at"
+  };
+  if (timestampFields[newStatus]) {
+    payload[timestampFields[newStatus]] = new Date().toISOString();
+  }
+
+  if (newStatus === "released") {
+    const reason = prompt("Reason for releasing this relationship (required):");
+    if (!reason || !reason.trim()) return;
+    payload.release_reason = reason.trim();
+  }
+
+  if (!confirm('Change this relationship\'s status to "' + newStatus + '"? This cannot be casually undone.')) return;
+
+  const { error } = await window.sb
+    .from("trade_relationships")
+    .update(payload)
+    .eq("id", relationshipId);
+
+  if (error) {
+    alert("Could not update status: " + error.message);
+    return;
+  }
+  loadMyTradeRelationships();
+}
+
+// ==========================================================================
+// TERMS EDITOR
+// ==========================================================================
+
+function openEditTermsModal(relationshipId) {
+  const cached = window.__relTermsCache?.[relationshipId];
+  if (!cached) return;
+  editingTermsRelationshipId = relationshipId;
+
+  const buyerNameEl = document.getElementById("edit-terms-buyer-name");
+  const discountEl  = document.getElementById("terms-discount");
+  const creditEnEl  = document.getElementById("terms-credit-enabled");
+  const creditLiEl  = document.getElementById("terms-credit-limit");
+  const creditDyEl  = document.getElementById("terms-credit-days");
+  const statusEl    = document.getElementById("edit-terms-status");
+  const modal       = document.getElementById("edit-terms-modal");
+  if (!modal) { relWarnMissing("edit-terms-modal"); return; }
+
+  if (buyerNameEl) buyerNameEl.innerText = cached.buyerName;
+  if (discountEl)  discountEl.value = cached.discount;
+  if (creditEnEl)  creditEnEl.value = cached.creditEnabled ? "true" : "false";
+  if (creditLiEl)  creditLiEl.value = cached.creditLimit;
+  if (creditDyEl)  creditDyEl.value = cached.creditDays;
+  if (statusEl)    statusEl.innerText = "";
+
+  modal.classList.add("active");
+}
+
+function closeEditTermsModal() {
+  const modal = document.getElementById("edit-terms-modal");
+  if (modal) modal.classList.remove("active");
+  editingTermsRelationshipId = null;
+}
+
+async function saveRelationshipTerms() {
+  if (!editingTermsRelationshipId || !window.sb) return;
+  const status = document.getElementById("edit-terms-status");
+  if (!status) return;
+  status.innerText = "Saving...";
+
+  const readVal = id => { const el = document.getElementById(id); return el ? el.value : ""; };
+  const discountRaw = readVal("terms-discount");
+  const creditEnabled = readVal("terms-credit-enabled") === "true";
+  const creditLimitRaw = readVal("terms-credit-limit");
+  const creditDaysRaw = readVal("terms-credit-days");
+
+  const discount = discountRaw !== "" ? parseFloat(discountRaw) : null;
+  const creditLimit = creditEnabled && creditLimitRaw !== "" ? parseFloat(creditLimitRaw) : null;
+  const creditDays = creditEnabled && creditDaysRaw !== "" ? parseInt(creditDaysRaw, 10) : null;
+
+  if (discount != null && !Number.isFinite(discount)) { status.innerText = "Invalid discount."; return; }
+  if (creditEnabled && creditLimit != null && !Number.isFinite(creditLimit)) { status.innerText = "Invalid credit limit."; return; }
+  if (creditEnabled && creditDays != null && !Number.isInteger(creditDays)) { status.innerText = "Invalid credit days."; return; }
+
+  const payload = {
+    default_discount_percent: discount,
+    credit_enabled: creditEnabled,
+    credit_limit: creditLimit,
+    credit_days: creditDays
+  };
+
+  try {
+    const { data: existing } = await window.sb
+      .from("relationship_trade_terms")
+      .select("id")
+      .eq("relationship_id", editingTermsRelationshipId)
+      .maybeSingle();
+
+    let error;
+    if (existing) {
+      ({ error } = await window.sb.from("relationship_trade_terms").update(payload).eq("id", existing.id));
+    } else {
+      ({ error } = await window.sb.from("relationship_trade_terms").insert(
+        Object.assign({ relationship_id: editingTermsRelationshipId, effective_from: new Date().toISOString() }, payload)
+      ));
+    }
+    if (error) throw error;
+
+    status.innerText = "Saved!";
+    setTimeout(() => { closeEditTermsModal(); loadMyTradeRelationships(); }, 1000);
+  } catch (error) {
+    console.error("[GoodsbarnX/relationship] saveRelationshipTerms failed:", error);
+    status.innerText = "Error: " + error.message;
+  }
+}
+
+// ==========================================================================
+// INVITE BUYER — RPC path (trade relationship creation, Canon §6 consent)
+// ==========================================================================
+
+function openInviteBuyerModal() {
+  const modal = document.getElementById("invite-buyer-modal");
+  if (!modal) { relWarnMissing("invite-buyer-modal"); return; }
+  const search = document.getElementById("invite-buyer-search");
+  const results = document.getElementById("invite-buyer-results");
+  const status = document.getElementById("invite-buyer-status");
+  if (search) search.value = "";
+  if (results) results.innerHTML = "";
+  if (status) status.innerText = "";
+  modal.classList.add("active");
+}
+
+function closeInviteBuyerModal() {
+  const modal = document.getElementById("invite-buyer-modal");
+  if (modal) modal.classList.remove("active");
+}
+
+async function searchBuyersForInvite() {
+  const search = document.getElementById("invite-buyer-search");
+  const resultsEl = document.getElementById("invite-buyer-results");
+  if (!search || !resultsEl || !window.sb) return;
+  const query = search.value.trim();
+  if (query.length < 2) { resultsEl.innerHTML = ""; return; }
+
+  const { data: buyers, error } = await safeSupabaseQuery(
+    sb => sb.from("buyer_profiles")
+      .select("id, name, location, profiles(full_name, phone)")
+      .ilike("name", "%" + query + "%")
+      .limit(10),
+    [],
+    "searchBuyersForInvite"
+  );
+  if (error) { resultsEl.innerHTML = ""; return; }
+  if (!buyers || buyers.length === 0) {
+    resultsEl.innerHTML = '<div class="loading-text">No matching buyers found.</div>';
+    return;
+  }
+
+  resultsEl.innerHTML = buyers.map(buyer => {
+    const name = buyer.name || buyer.profiles?.full_name || "Buyer";
+    return '<div class="manifest" style="padding:12px; cursor:pointer;"' +
+      ' data-buyer-id="' + relationshipEscapeAttribute(buyer.id) + '"' +
+      ' data-buyer-name="' + relationshipEscapeAttribute(name) + '"' +
+      ' onclick="inviteBuyerToRelationship(this.dataset.buyerId, this.dataset.buyerName)">' +
+      '<div class="m-name">' + relationshipEscapeHtml(name) + '</div>' +
+      '<div class="m-loc">' + relationshipEscapeHtml(buyer.location || "") +
+        (buyer.profiles?.phone ? " · " + relationshipEscapeHtml(buyer.profiles.phone) : "") +
+      '</div>' +
+    '</div>';
+  }).join("");
+}
+
+async function inviteBuyerToRelationship(buyerId, buyerName) {
+  if (!currentUser || currentUser.role !== "distributor" || !window.sb) return;
+  const status = document.getElementById("invite-buyer-status");
+  if (!status) return;
+
+  status.innerText = "Inviting " + buyerName + "...";
+
+  const { error } = await window.sb.rpc("create_trade_relationship", {
+    p_buyer_id: buyerId,
+    p_distributor_id: currentUser.id
+  });
+
+  if (error) { status.innerText = "Error: " + error.message; return; }
+
+  status.innerText = buyerName + " added as a trade relationship!";
+  setTimeout(() => { closeInviteBuyerModal(); loadMyTradeRelationships(); }, 1200);
+}
+
+// ==========================================================================
+// INVITE BUYER — phone-based consent path (buyer_locks, per legacy bridge)
+//
+// This coexists with the RPC path above because it targets a distinct
+// consent flow: an existing GoodsbarnX buyer whose account is identified
+// by phone, and who must consent before a relationship becomes active.
+// ==========================================================================
+
+function openAddBuyerModal() {
+  const modal = document.getElementById("add-buyer-modal");
+  if (!modal) { relWarnMissing("add-buyer-modal"); return; }
+  const phone = document.getElementById("add-buyer-phone");
+  const status = document.getElementById("add-buyer-status-msg");
+  if (phone) phone.value = "";
+  if (status) status.innerText = "";
+  modal.style.display = "flex";
+  modal.classList.add("active");
+  if (phone) setTimeout(() => { try { phone.focus(); } catch (e) {} }, 80);
+}
+
+function closeAddBuyerModal() {
+  const modal = document.getElementById("add-buyer-modal");
+  if (modal) { modal.classList.remove("active"); modal.style.display = "none"; }
+}
+
+async function submitAddBuyer() {
+  const phoneEl  = document.getElementById("add-buyer-phone");
+  const statusEl = document.getElementById("add-buyer-status-msg");
+  const phone = phoneEl ? phoneEl.value.trim() : "";
+  const showStatus = (msg) => { if (statusEl) statusEl.innerText = msg; };
+
+  if (!phone) { showStatus("Please enter a phone number."); return; }
+  if (!currentUser || !currentUser.id) { showStatus("Your distributor session is not ready. Please refresh."); return; }
+  if (!window.sb) { showStatus("Connection service is not ready. Please refresh."); return; }
+
+  showStatus("Checking buyer account...");
+
+  const lookup = await window.sb
+    .from("profiles")
+    .select("id, role")
+    .eq("phone", phone)
+    .eq("role", "buyer")
+    .maybeSingle();
+
+  if (lookup.error) { showStatus("Could not verify that buyer account. Please try again."); return; }
+  if (!lookup.data) { showStatus("No buyer account found with that phone number yet. They'll need to sign up first."); return; }
+  if (lookup.data.id === currentUser.id) { showStatus("You cannot connect yourself as a buyer."); return; }
+
+  showStatus("Sending connection request...");
+
+  const insert = await window.sb.from("buyer_locks").insert({
+    buyer_id: lookup.data.id,
+    distributor_id: currentUser.id,
+    status: "pending_consent"
+  });
+
+  if (insert.error) { showStatus("Could not send request. They may already be connected elsewhere."); return; }
+
+  showStatus("Sent! They'll see this request next time they open GoodsbarnX.");
+  setTimeout(() => {
+    closeAddBuyerModal();
+    if (currentUser && currentUser.role === "distributor") {
+      refreshDistributorDashboard();
+    }
+  }, 1800);
+}
+
+// ==========================================================================
+// AGENT ASSIGNMENT
+// ==========================================================================
+
+function openAssignAgentModal(relationshipId) {
+  assigningAgentRelationshipId = relationshipId;
+  const search = document.getElementById("assign-agent-search");
+  const results = document.getElementById("assign-agent-results");
+  const status = document.getElementById("assign-agent-status");
+  const modal = document.getElementById("assign-agent-modal");
+  if (!modal) { relWarnMissing("assign-agent-modal"); return; }
+  if (search) search.value = "";
+  if (results) results.innerHTML = "";
+  if (status) status.innerText = "";
+  modal.classList.add("active");
+}
+
+function closeAssignAgentModal() {
+  const modal = document.getElementById("assign-agent-modal");
+  if (modal) modal.classList.remove("active");
+  assigningAgentRelationshipId = null;
+}
+
+async function searchAgentsForAssignment() {
+  const search = document.getElementById("assign-agent-search");
+  const resultsEl = document.getElementById("assign-agent-results");
+  if (!search || !resultsEl || !window.sb) return;
+  const query = search.value.trim();
+  if (query.length < 2) { resultsEl.innerHTML = ""; return; }
+
+  const { data: agents, error } = await safeSupabaseQuery(
+    sb => sb.from("agent_profiles")
+      .select("id, profiles(full_name, phone)")
+      .limit(20),
+    [],
+    "searchAgentsForAssignment"
+  );
+  if (error) { resultsEl.innerHTML = ""; return; }
+
+  const normalizedQuery = query.toLowerCase();
+  const filtered = (agents || []).filter(
+    a => (a.profiles?.full_name || "").toLowerCase().includes(normalizedQuery)
+  );
+  if (filtered.length === 0) {
+    resultsEl.innerHTML = '<div class="loading-text">No matching agents found.</div>';
+    return;
+  }
+
+  resultsEl.innerHTML = filtered.map(agent => {
+    const name = agent.profiles?.full_name || "Agent";
+    return '<div class="manifest" style="padding:12px; cursor:pointer;"' +
+      ' data-agent-id="' + relationshipEscapeAttribute(agent.id) + '"' +
+      ' data-agent-name="' + relationshipEscapeAttribute(name) + '"' +
+      ' onclick="assignAgentToRelationship(this.dataset.agentId, this.dataset.agentName)">' +
+      '<div class="m-name">' + relationshipEscapeHtml(name) + '</div>' +
+      '<div class="m-loc">' + relationshipEscapeHtml(agent.profiles?.phone || "") + '</div>' +
+    '</div>';
+  }).join("");
+}
+
+async function assignAgentToRelationship(agentId, agentName) {
+  if (!assigningAgentRelationshipId || !window.sb) return;
+  const status = document.getElementById("assign-agent-status");
+  if (!status) return;
+  status.innerText = "Assigning " + agentName + "...";
+
+  const { error: unassignError } = await window.sb
+    .from("relationship_agents")
+    .update({ unassigned_at: new Date().toISOString() })
+    .eq("relationship_id", assigningAgentRelationshipId)
+    .eq("is_primary", true)
+    .is("unassigned_at", null);
+
+  if (unassignError) { status.innerText = "Error: " + unassignError.message; return; }
+
+  const { error } = await window.sb
+    .from("relationship_agents")
+    .insert({
+      relationship_id: assigningAgentRelationshipId,
+      agent_id: agentId,
+      is_primary: true,
+      assigned_at: new Date().toISOString()
+    });
+
+  if (error) { status.innerText = "Error: " + error.message; return; }
+
+  status.innerText = agentName + " assigned!";
+  setTimeout(() => { closeAssignAgentModal(); loadMyTradeRelationships(); }, 1200);
+}
+
+// ==========================================================================
+// PAYMENT METHODS
+// ==========================================================================
+
+function openManagePaymentMethodsModal(relationshipId) {
+  managingPaymentMethodsRelationshipId = relationshipId;
+  const method = document.getElementById("new-payment-method");
+  const limit = document.getElementById("new-payment-method-limit");
+  const status = document.getElementById("manage-payment-status");
+  const modal = document.getElementById("manage-payment-modal");
+  if (!modal) { relWarnMissing("manage-payment-modal"); return; }
+  if (method) method.value = "";
+  if (limit) limit.value = "";
+  if (status) status.innerText = "";
+  modal.classList.add("active");
+  loadExistingPaymentMethodsForModal(relationshipId);
+}
+
+function closeManagePaymentMethodsModal() {
+  const modal = document.getElementById("manage-payment-modal");
+  if (modal) modal.classList.remove("active");
+  managingPaymentMethodsRelationshipId = null;
+}
+
+async function loadExistingPaymentMethodsForModal(relationshipId) {
+  const listEl = document.getElementById("existing-payment-methods");
+  if (!listEl || !window.sb) return;
+  listEl.innerHTML = '<div class="loading-text">Loading...</div>';
+
+  const { data: methods, error } = await safeSupabaseQuery(
+    sb => sb.from("relationship_payment_methods")
+      .select("id, payment_method, is_default, is_active, transaction_limit")
+      .eq("relationship_id", relationshipId)
+      .order("created_at", { ascending: false }),
+    [],
+    "loadExistingPaymentMethodsForModal"
+  );
+  if (error) { listEl.innerHTML = '<div class="loading-text">Could not load payment methods.</div>'; return; }
+  if (!methods || methods.length === 0) {
+    listEl.innerHTML = '<div class="loading-text">No payment methods added yet.</div>';
+    return;
+  }
+
+  listEl.innerHTML = methods.map(method =>
+    '<div class="manifest" style="padding:10px 14px;">' +
+      '<div class="manifest-top">' +
+        '<div>' +
+          '<span style="font-size:13px; font-weight:600;">' + relationshipEscapeHtml(method.payment_method) + '</span>' +
+          (method.is_default ? ' <span class="stamp-badge" style="font-size:8px; padding:2px 6px; border-color:var(--ok); color:var(--ok); transform:none; margin-left:6px;">DEFAULT</span>' : "") +
+          (!method.is_active ? ' <span class="stamp-badge" style="font-size:8px; padding:2px 6px; border-color:var(--brass); color:var(--brass); transform:none; margin-left:6px;">INACTIVE</span>' : "") +
+        '</div>' +
+      '</div>' +
+      (method.transaction_limit != null ? '<div class="m-loc">Transaction limit: ' + relationshipMoney(method.transaction_limit) + '</div>' : "") +
+      '<div class="action-buttons">' +
+        (!method.is_default
+          ? '<button class="btn btn-outline" data-method-id="' + relationshipEscapeAttribute(method.id) + '" onclick="makePaymentMethodDefault(this.dataset.methodId)">Make Default</button>'
+          : "") +
+        '<button class="btn ' + (method.is_active ? "btn-danger" : "btn-success") + '"' +
+          ' data-method-id="' + relationshipEscapeAttribute(method.id) + '"' +
+          ' data-new-active="' + (!method.is_active) + '"' +
+          ' onclick="togglePaymentMethodActive(this.dataset.methodId, this.dataset.newActive === \'true\')">' +
+          (method.is_active ? "Deactivate" : "Activate") +
+        '</button>' +
+      '</div>' +
+    '</div>'
+  ).join("");
+}
+
+async function addPaymentMethod() {
+  const status = document.getElementById("manage-payment-status");
+  if (!status || !window.sb) return;
+  const methodNameEl = document.getElementById("new-payment-method");
+  const limitEl = document.getElementById("new-payment-method-limit");
+  const methodName = methodNameEl ? methodNameEl.value.trim() : "";
+  const limitRaw = limitEl ? limitEl.value : "";
+
+  if (!methodName) { status.innerText = "Enter a payment method name."; return; }
+  if (!managingPaymentMethodsRelationshipId) { status.innerText = "No relationship selected."; return; }
+
+  status.innerText = "Adding...";
+  const transactionLimit = limitRaw !== "" ? parseFloat(limitRaw) : null;
+  if (transactionLimit != null && !Number.isFinite(transactionLimit)) {
+    status.innerText = "Invalid transaction limit."; return;
+  }
+
+  const { error } = await window.sb.from("relationship_payment_methods").insert({
+    relationship_id: managingPaymentMethodsRelationshipId,
+    payment_method: methodName,
+    is_active: true,
+    is_default: false,
+    transaction_limit: transactionLimit
+  });
+  if (error) { status.innerText = "Error: " + error.message; return; }
+
+  status.innerText = "Added!";
+  if (methodNameEl) methodNameEl.value = "";
+  if (limitEl) limitEl.value = "";
+  loadExistingPaymentMethodsForModal(managingPaymentMethodsRelationshipId);
+}
+
+async function makePaymentMethodDefault(methodId) {
+  if (!managingPaymentMethodsRelationshipId || !window.sb) return;
+  const { error: clearError } = await window.sb
+    .from("relationship_payment_methods")
+    .update({ is_default: false })
+    .eq("relationship_id", managingPaymentMethodsRelationshipId)
+    .eq("is_default", true);
+  if (clearError) { console.error("[GoodsbarnX/relationship] clear default failed:", clearError.message); return; }
+
+  const { error } = await window.sb
+    .from("relationship_payment_methods")
+    .update({ is_default: true })
+    .eq("id", methodId);
+  if (error) { console.error("[GoodsbarnX/relationship] set default failed:", error.message); return; }
+  loadExistingPaymentMethodsForModal(managingPaymentMethodsRelationshipId);
+}
+
+async function togglePaymentMethodActive(methodId, newActiveState) {
+  if (!window.sb) return;
+  const { error } = await window.sb
+    .from("relationship_payment_methods")
+    .update({ is_active: newActiveState })
+    .eq("id", methodId);
+  if (error) { console.error("[GoodsbarnX/relationship] toggle active failed:", error.message); return; }
+  loadExistingPaymentMethodsForModal(managingPaymentMethodsRelationshipId);
+}
+
+// ==========================================================================
+// PREFERRED PRODUCTS MANAGER
+// ==========================================================================
+
+function openManagePreferredProductsModal(relationshipId) {
+  managingPreferencesRelationshipId = relationshipId;
+  const search = document.getElementById("preference-product-search");
+  const results = document.getElementById("preference-search-results");
+  const status = document.getElementById("manage-preferences-status");
+  const modal = document.getElementById("manage-preferences-modal");
+  if (!modal) { relWarnMissing("manage-preferences-modal"); return; }
+  if (search) search.value = "";
+  if (results) results.innerHTML = "";
+  if (status) status.innerText = "";
+  modal.classList.add("active");
+  loadExistingPreferredProducts(relationshipId);
+}
+
+function closeManagePreferredProductsModal() {
+  const modal = document.getElementById("manage-preferences-modal");
+  if (modal) modal.classList.remove("active");
+  managingPreferencesRelationshipId = null;
+}
+
+async function loadExistingPreferredProducts(relationshipId) {
+  const listEl = document.getElementById("existing-preferred-products");
+  if (!listEl || !window.sb) return;
+  listEl.innerHTML = '<div class="loading-text">Loading...</div>';
+
+  const { data: prefs, error } = await safeSupabaseQuery(
+    sb => sb.from("relationship_product_preferences")
+      .select("id, product_id, negotiated_unit_price")
+      .eq("relationship_id", relationshipId)
+      .eq("preferred", true),
+    [],
+    "loadExistingPreferredProducts"
+  );
+  if (error) { listEl.innerHTML = '<div class="loading-text">Could not load preferred products.</div>'; return; }
+  if (!prefs || prefs.length === 0) {
+    listEl.innerHTML = '<div class="loading-text">No preferred products marked yet.</div>';
+    return;
+  }
+
+  const productIds = prefs.map(p => p.product_id).filter(Boolean);
+  if (productIds.length === 0) {
+    listEl.innerHTML = '<div class="loading-text">No preferred products marked yet.</div>';
+    return;
+  }
+
+  const { data: products } = await safeSupabaseQuery(
+    sb => sb.from("products").select("id, name, price").in("id", productIds),
+    [],
+    "loadExistingPreferredProducts/products"
+  );
+  const productMap = {};
+  (products || []).forEach(p => { productMap[p.id] = p; });
+
+  listEl.innerHTML = prefs.map(pref => {
+    const product = productMap[pref.product_id];
+    if (!product) return "";
+    return '<div class="manifest" style="padding:10px 14px;">' +
+      '<div class="manifest-top">' +
+        '<div>' +
+          '<span style="font-size:13px; font-weight:600;">' + relationshipEscapeHtml(product.name) + ' ★</span>' +
+          '<div class="m-loc">' +
+            'Public: ' + relationshipMoney(product.price || 0) +
+            (pref.negotiated_unit_price != null ? ' · Negotiated: ' + relationshipMoney(pref.negotiated_unit_price) : "") +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="action-buttons">' +
+        '<button class="btn btn-outline" data-pref-id="' + relationshipEscapeAttribute(pref.id) + '" onclick="setNegotiatedPrice(this.dataset.prefId)">' +
+          (pref.negotiated_unit_price != null ? "Change" : "Set") + ' Price' +
+        '</button>' +
+        '<button class="btn btn-danger" data-pref-id="' + relationshipEscapeAttribute(pref.id) + '" onclick="removeProductPreference(this.dataset.prefId)">Remove</button>' +
+      '</div>' +
+    '</div>';
+  }).join("");
+}
+
+async function searchDistributorProductsForPreference() {
+  const search = document.getElementById("preference-product-search");
+  const resultsEl = document.getElementById("preference-search-results");
+  if (!search || !resultsEl || !window.sb) return;
+  const query = search.value.trim();
+  if (query.length < 2) { resultsEl.innerHTML = ""; return; }
+
+  const { data: products, error } = await safeSupabaseQuery(
+    sb => sb.from("products")
+      .select("id, name, price, sku")
+      .eq("distributor_id", currentUser.id)
+      .ilike("name", "%" + query + "%")
+      .limit(10),
+    [],
+    "searchDistributorProductsForPreference"
+  );
+  if (error) { resultsEl.innerHTML = ""; return; }
+  if (!products || products.length === 0) {
+    resultsEl.innerHTML = '<div class="loading-text">No matching products found.</div>';
+    return;
+  }
+
+  resultsEl.innerHTML = products.map(p =>
+    '<div class="manifest" style="padding:10px 14px; cursor:pointer;"' +
+      ' data-product-id="' + relationshipEscapeAttribute(p.id) + '"' +
+      ' onclick="addProductPreference(this.dataset.productId)">' +
+      '<div class="m-name">' + relationshipEscapeHtml(p.name) + '</div>' +
+      '<div class="m-loc">' + relationshipEscapeHtml(p.sku || "No SKU") + ' · ' + relationshipMoney(p.price || 0) + '</div>' +
+    '</div>'
+  ).join("");
+}
+
+async function addProductPreference(productId) {
+  const status = document.getElementById("manage-preferences-status");
+  if (!status || !window.sb) return;
+  if (!managingPreferencesRelationshipId) { status.innerText = "No relationship selected."; return; }
+  status.innerText = "Adding...";
+  const { error } = await window.sb.from("relationship_product_preferences").insert({
+    relationship_id: managingPreferencesRelationshipId,
+    product_id: productId,
+    preferred: true
+  });
+  if (error) { status.innerText = "Error: " + error.message; return; }
+  status.innerText = "Added!";
+  const search = document.getElementById("preference-product-search");
+  const results = document.getElementById("preference-search-results");
+  if (search) search.value = "";
+  if (results) results.innerHTML = "";
+  loadExistingPreferredProducts(managingPreferencesRelationshipId);
+}
+
+async function setNegotiatedPrice(prefId) {
+  if (!window.sb) return;
+  const priceInput = prompt("Enter the negotiated price for this product (₦), or leave blank to clear it:");
+  if (priceInput === null) return;
+  const trimmed = priceInput.trim();
+  const price = trimmed === "" ? null : parseFloat(trimmed);
+  if (price !== null && (!Number.isFinite(price) || price < 0)) {
+    alert("Enter a valid non-negative price."); return;
+  }
+  const { error } = await window.sb
+    .from("relationship_product_preferences")
+    .update({ negotiated_unit_price: price })
+    .eq("id", prefId);
+  if (error) { alert("Could not update negotiated price: " + error.message); return; }
+  loadExistingPreferredProducts(managingPreferencesRelationshipId);
+}
+
+async function removeProductPreference(prefId) {
+  if (!window.sb) return;
+  if (!confirm("Remove this product from preferred?")) return;
+  const { error } = await window.sb
+    .from("relationship_product_preferences").delete().eq("id", prefId);
+  if (error) { alert("Could not remove product preference: " + error.message); return; }
+  loadExistingPreferredProducts(managingPreferencesRelationshipId);
+}
+
+// ==========================================================================
+// BUYER — APPROVED PAYMENT METHODS (buyer view)
+// ==========================================================================
+
+async function loadRelationshipPaymentMethods(relationshipId) {
+  const container = document.getElementById("my-payment-methods");
+  if (!container || !relationshipId) return;
+
+  const { data: methods, error } = await safeSupabaseQuery(
+    sb => sb.from("relationship_payment_methods")
+      .select("payment_method, is_default, is_active, transaction_limit")
+      .eq("relationship_id", relationshipId)
+      .eq("is_active", true)
+      .order("is_default", { ascending: false }),
+    [],
+    "loadRelationshipPaymentMethods"
+  );
+  if (error || !methods || methods.length === 0) { container.innerHTML = ""; return; }
+
+  container.innerHTML =
+    '<div class="section-label">Approved Payment Methods</div>' +
+    '<div class="manifest" style="padding:6px 16px;">' +
+      methods.map((method, index) =>
+        '<div style="padding:10px 0; ' + (index < methods.length - 1 ? "border-bottom:1px dashed var(--line-dark);" : "") + ' display:flex; justify-content:space-between; align-items:center;">' +
+          '<div>' +
+            '<span style="font-size:13px; font-weight:600;">' + relationshipEscapeHtml(method.payment_method) + '</span>' +
+            (method.is_default ? ' <span class="stamp-badge" style="font-size:8px; padding:2px 6px; border-color:var(--ok); color:var(--ok); transform:none; margin-left:6px;">DEFAULT</span>' : "") +
+          '</div>' +
+          (method.transaction_limit != null
+            ? '<span style="font-size:11px; color:rgba(18,21,28,0.5);">Limit ' + relationshipMoney(method.transaction_limit) + '</span>'
+            : "") +
+        '</div>'
+      ).join("") +
+    '</div>';
+}
+
+// ==========================================================================
+// AGENT REFERRAL (buyer search + relationship creation via RPC)
+//
+// Canonical owner of searchBuyersForAgentReferral per File 5's decision.
+// agent.js (File 9) will remove its duplicate.
+// ==========================================================================
+
+async function searchBuyersForAgentReferral() {
+  const search = document.getElementById("agent-refer-buyer-search");
+  const resultsEl = document.getElementById("agent-refer-buyer-results");
+  if (!search || !resultsEl || !window.sb) return;
+  const query = search.value.trim();
+  if (query.length < 2) { resultsEl.innerHTML = ""; return; }
+
+  const { data: buyers, error } = await safeSupabaseQuery(
+    sb => sb.from("buyer_profiles")
+      .select("id, name, location, profiles(full_name, phone)")
+      .ilike("name", "%" + query + "%")
+      .limit(10),
+    [],
+    "searchBuyersForAgentReferral"
+  );
+  if (error) { resultsEl.innerHTML = ""; return; }
+  if (!buyers || buyers.length === 0) {
+    resultsEl.innerHTML = '<div class="loading-text">No matching buyers found.</div>';
+    return;
+  }
+
+  resultsEl.innerHTML = buyers.map(buyer => {
+    const name = buyer.name || buyer.profiles?.full_name || "Buyer";
+    return '<div class="manifest" style="padding:12px; cursor:pointer;"' +
+      ' data-buyer-id="' + relationshipEscapeAttribute(buyer.id) + '"' +
+      ' data-buyer-name="' + relationshipEscapeAttribute(name) + '"' +
+      ' onclick="createAgentReferredBuyerRelationship(this.dataset.buyerId, this.dataset.buyerName)">' +
+      '<div class="m-name">' + relationshipEscapeHtml(name) + '</div>' +
+      '<div class="m-loc">' + relationshipEscapeHtml(buyer.location || "") +
+        (buyer.profiles?.phone ? " · " + relationshipEscapeHtml(buyer.profiles.phone) : "") +
+      '</div>' +
+    '</div>';
+  }).join("");
+}
+
+async function createAgentReferredBuyerRelationship(buyerId, buyerName) {
+  if (!currentUser || currentUser.role !== "agent" || !window.sb) return;
+  const status = document.getElementById("agent-refer-buyer-status");
+  if (!status) return;
+  if (!buyerId) { status.innerText = "Buyer is required."; return; }
+
+  status.innerText = "Creating buyer relationship for " + (buyerName || "buyer") + "...";
+  const { error } = await window.sb.rpc("create_agent_referred_buyer_relationship", {
+    p_buyer_id: buyerId
+  });
+  if (error) { status.innerText = "Error: " + error.message; return; }
+  status.innerText = (buyerName || "Buyer") + " added through your distributor relationship.";
+  loadMyTradeRelationships();
+}
+
+// ==========================================================================
+// DISTRIBUTOR DASHBOARD (absorbed from inline goodsbarnx-distributor-v111)
+// ==========================================================================
+
+function mountDistributorDashboard() {
+  const host = document.getElementById("distributor-tools-holder");
+  if (!host) return null;
+  let panel = document.getElementById("gbx-distributor-dashboard");
+  if (!panel) {
+    panel = document.createElement("section");
+    panel.id = "gbx-distributor-dashboard";
+    panel.className = "gbx-dashboard";
+    host.parentNode.insertBefore(panel, host);
+  }
+  return panel;
+}
+
+function timeGreeting() {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning," : h < 18 ? "Good afternoon," : "Good evening,";
+}
+
+function initialsFromName(name) {
+  return String(name || "User")
+    .split(/\s+/).filter(Boolean).slice(0, 2)
+    .map(x => x[0]).join("").toUpperCase() || "U";
+}
+
+function renderDistributorDashboard() {
+  const el = mountDistributorDashboard();
+  if (!el) return;
+
+  if (!currentUser || currentUser.role !== "distributor") {
+    el.classList.remove("active");
+    return;
+  }
+  el.classList.add("active");
+
+  const name = currentUser.business_name || currentUser.full_name || "Distributor";
+  const s = distributorDashboardState;
+
+  const pendingBuyer = s.buyers.filter(r => r.status === "pending").length;
+  const activeBuyer  = s.buyers.filter(r => r.status === "active").length;
+  const buyerPending = s.pendingAgents.length;
+  const agentPending = s.pendingAgents.length;
+  const agentActive  = s.acceptedAgents.length;
+
+  const agentHtml = s.pendingAgents.length
+    ? s.pendingAgents.map(x =>
+        '<div class="gbx-agent-row">' +
+          '<div class="gbx-agent-top">' +
+            '<div class="gbx-avatar">' + relationshipEscapeHtml(initialsFromName(x.name)) + '</div>' +
+            '<div class="gbx-agent-copy">' +
+              '<div class="gbx-agent-name">' + relationshipEscapeHtml(x.name) + '</div>' +
+              '<div class="gbx-agent-date">Attachment request · ' +
+                relationshipEscapeHtml(x.created_at ? new Date(x.created_at).toLocaleDateString("en-GB") : "recent") +
+              '</div>' +
+            '</div>' +
+            '<span class="gbx-status">PENDING</span>' +
+          '</div>' +
+          '<div class="gbx-agent-actions">' +
+            '<button class="primary" onclick="approveDistributorAgent(\'' + relationshipEscapeAttribute(x.id) + '\')">Accept</button>' +
+            '<button onclick="declineDistributorAgent(\'' + relationshipEscapeAttribute(x.id) + '\')">Decline</button>' +
+          '</div>' +
+        '</div>'
+      ).join("")
+    : '<div class="gbx-empty">No pending agent requests.</div>';
+
+  let acceptedHtml = "";
+  if (s.acceptedAgents.length) {
+    acceptedHtml = s.acceptedAgents.map(x =>
+      '<div class="gbx-agent-row">' +
+        '<div class="gbx-agent-top">' +
+          '<div class="gbx-avatar">' + relationshipEscapeHtml(initialsFromName(x.name)) + '</div>' +
+          '<div class="gbx-agent-copy">' +
+            '<div class="gbx-agent-name">' + relationshipEscapeHtml(x.name) + '</div>' +
+            '<div class="gbx-agent-date">Active supplier-agent attachment</div>' +
+          '</div>' +
+          '<span class="gbx-status">ACTIVE</span>' +
+        '</div>' +
+      '</div>'
+    ).join("");
+  }
+
+  el.innerHTML =
+    '<section class="gbx-dash-hero">' +
+      '<div class="gbx-dash-kicker">DISTRIBUTOR NETWORK</div>' +
+      '<div class="gbx-greeting">' + timeGreeting() + '<br><span class="name">' + relationshipEscapeHtml(name) + ' 👋</span></div>' +
+      '<div class="gbx-greeting-sub">Your trade network is active.</div>' +
+      '<div class="gbx-verified"><span class="gbx-verified-dot">✓</span> Verified Distributor</div>' +
+      '<div class="gbx-primary-grid">' +
+        '<button class="gbx-primary" onclick="showScreen(\'market\')">' +
+          '<div class="gbx-primary-value">' + activeBuyer + '</div>' +
+          '<div class="gbx-primary-label">Buyers</div>' +
+          '<div class="gbx-primary-note"><strong>● Active</strong></div>' +
+        '</button>' +
+        '<button class="gbx-primary" onclick="showScreen(\'market\')">' +
+          '<div class="gbx-primary-value">' + agentActive + '</div>' +
+          '<div class="gbx-primary-label">Agents</div>' +
+          '<div class="gbx-primary-note"><strong>● Active</strong></div>' +
+        '</button>' +
+      '</div>' +
+    '</section>' +
+
+    '<section class="gbx-section">' +
+      '<div class="gbx-section-head">' +
+        '<div class="gbx-section-title alert">⚠ NEEDS YOUR ATTENTION</div>' +
+        '<button class="gbx-view" onclick="showScreen(\'inquiries\')">View all</button>' +
+      '</div>' +
+      '<div class="gbx-attention">' +
+        '<div class="gbx-attention-row" onclick="openAddBuyerModal()">' +
+          '<div class="gbx-attention-icon">♙</div>' +
+          '<div class="gbx-attention-copy">' +
+            '<div class="gbx-attention-main">Buyer requests</div>' +
+            '<div class="gbx-attention-sub">New buyers want to connect</div>' +
+          '</div>' +
+          '<div class="gbx-count ' + (pendingBuyer ? "hot" : "") + '">' + pendingBuyer + '</div>' +
+          '<div class="gbx-arrow">›</div>' +
+        '</div>' +
+        '<div class="gbx-attention-row" onclick="document.getElementById(\'gbx-distributor-dashboard\').scrollIntoView({behavior:\'smooth\'})">' +
+          '<div class="gbx-attention-icon">♙</div>' +
+          '<div class="gbx-attention-copy">' +
+            '<div class="gbx-attention-main">Agent request</div>' +
+            '<div class="gbx-attention-sub">New agent wants to join</div>' +
+          '</div>' +
+          '<div class="gbx-count ' + (agentPending ? "hot" : "") + '">' + agentPending + '</div>' +
+          '<div class="gbx-arrow">›</div>' +
+        '</div>' +
+        '<div class="gbx-attention-row" onclick="showScreen(\'inquiries\')">' +
+          '<div class="gbx-attention-icon">▱</div>' +
+          '<div class="gbx-attention-copy">' +
+            '<div class="gbx-attention-main">Unanswered inquiries</div>' +
+            '<div class="gbx-attention-sub">Buyers waiting for your response</div>' +
+          '</div>' +
+          '<div class="gbx-count">—</div>' +
+          '<div class="gbx-arrow">›</div>' +
+        '</div>' +
+      '</div>' +
+    '</section>' +
+
+    '<section class="gbx-section">' +
+      '<div class="gbx-section-head">' +
+        '<div class="gbx-section-title">MY NETWORK</div>' +
+      '</div>' +
+      '<div class="gbx-network">' +
+        '<button class="gbx-network-card" onclick="showScreen(\'relationship\')">' +
+          '<span class="gbx-network-value">' + activeBuyer + '</span>' +
+          '<div class="gbx-network-head">' +
+            '<span class="gbx-network-title">My Buyers</span>' +
+            '<span class="gbx-network-meta">' + activeBuyer + ' active · ' + pendingBuyer + ' pending</span>' +
+          '</div>' +
+          '<div class="gbx-network-sub">Active relationships <span class="gbx-network-dot"></span></div>' +
+        '</button>' +
+        '<button class="gbx-network-card" onclick="showScreen(\'relationship\')">' +
+          '<span class="gbx-network-value">' + agentActive + '</span>' +
+          '<div class="gbx-network-head">' +
+            '<span class="gbx-network-title">My Agents</span>' +
+            '<span class="gbx-network-meta">' + agentActive + ' active · ' + agentPending + ' pending</span>' +
+          '</div>' +
+          '<div class="gbx-network-sub">Attached agents <span class="gbx-network-dot"></span></div>' +
+        '</button>' +
+      '</div>' +
+    '</section>' +
+
+    '<section class="gbx-command">' +
+      '<div class="gbx-command-title">📊 Distributor Dashboard</div>' +
+      '<div class="gbx-command-sub">Manage your products, track inquiries, and grow your network.</div>' +
+      '<div class="gbx-command-grid">' +
+        '<button class="gbx-command-btn primary" onclick="showScreen(\'products\')">' +
+          '<div class="gbx-command-icon">📦</div><span>Manage Products</span>' +
+        '</button>' +
+        '<button class="gbx-command-btn" onclick="openInviteBuyerModal()">' +
+          '<div class="gbx-command-icon">♙</div><span>Invite Buyer</span>' +
+        '</button>' +
+        '<button class="gbx-command-btn" onclick="showScreen(\'staff\')">' +
+          '<div class="gbx-command-icon">♙</div><span>Manage Staff</span>' +
+        '</button>' +
+        '<button class="gbx-command-btn" onclick="showScreen(\'profile\')">' +
+          '<div class="gbx-command-icon">⚙</div><span>Settings</span>' +
+        '</button>' +
+      '</div>' +
+      '<div class="gbx-depletor-mini">' +
+        '<div class="gbx-depletor-mark">▣</div>' +
+        '<div class="gbx-depletor-copy">' +
+          '<strong>Master Stock Depletor</strong>' +
+          '<small>Find demand. Reach relationships. Move stock.</small>' +
+        '</div>' +
+        '<button class="gbx-depletor-open" onclick="showScreen(\'products\')">Open</button>' +
+      '</div>' +
+    '</section>' +
+
+    '<section class="gbx-agent">' +
+      '<div class="gbx-section-head">' +
+        '<div>' +
+          '<div class="gbx-section-title">AGENT MANAGEMENT</div>' +
+          '<div style="font-size:9.5px;color:var(--d-muted);margin-top:3px">Approve or decline agent attachment requests.</div>' +
+        '</div>' +
+        '<button class="gbx-view" onclick="refreshDistributorDashboard()">↻ Refresh</button>' +
+      '</div>' +
+      '<div class="gbx-agent-list">' + agentHtml + acceptedHtml + '</div>' +
+    '</section>';
+}
+
+async function loadDistributorDashboardData() {
+  if (!currentUser || currentUser.role !== "distributor" || !window.sb) {
+    renderDistributorDashboard();
+    return;
+  }
+  const uid = currentUser.id;
+
+  try {
+    const [rels, locks, atts, inq] = await Promise.all([
+      window.sb.from("trade_relationships").select("buyer_id,status").eq("distributor_id", uid),
+      window.sb.from("buyer_locks").select("id,buyer_id,status,created_at").eq("distributor_id", uid),
+      window.sb.from("agent_distributor_attachments").select("id,agent_id,status,created_at").eq("distributor_id", uid),
+      window.sb.from("inquiries").select("id,item,quantity,status,created_at").eq("distributor_id", uid).order("created_at", { ascending: false })
+    ]);
+
+    [rels, locks, atts, inq].forEach(r => { if (r.error) throw r.error; });
+
+    const relationships = rels.data || [];
+    const buyerLocks = locks.data || [];
+    const attachments = atts.data || [];
+
+    const buyers = relationships.filter(r => String(r.status || "").toLowerCase() === "active").map(r => r.buyer_id);
+    const agents = attachments.filter(a => String(a.status || "").toLowerCase() === "accepted").map(a => a.agent_id);
+    const pendingAttachments = attachments.filter(a => String(a.status || "").toLowerCase() === "pending");
+
+    const ids = [...new Set(
+      buyers
+        .concat(agents)
+        .concat(buyerLocks.map(l => l.buyer_id))
+        .concat(pendingAttachments.map(a => a.agent_id))
+    )];
+    const profileMap = await getProfiles(ids);
+
+    distributorDashboardState.buyers = relationships.map(r => ({
+      id: r.buyer_id,
+      name: profileDisplayName(profileMap[r.buyer_id], r.buyer_id),
+      status: r.status
+    }));
+    distributorDashboardState.acceptedAgents = agents.map(id => ({
+      id, name: profileDisplayName(profileMap[id], id)
+    }));
+    distributorDashboardState.pendingAgents = pendingAttachments.map(a => ({
+      id: a.id,
+      agent_id: a.agent_id,
+      name: profileDisplayName(profileMap[a.agent_id], a.agent_id),
+      created_at: a.created_at
+    }));
+
+    renderDistributorDashboard();
+  } catch (error) {
+    console.error("[GoodsbarnX/relationship] distributor dashboard load failed:", error);
+    renderDistributorDashboard();
+  }
+}
+
+async function refreshDistributorDashboard() {
+  await loadDistributorDashboardData();
+}
+
+async function approveDistributorAgent(attachmentId) {
+  if (!attachmentId || !window.sb || !currentUser) return;
+  distributorDashboardState.processingAgentId = attachmentId;
+  setDistributorStatus("Approving agent attachment...", "success");
+  try {
+    const { data, error } = await window.sb
+      .from("agent_distributor_attachments")
+      .update({ status: "accepted" })
+      .eq("id", attachmentId)
+      .eq("distributor_id", currentUser.id)
+      .eq("status", "pending")
+      .select()
+      .single();
+    if (error) throw error;
+    if (!data) throw new Error("The agent request could not be approved. It may have already been processed.");
+    setDistributorStatus("Agent attachment approved.", "success");
+    await refreshDistributorDashboard();
+  } catch (error) {
+    console.error("[GoodsbarnX/relationship] approve agent failed:", error);
+    setDistributorStatus(error.message || "Unable to approve agent attachment.", "error");
+  } finally {
+    distributorDashboardState.processingAgentId = null;
+  }
+}
+
+async function declineDistributorAgent(attachmentId) {
+  if (!attachmentId || !window.sb || !currentUser) return;
+  if (!window.confirm("Decline this agent attachment request?")) return;
+  distributorDashboardState.processingAgentId = attachmentId;
+  setDistributorStatus("Declining agent attachment...");
+  try {
+    const { data, error } = await window.sb
+      .from("agent_distributor_attachments")
+      .update({ status: "declined" })
+      .eq("id", attachmentId)
+      .eq("distributor_id", currentUser.id)
+      .eq("status", "pending")
+      .select()
+      .single();
+    if (error) throw error;
+    if (!data) throw new Error("The agent request could not be declined. It may have already been processed.");
+    setDistributorStatus("Agent attachment declined.", "success");
+    await refreshDistributorDashboard();
+  } catch (error) {
+    console.error("[GoodsbarnX/relationship] decline agent failed:", error);
+    setDistributorStatus(error.message || "Unable to decline agent attachment.", "error");
+  } finally {
+    distributorDashboardState.processingAgentId = null;
+  }
+}
+
+// ==========================================================================
+// PUBLIC API — openDistributorTools (D3)
+//
+// Previously called by app.js but never declared. Now canonical here.
+// Reveals the distributor dashboard panel and triggers its data load.
+// ==========================================================================
+
+function openDistributorTools() {
+  if (!currentUser || currentUser.role !== "distributor") return;
+  const panel = mountDistributorDashboard();
+  if (panel) panel.classList.add("active");
+  loadDistributorDashboardData();
+}
+
+// ==========================================================================
+// INITIALIZATION
+// ==========================================================================
+
+async function initRelationshipLayer() {
+  if (!window.sb) {
+    window.addEventListener("supabase-ready", () => { initRelationshipLayer(); }, { once: true });
+    return;
+  }
+  if (!currentUser) return;
+  if (relationshipLayerInitialized) return;
+
+  try {
+    if (currentUser.role === "buyer") {
+      await loadMyTradeRelationship();
+    } else if (currentUser.role === "distributor") {
+      await loadMyTradeRelationships();
+      await loadDistributorDashboardData();
+    } else if (currentUser.role === "agent") {
+      // agent.js (File 9) owns the agent-role relationship list.
+    }
+    relationshipLayerInitialized = true;
+  } catch (error) {
+    console.error("[GoodsbarnX/relationship] initRelationshipLayer failed:", error);
+  }
+}
+
+window.addEventListener("supabase-ready", () => {
+  relationshipLayerInitialized = false;
+  initRelationshipLayer();
+});
+
+window.addEventListener("auth-state-changed", (event) => {
+  if (event.detail?.user) {
+    currentUser = event.detail.user;
+    relationshipLayerInitialized = false;
+    initRelationshipLayer();
+  }
+});
+
+// Screen loader registration (Phase 2.3).
+(function registerRelationshipScreen() {
+  if (typeof registerScreenLoader !== "function") {
+    console.warn("[GoodsbarnX/relationship] registerScreenLoader unavailable; relationship screen has no loader.");
+    return;
+  }
+  registerScreenLoader("relationship", function relationshipLoader() {
+    return initRelationshipLayer();
+  });
+})();
+
+// ==========================================================================
+// GLOBAL EXPORTS
+// ==========================================================================
+
+window.loadMyTradeRelationship    = loadMyTradeRelationship;
+window.loadMyTradeRelationships   = loadMyTradeRelationships;
+window.initRelationshipLayer      = initRelationshipLayer;
+window.openEditTermsModal         = openEditTermsModal;
+window.closeEditTermsModal        = closeEditTermsModal;
+window.saveRelationshipTerms      = saveRelationshipTerms;
+window.openInviteBuyerModal       = openInviteBuyerModal;
+window.closeInviteBuyerModal      = closeInviteBuyerModal;
+window.searchBuyersForInvite      = searchBuyersForInvite;
+window.inviteBuyerToRelationship  = inviteBuyerToRelationship;
+window.openAddBuyerModal          = openAddBuyerModal;
+window.closeAddBuyerModal         = closeAddBuyerModal;
+window.submitAddBuyer             = submitAddBuyer;
+window.updateRelationshipStatus   = updateRelationshipStatus;
+window.openAssignAgentModal       = openAssignAgentModal;
+window.closeAssignAgentModal      = closeAssignAgentModal;
+window.searchAgentsForAssignment  = searchAgentsForAssignment;
+window.assignAgentToRelationship  = assignAgentToRelationship;
+window.openManagePaymentMethodsModal    = openManagePaymentMethodsModal;
+window.closeManagePaymentMethodsModal   = closeManagePaymentMethodsModal;
+window.addPaymentMethod                 = addPaymentMethod;
+window.makePaymentMethodDefault         = makePaymentMethodDefault;
+window.togglePaymentMethodActive        = togglePaymentMethodActive;
+window.openManagePreferredProductsModal = openManagePreferredProductsModal;
+window.closeManagePreferredProductsModal= closeManagePreferredProductsModal;
+window.searchDistributorProductsForPreference = searchDistributorProductsForPreference;
+window.addProductPreference             = addProductPreference;
+window.setNegotiatedPrice               = setNegotiatedPrice;
+window.removeProductPreference          = removeProductPreference;
+window.searchBuyersForAgentReferral     = searchBuyersForAgentReferral;
+window.createAgentReferredBuyerRelationship = createAgentReferredBuyerRelationship;
+window.openDistributorTools             = openDistributorTools;
+window.refreshDistributorDashboard      = refreshDistributorDashboard;
+window.approveDistributorAgent          = approveDistributorAgent;
+window.declineDistributorAgent          = declineDistributorAgent;
+
+console.log("[GoodsbarnX] relationship.js loaded.");
