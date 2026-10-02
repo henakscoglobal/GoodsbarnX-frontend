@@ -1,7 +1,8 @@
 // ==========================================================================
-// GoodsbarnX — market.js  (rev. 2)
+// GoodsbarnX — market.js  (rev. 3)
 // Marketplace: distributor discovery, buyer discovery, filtering, rendering,
-// distributor_view emission, dynamic inquiry-count ring.
+// distributor_view emission, dynamic inquiry-count ring, lifecycle-aware
+// network summary.
 // Plain global script. Loads fourth (Canon §10).
 //
 // V1.8.2.6 remediation Phase 1+2:
@@ -9,19 +10,19 @@
 //     toggleSearchClear / toggleFavourite.
 //   - Registered a "market" screen loader.
 //   - DOM lookups null-safe with named warnings.
-//   - Escaping for interpolated values inside rendered HTML.
+//   - Escaping for interpolated values.
 //
 // rev. 1 (R4-2):
-//   - Distributor and buyer card roots carry data-distributor-id /
-//     data-buyer-id so js/behaviour.js reads context via contextFromElement.
+//   - Distributor and buyer card roots carry data-* context attributes.
 //
 // rev. 2 (D33, D36):
-//   - distributor_view emitted via window.goodsbarnxBehaviourTrack when the
-//     buyer opens the Storefront or Inquire modal from a distributor card.
-//     Bounded per-session per-distributor.
-//   - Inquiry-count ring (.seal-ring .fg stroke-dashoffset and
-//     #inquiry-count-ring text) updated from the live inquiries count.
-//     No index.html change required.
+//   - distributor_view emitted via window.goodsbarnxBehaviourTrack.
+//   - Inquiry-count ring updated from the live inquiries count.
+//
+// rev. 3 (D37 / R5-2):
+//   - updateNetworkLinks() breaks the buyer relationship count out across
+//     all five Canon §6 lifecycle states rather than flattening to
+//     active/pending. Only non-zero states are shown.
 // ==========================================================================
 
 function escHtml(v) {
@@ -46,11 +47,6 @@ function warnMissingTarget(id) {
 
 // --------------------------------------------------------------------------
 // D36 — BOUNDED distributor_view EMISSION
-//
-// Tracks which distributors have already had a distributor_view emitted in
-// this page-session. Emission is one per distributor per session; further
-// clicks on the same card do not re-emit. Emission goes through
-// window.goodsbarnxBehaviourTrack (behaviour.js's canonical entry point).
 // --------------------------------------------------------------------------
 
 const __gbxMarketDistributorViewSeen = Object.create(null);
@@ -61,7 +57,6 @@ function emitDistributorView(distributorId) {
   __gbxMarketDistributorViewSeen[distributorId] = true;
 
   if (typeof window.goodsbarnxBehaviourTrack !== "function") {
-    // behaviour.js absent — do not silently drop; name it once.
     if (!__gbxMarketWarnedTargets["behaviour_track"]) {
       __gbxMarketWarnedTargets["behaviour_track"] = true;
       console.warn("[GoodsbarnX/market] goodsbarnxBehaviourTrack unavailable; distributor_view not emitted.");
@@ -78,14 +73,6 @@ function emitDistributorView(distributorId) {
 
 // --------------------------------------------------------------------------
 // D33 — INQUIRY-COUNT RING
-//
-// The hero's ring has a fixed stroke-dasharray of 150 (set in index.html).
-// This function maps the live inquiry count to a bounded ratio and updates
-// both the ring's stroke-dashoffset and the #inquiry-count-ring text.
-//
-// ROLLING_CAP is the number of inquiries at which the ring shows full.
-// It is a display constant, not a data value. If the count exceeds the cap,
-// the ring shows full and the text shows the true count.
 // --------------------------------------------------------------------------
 
 const ROLLING_CAP = 50;
@@ -97,7 +84,6 @@ function updateInquiryCountRing(count) {
   const c = Number.isFinite(Number(count)) ? Number(count) : 0;
   const ratio = ROLLING_CAP > 0 ? Math.min(1, c / ROLLING_CAP) : 0;
 
-  // stroke-dasharray is 150 (declared in index.html). Offset = 150*(1-ratio).
   if (ringFg) {
     const dashArray = 150;
     const offset = dashArray * (1 - ratio);
@@ -162,8 +148,6 @@ async function loadDistributorsAndBuyers() {
     if (!inquiryError) {
       updateInquiryCountRing(count);
     } else {
-      // Ring is not updated if the count failed. It remains at its neutral
-      // initial state from index.html. No fabricated number is written.
       console.warn("[GoodsbarnX/market] inquiry count unavailable; ring not updated.");
     }
 
@@ -239,6 +223,10 @@ async function loadPendingRequests() {
 
 // --------------------------------------------------------------------------
 // NETWORK LINKS
+//
+// rev. 3 (D37): the buyer-relationship sub-line now names every lifecycle
+// state (pending / active / paused / released / terminated) whose count is
+// non-zero. The previous "N active • M pending" binary is replaced.
 // --------------------------------------------------------------------------
 
 async function updateNetworkLinks() {
@@ -251,15 +239,33 @@ async function updateNetworkLinks() {
       .eq("distributor_id", currentUser.id);
 
     if (!relError && Array.isArray(relationships)) {
-      const activeBuyers  = relationships.filter(r => r.status === "active").length;
-      const pendingBuyers = relationships.filter(r => r.status === "pending").length;
+      const buckets = {
+        pending:    0,
+        active:     0,
+        paused:     0,
+        released:   0,
+        terminated: 0
+      };
+      let other = 0;
+      relationships.forEach(r => {
+        const s = String(r.status || "").toLowerCase();
+        if (Object.prototype.hasOwnProperty.call(buckets, s)) buckets[s]++;
+        else other++;
+      });
 
       const countEl = document.getElementById("my-buyers-count");
       if (countEl) countEl.textContent = relationships.length;
       else warnMissingTarget("my-buyers-count");
 
+      const parts = [];
+      ["active", "pending", "paused", "released", "terminated"].forEach(k => {
+        if (buckets[k] > 0) parts.push(buckets[k] + " " + k);
+      });
+      if (other > 0) parts.push(other + " other");
+      if (!parts.length) parts.push("none yet");
+
       const subEl = document.getElementById("my-buyers-sub");
-      if (subEl) subEl.textContent = activeBuyers + " active • " + pendingBuyers + " pending";
+      if (subEl) subEl.textContent = parts.join(" · ");
       else warnMissingTarget("my-buyers-sub");
     }
 
@@ -275,7 +281,7 @@ async function updateNetworkLinks() {
       else warnMissingTarget("my-agents-count");
 
       const subEl = document.getElementById("my-agents-sub");
-      if (subEl) subEl.textContent = agents.length + " active • 0 pending";
+      if (subEl) subEl.textContent = agents.length + " active · 0 pending";
       else warnMissingTarget("my-agents-sub");
     }
   } catch (error) {
@@ -365,11 +371,6 @@ function applyFilters() {
 
 // --------------------------------------------------------------------------
 // RENDER — DISTRIBUTORS
-//
-// Card root carries data-distributor-id (rev. 1).
-// Storefront button and Inquire button carry data-distributor-id and call
-// marketOpenDistributorContext which emits distributor_view (rev. 2) before
-// dispatching to the producer.
 // --------------------------------------------------------------------------
 
 function renderDistributors(list) {
@@ -448,10 +449,6 @@ function renderDistributors(list) {
 
 // --------------------------------------------------------------------------
 // marketOpenDistributorContext
-//
-// Emits distributor_view (D36) then dispatches to the correct producer.
-// Kept as a small helper so both Storefront and Inquire use the same
-// emission path and the same bound (one event per distributor per session).
 // --------------------------------------------------------------------------
 
 function marketOpenDistributorContext(distributorId, action, distributorName) {
@@ -570,4 +567,4 @@ window.openWhatsApp = openWhatsApp;
 window.marketOpenDistributorContext = marketOpenDistributorContext;
 window.updateInquiryCountRing = updateInquiryCountRing;
 
-console.log("[GoodsbarnX] market.js loaded (V1.8.2.6 rev.2)");
+console.log("[GoodsbarnX] market.js loaded (V1.8.2.6 rev.3)");
