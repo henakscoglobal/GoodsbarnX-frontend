@@ -1,26 +1,24 @@
 // ==========================================================================
-// GoodsbarnX — market.js
+// GoodsbarnX — market.js  (rev. 1)
 // Marketplace: distributor discovery, buyer discovery, filtering, rendering.
 // Plain global script. Loads fourth (Canon §10).
 //
 // V1.8.2.6 remediation Phase 1+2:
-//   - Removed duplicate updateGreeting (owner: app.js).
-//   - Removed duplicate selectCategory / clearSearch / toggleSearchClear
-//     (owner: ui.js).
-//   - Removed duplicate toggleFavourite (owner: profile.js).
-//   - Registered a "market" screen loader (Phase 2.3).
-//   - All DOM lookups null-safe with named warnings for missing targets.
-//     The payload wrote into #my-buyers-count, #my-buyers-sub, #my-agents-count,
-//     #my-agents-sub, #buyer-requests-count, #agent-requests-count,
-//     #unanswered-inquiries-count, and .attention-item .badge.* which do not
-//     exist in index-current.html. Those silent no-ops are now explicit.
-//   - Added escaping for interpolated values inside rendered HTML, closing
-//     a potential attribute-injection defect on names containing quotes.
+//   - Removed duplicate updateGreeting / selectCategory / clearSearch /
+//     toggleSearchClear / toggleFavourite.
+//   - Registered a "market" screen loader.
+//   - DOM lookups null-safe with named warnings.
+//   - Escaping for interpolated values inside rendered HTML.
+//
+// rev. 1 — R4-2 remediation:
+//   - Each distributor card carries data-distributor-id on its root element.
+//   - Each buyer card carries data-buyer-id on its root element.
+//   These are the attributes js/behaviour.js reads via contextFromElement()
+//   to populate p_distributor_id on behaviour events emitted from within
+//   the card. The buyer attribute is inert at v1.8.2.6 (buyer_behavior_events
+//   has no p_buyer_id column; the server derives buyer identity from auth.uid()
+//   under RLS), but is added for symmetry and future §7 use.
 // ==========================================================================
-
-// --------------------------------------------------------------------------
-// LOCAL ESCAPING HELPERS
-// --------------------------------------------------------------------------
 
 function escHtml(v) {
   return String(v == null ? "" : v)
@@ -35,8 +33,6 @@ function escAttr(v) {
   return escHtml(v);
 }
 
-// Cache of already-warned missing DOM targets so the console is not flooded
-// on every filter pass.
 const __gbxMarketWarnedTargets = Object.create(null);
 function warnMissingTarget(id) {
   if (__gbxMarketWarnedTargets[id]) return;
@@ -91,7 +87,6 @@ async function loadDistributorsAndBuyers() {
       else warnMissingTarget("buyer-count");
     }
 
-    // Demand signal ring — total inquiries across the network.
     const { count, error: inquiryError } = await sb
       .from("inquiries")
       .select("*", { count: "exact", head: true });
@@ -101,7 +96,6 @@ async function loadDistributorsAndBuyers() {
       else warnMissingTarget("inquiry-count-ring");
     }
 
-    // Distributor-scoped attention surfaces.
     if (currentUser && currentUser.role === "distributor") {
       await loadPendingRequests();
     }
@@ -116,7 +110,7 @@ async function loadDistributorsAndBuyers() {
 }
 
 // --------------------------------------------------------------------------
-// PENDING REQUESTS (distributor's attention surface)
+// PENDING REQUESTS
 // --------------------------------------------------------------------------
 
 async function loadPendingRequests() {
@@ -173,7 +167,7 @@ async function loadPendingRequests() {
 }
 
 // --------------------------------------------------------------------------
-// NETWORK LINKS (distributor's buyer/agent counts)
+// NETWORK LINKS
 // --------------------------------------------------------------------------
 
 async function updateNetworkLinks() {
@@ -300,6 +294,10 @@ function applyFilters() {
 
 // --------------------------------------------------------------------------
 // RENDER — DISTRIBUTORS
+//
+// rev. 1: the .manifest root carries data-distributor-id="${safeId}" so
+// js/behaviour.js's contextFromElement() can populate p_distributor_id on
+// events fired from within this card.
 // --------------------------------------------------------------------------
 
 function renderDistributors(list) {
@@ -341,7 +339,7 @@ function renderDistributors(list) {
     const safeCat   = escHtml((d.category || "LISTED").toUpperCase());
 
     return (
-      '<div class="manifest">' +
+      '<div class="manifest" data-distributor-id="' + safeId + '">' +
         '<div class="manifest-top">' +
           '<div>' +
             '<div class="m-name">' + escHtml(d.business_name || "Distributor") + '</div>' +
@@ -374,6 +372,10 @@ function renderDistributors(list) {
 
 // --------------------------------------------------------------------------
 // RENDER — BUYERS
+//
+// rev. 1: the .manifest root carries data-buyer-id="${safeId}" for symmetry
+// and future §7 use. No behaviour event currently carries a p_buyer_id
+// column; the server derives buyer identity from auth.uid() under RLS.
 // --------------------------------------------------------------------------
 
 function renderBuyers(list) {
@@ -409,7 +411,7 @@ function renderBuyers(list) {
       : "";
 
     return (
-      '<div class="manifest">' +
+      '<div class="manifest" data-buyer-id="' + safeId + '">' +
         '<div class="manifest-top">' +
           '<div>' +
             '<div class="m-name">' + escHtml(name) + '</div>' +
@@ -471,4 +473,4 @@ window.renderDistributors = renderDistributors;
 window.renderBuyers = renderBuyers;
 window.openWhatsApp = openWhatsApp;
 
-console.log("[GoodsbarnX] market.js loaded.");
+console.log("[GoodsbarnX] market.js loaded (V1.8.2.6 rev.1)");
