@@ -1,5 +1,5 @@
 // ==========================================================================
-// GoodsbarnX — market.js  (rev. 3)
+// GoodsbarnX — market.js  (rev. 4)
 // Marketplace: distributor discovery, buyer discovery, filtering, rendering,
 // distributor_view emission, dynamic inquiry-count ring, lifecycle-aware
 // network summary.
@@ -23,6 +23,12 @@
 //   - updateNetworkLinks() breaks the buyer relationship count out across
 //     all five Canon §6 lifecycle states rather than flattening to
 //     active/pending. Only non-zero states are shown.
+//
+// rev. 4 (Step 0.5 / D-18):
+//   - Server enum trade_relationship_status has six values, not five;
+//     `suspended` added to the lifecycle bucket set and to the display
+//     order. Previously suspended relationships fell into the "other"
+//     bucket and rendered as "N other".
 // ==========================================================================
 
 function escHtml(v) {
@@ -224,9 +230,12 @@ async function loadPendingRequests() {
 // --------------------------------------------------------------------------
 // NETWORK LINKS
 //
-// rev. 3 (D37): the buyer-relationship sub-line now names every lifecycle
-// state (pending / active / paused / released / terminated) whose count is
-// non-zero. The previous "N active • M pending" binary is replaced.
+// rev. 3 (D37): the buyer-relationship sub-line names every lifecycle state
+// whose count is non-zero. The previous "N active • M pending" binary is
+// replaced.
+//
+// rev. 4 (D-18): `suspended` added to the state set, matching the server
+// enum trade_relationship_status which has six values.
 // --------------------------------------------------------------------------
 
 async function updateNetworkLinks() {
@@ -244,6 +253,7 @@ async function updateNetworkLinks() {
         active:     0,
         paused:     0,
         released:   0,
+        suspended:  0,
         terminated: 0
       };
       let other = 0;
@@ -258,7 +268,7 @@ async function updateNetworkLinks() {
       else warnMissingTarget("my-buyers-count");
 
       const parts = [];
-      ["active", "pending", "paused", "released", "terminated"].forEach(k => {
+      ["active", "pending", "paused", "suspended", "released", "terminated"].forEach(k => {
         if (buckets[k] > 0) parts.push(buckets[k] + " " + k);
       });
       if (other > 0) parts.push(other + " other");
@@ -567,4 +577,4 @@ window.openWhatsApp = openWhatsApp;
 window.marketOpenDistributorContext = marketOpenDistributorContext;
 window.updateInquiryCountRing = updateInquiryCountRing;
 
-console.log("[GoodsbarnX] market.js loaded (V1.8.2.6 rev.3)");
+console.log("[GoodsbarnX] market.js loaded (V1.8.2.6 rev.4)");
