@@ -69,6 +69,9 @@ const RELATIONSHIP_EVENT_LABELS = {
   dispute_resolved:          "Dispute resolved"
 };
 
+// Phase 6 Step 0.5 / D-18: `suspended` mirrors `paused` actions per the
+// reconciliation decision. Canon §6 lists the lifecycle states; the actions
+// offered from each state are a UX decision recorded here.
 const RELATIONSHIP_ACTIONS = {
   pending: [{ label: "Activate", newStatus: "active" }],
   active:  [
@@ -76,6 +79,10 @@ const RELATIONSHIP_ACTIONS = {
     { label: "Release", newStatus: "released" }
   ],
   paused: [
+    { label: "Resume",  newStatus: "active"   },
+    { label: "Release", newStatus: "released" }
+  ],
+  suspended: [
     { label: "Resume",  newStatus: "active"   },
     { label: "Release", newStatus: "released" }
   ]
