@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GoodsbarnX — js/depletor-depletion.js
+   GoodsbarnX — js/depletor-depletion.js  (rev. 1)
    Master Stock Depletor · Stage 5 — Depletion Engine (Canon §24) +
    Depletion Feedback Loop (Canon §25).
 
@@ -7,35 +7,28 @@
    Load position: 12 (per D13). Loads after js/depletor-allocation.js,
    before js/depletor-replenishment.js.
 
+   rev. 1 — Phase 6 Step 1 / S2-i:
+     The Phase 3 delivery read from a table named stock_movements which does
+     not exist on the server. The authoritative movement record is
+     public.depletion_executions, which is RLS-enabled default-deny. This
+     revision reads via the new SECURITY DEFINER RPC
+     get_depletion_observations(p_distributor_id, p_since), which returns
+     the calling distributor's own ledger rows for a bounded window.
+
    Canon basis:
      §14  pipeline stage 5 of 7.
      §24  the engine observes whether intended depletion actually occurred.
           Predicted Depletion ≠ Actual Depletion. Actual movement becomes
           feedback.
-     §25  feedback loop: STOCK → DEMAND → OPPORTUNITY → ALLOCATION →
-          ACTION → TRANSACTION → STOCK REDUCTION → OUTCOME → LEARNING →
-          DEMAND RADAR.
-     §29  evidence integrity — depletion observation is observed evidence,
-          never inference. If S2 is unavailable, the outcome is PENDING
-          (not CONFIRMED, not NOT_OBSERVED).
+     §25  feedback loop.
+     §29  evidence integrity — depletion observation is observed evidence.
+          If the RPC is unavailable, the outcome is PENDING with a named
+          basis; the client does not fabricate an observation.
 
-   Server dependency:
-     S2  stock_movements table with at least:
-           id              uuid
-           product_id      uuid
-           distributor_id  uuid
-           delta_quantity  integer  (negative for reduction)
-           reason          text      e.g. 'sale','adjustment','return'
-           observed_at     timestamptz
-         Populated by a server-side trigger on products.stock_quantity
-         updates. The client never writes to stock_movements; it only reads.
-
-   This file owns:
-     - readStockMovements(): S2 read for the allocated products.
-     - compare(): predicted vs actual for each opportunity.
-     - classifyOutcome(): PENDING | PARTIAL | CONFIRMED | NOT_OBSERVED.
-     - buildLearningSignal(): §25 evidence-only feedback.
-     - run()                : returns the pipeline snapshot.
+   Server dependencies:
+     - public.depletion_executions (table; RLS default-deny; server-only)
+     - public.get_depletion_observations(p_distributor_id uuid,
+                                         p_since timestamptz) (RPC)
 
    This file does NOT:
      - write to the database.
@@ -54,15 +47,15 @@
   var STATE_DEPLETED  = "DEPLETED";
 
   // Canon §24 outcome taxonomy.
-  var OUTCOME_PENDING       = "PENDING";       // no observation window yet, or S2 unavailable
-  var OUTCOME_PARTIAL       = "PARTIAL";       // some but not all predicted depletion observed
-  var OUTCOME_CONFIRMED     = "CONFIRMED";     // full predicted depletion observed
-  var OUTCOME_NOT_OBSERVED  = "NOT_OBSERVED";  // observation window elapsed with zero delta
+  var OUTCOME_PENDING       = "PENDING";
+  var OUTCOME_PARTIAL       = "PARTIAL";
+  var OUTCOME_CONFIRMED     = "CONFIRMED";
+  var OUTCOME_NOT_OBSERVED  = "NOT_OBSERVED";
 
-  // The observation window during which we consider a movement attributable
-  // to a specific opportunity. Movements outside the window are not counted.
-  // This is a policy constant, declared here so it can be cited.
-  var OBSERVATION_WINDOW_MS = 30 * 24 * 3600 * 1000; // 30 days
+  // Observation window. The RPC defaults to 90 days; the client asks for
+  // 30 days to keep the read bounded to the opportunity set in flight.
+  var OBSERVATION_WINDOW_DAYS = 30;
+  var OBSERVATION_WINDOW_MS   = OBSERVATION_WINDOW_DAYS * 24 * 3600 * 1000;
 
   // ------------------------------------------------------------------------
   // SMALL HELPERS
@@ -81,83 +74,120 @@
     return isFinite(n) ? n : (fallback == null ? 0 : fallback);
   }
 
+  function lower(v) { return String(v == null ? "" : v).toLowerCase(); }
+
   // ------------------------------------------------------------------------
-  // STOCK MOVEMENT READ — Canon §24, server deliverable S2
+  // STOCK MOVEMENT READ — via RPC (S2-i)
+  //
+  // Returns one of:
+  //   { state: "AVAILABLE",  rows: [...], note: null }
+  //   { state: "EMPTY",      rows: [],    note: null }
+  //   { state: "S2_RPC_UNAVAILABLE", rows: [], note: "<error>" }
+  //   { state: "NO_PRODUCTS", rows: [],   note: null }
   // ------------------------------------------------------------------------
 
-  async function readStockMovements(userId, productIds) {
+  async function readDepletionObservations(userId, productIds) {
     if (!productIds.length) {
       return { state: "NO_PRODUCTS", rows: [], note: null };
     }
 
-    // S2 table. If the table does not exist, Supabase returns an error; we
-    // treat that as S2_UNAVAILABLE rather than a hard failure. The pipeline
-    // continues with outcomes set to PENDING.
-    var r = await sb
-      .from("stock_movements")
-      .select("id,product_id,distributor_id,delta_quantity,reason,observed_at")
-      .eq("distributor_id", userId)
-      .in("product_id", productIds)
-      .order("observed_at", { ascending: false })
-      .limit(1000);
-
-    if (r.error) {
+    if (!window.sb || typeof window.sb.rpc !== "function") {
       return {
-        state: "S2_UNAVAILABLE",
-        note: "stock_movements read failed: " + r.error.message +
-              " — server migration S2 has not been applied, or the caller " +
-              "lacks SELECT on stock_movements.",
-        rows: []
+        state: "S2_RPC_UNAVAILABLE",
+        rows: [],
+        note: "sb.rpc unavailable."
       };
     }
 
-    var rows = (r.data || []).map(function (m) {
+    var since = new Date(Date.now() - OBSERVATION_WINDOW_MS).toISOString();
+
+    var r;
+    try {
+      r = await window.sb.rpc("get_depletion_observations", {
+        p_distributor_id: userId,
+        p_since: since
+      });
+    } catch (e) {
       return {
-        id: m.id,
-        product_id: m.product_id,
-        delta_quantity: num(m.delta_quantity, 0),
-        reason: m.reason || null,
-        observed_at: m.observed_at || null,
-        observed_at_ms: parseMs(m.observed_at)
+        state: "S2_RPC_UNAVAILABLE",
+        rows: [],
+        note: (e && e.message) || String(e)
       };
-    });
+    }
+
+    if (r && r.error) {
+      return {
+        state: "S2_RPC_UNAVAILABLE",
+        rows: [],
+        note: r.error.message || String(r.error)
+      };
+    }
+
+    var payload = (r && r.data) || {};
+    var raw = Array.isArray(payload.observations) ? payload.observations : [];
+
+    // Defensive: only keep rows whose product_id is one of the requested
+    // products. This mirrors the previous behaviour and guards against a
+    // future RPC that returns a broader set.
+    var wanted = Object.create(null);
+    productIds.forEach(function (id) { wanted[id] = true; });
+
+    var rows = raw
+      .filter(function (o) { return o && wanted[o.product_id]; })
+      .map(function (o) {
+        return {
+          id:                 o.id,
+          idempotency_key:    o.idempotency_key,
+          inquiry_id:         o.inquiry_id,
+          product_id:         o.product_id,
+          buyer_id:           o.buyer_id,
+          relationship_id:    o.relationship_id,
+          route_type:         o.route_type,
+          requested_quantity: num(o.requested_quantity, 0),
+          allocatable_quantity: num(o.allocatable_quantity, 0),
+          stock_before:       num(o.stock_before, 0),
+          stock_after:        num(o.stock_after, 0),
+          status:             o.status,
+          created_at:         o.created_at || null,
+          completed_at:       o.completed_at || null,
+          created_at_ms:      parseMs(o.created_at),
+          // Observed depletion for this single movement = stock_before - stock_after.
+          observed_quantity:  Math.max(0, num(o.stock_before, 0) - num(o.stock_after, 0))
+        };
+      });
 
     if (!rows.length) {
-      return {
-        state: "EMPTY",
-        note: "No stock movements observed for these products yet.",
-        rows: []
-      };
+      return { state: "EMPTY", rows: [], note: null };
     }
-
     return { state: "AVAILABLE", rows: rows, note: null };
   }
 
   // ------------------------------------------------------------------------
   // OBSERVED DEPLETION FOR ONE OPPORTUNITY
   //
-  // Sums all negative deltas for the opportunity's product within the
-  // observation window starting at the opportunity's created_at.
-  // Positive deltas are excluded — they represent replenishment, not
-  // depletion, and counting them would misstate observed movement.
+  // Sums observed_quantity across every movement whose (inquiry_id,
+  // product_id) matches the opportunity and whose created_at falls inside
+  // the opportunity's observation window. Movements outside the window are
+  // ignored, matching the previous file's semantics.
   // ------------------------------------------------------------------------
 
   function observedDepletion(opportunity, movements) {
-    var productId = opportunity.product_id;
-    var createdMs = parseMs(opportunity.created_at) || Date.now();
-    var windowEnd = createdMs + OBSERVATION_WINDOW_MS;
+    var productId  = opportunity.product_id;
+    var inquiryId  = opportunity.inquiry_id;
+    var createdMs  = parseMs(opportunity.created_at) || Date.now();
+    var windowEnd  = createdMs + OBSERVATION_WINDOW_MS;
 
     var relevant = movements.filter(function (m) {
       if (m.product_id !== productId) return false;
-      if (m.observed_at_ms == null) return false;
-      if (m.observed_at_ms < createdMs) return false;
-      if (m.observed_at_ms > windowEnd) return false;
-      if (m.delta_quantity >= 0) return false; // only reductions count as depletion
+      if (m.inquiry_id !== inquiryId) return false;
+      if (m.created_at_ms == null) return false;
+      if (m.created_at_ms < createdMs) return false;
+      if (m.created_at_ms > windowEnd) return false;
       return true;
     });
 
     var sum = 0;
-    relevant.forEach(function (m) { sum += Math.abs(m.delta_quantity); });
+    relevant.forEach(function (m) { sum += num(m.observed_quantity, 0); });
 
     return {
       observed_quantity: sum,
@@ -174,14 +204,13 @@
   // Evidence-based. Never infers a confirmation from a non-observation.
   // ------------------------------------------------------------------------
 
-  function classifyOutcome(predicted, observed, s2State, windowClosed) {
-    if (s2State !== "AVAILABLE" && s2State !== "EMPTY") {
-      // S2 is not available. We cannot observe. This is not "not observed" —
-      // it is "not observable". Different state.
+  function classifyOutcome(predicted, observed, rpcState, windowClosed) {
+    if (rpcState === "S2_RPC_UNAVAILABLE" || rpcState === "NO_PRODUCTS") {
+      // The observation is not possible. Different from observed-zero.
       return {
         outcome: OUTCOME_PENDING,
-        reason: "S2 unavailable; observation is not possible.",
-        basis: "S2_UNAVAILABLE"
+        reason:  "Depletion observation RPC is unavailable; observation is not possible.",
+        basis:   "S2_RPC_UNAVAILABLE"
       };
     }
 
@@ -189,38 +218,34 @@
       if (windowClosed) {
         return {
           outcome: OUTCOME_NOT_OBSERVED,
-          reason: "Observation window elapsed with zero observed stock reduction.",
-          basis: "OBSERVED"
+          reason:  "Observation window elapsed with zero observed stock reduction.",
+          basis:   "OBSERVED"
         };
       }
       return {
         outcome: OUTCOME_PENDING,
-        reason: "Observation window still open; no reduction observed yet.",
-        basis: "OBSERVED"
+        reason:  "Observation window still open; no reduction observed yet.",
+        basis:   "OBSERVED"
       };
     }
 
     if (observed >= predicted) {
       return {
         outcome: OUTCOME_CONFIRMED,
-        reason: "Observed reduction meets or exceeds predicted depletion.",
-        basis: "OBSERVED"
+        reason:  "Observed reduction meets or exceeds predicted depletion.",
+        basis:   "OBSERVED"
       };
     }
 
     return {
       outcome: OUTCOME_PARTIAL,
-      reason: "Observed reduction is less than predicted depletion.",
-      basis: "OBSERVED"
+      reason:  "Observed reduction is less than predicted depletion.",
+      basis:   "OBSERVED"
     };
   }
 
   // ------------------------------------------------------------------------
   // LIFECYCLE TRANSITION — Canon §21
-  //
-  // §24 advances ALLOCATED → IN-MOTION when observed > 0, and
-  // ALLOCATED → DEPLETED when observed >= predicted. It never advances on
-  // the basis of allocation alone.
   // ------------------------------------------------------------------------
 
   function advanceState(priorState, outcome) {
@@ -232,17 +257,9 @@
 
   // ------------------------------------------------------------------------
   // LEARNING SIGNAL — Canon §25
-  //
-  // A structured record of what actually happened. It feeds back into the
-  // Demand Radar in a later revision; for V1.8.2.6 the signal is produced
-  // and consumed read-only by the conductor's panel. The shape is stable so
-  // a future behaviour-layer feedback can consume it without schema change.
   // ------------------------------------------------------------------------
 
   function buildLearningSignal(opportunity, predicted, observed, outcome, outcomeReason) {
-    // Signals are only emitted when they carry observed evidence. A
-    // PENDING outcome with S2_UNAVAILABLE carries no observation and
-    // therefore no learning.
     if (outcome === OUTCOME_PENDING) return null;
 
     return {
@@ -258,14 +275,10 @@
       outcome:            outcome,
       outcome_reason:     outcomeReason,
 
-      // Which evidence classes were present in the §17 signal that generated
-      // this opportunity — carried through so a future learning layer can
-      // correlate demand-strength bands with realized depletion.
-      demand_strength:           opportunity.evidence && opportunity.evidence.demand_strength,
-      demand_strength_reasons:   opportunity.evidence && opportunity.evidence.demand_strength_reasons,
+      demand_strength:         opportunity.evidence && opportunity.evidence.demand_strength,
+      demand_strength_reasons: opportunity.evidence && opportunity.evidence.demand_strength_reasons,
 
-      // Which pricing tier was applied — carried through from §22.
-      commercial_fit_tier:       opportunity.commercial_fit && opportunity.commercial_fit.tier,
+      commercial_fit_tier:     opportunity.commercial_fit && opportunity.commercial_fit.tier,
 
       recorded_at: nowIso()
     };
@@ -275,12 +288,12 @@
   // BUILD ONE DEPLETION RECORD
   // ------------------------------------------------------------------------
 
-  function buildDepletionRecord(opportunity, movements, s2State) {
+  function buildDepletionRecord(opportunity, movements, rpcState) {
     var predicted = num(opportunity.allocatable_quantity, 0);
     var observed = observedDepletion(opportunity, movements);
     var windowClosed = Date.now() >= (parseMs(observed.window_end) || 0);
 
-    var outcome = classifyOutcome(predicted, observed.observed_quantity, s2State, windowClosed);
+    var outcome = classifyOutcome(predicted, observed.observed_quantity, rpcState, windowClosed);
     var nextState = advanceState(opportunity.opportunity_state, outcome.outcome);
 
     var learningSignal = buildLearningSignal(
@@ -314,7 +327,6 @@
       created_at:         opportunity.created_at,
       updated_at:         nowIso(),
 
-      // Explanatory fields — carry forward.
       what:               opportunity.what,
       who:                opportunity.who,
       where:              opportunity.where,
@@ -339,13 +351,11 @@
         }
       },
 
-      // Evidence block — §22 evidence extended with §24 additions.
       evidence: Object.assign({}, opportunity.evidence, {
-        s2_state:         s2State,
+        s2_state:         rpcState,
         depletion_basis:  outcome.basis
       }),
 
-      // §25 learning signal, or null when there is no observation to learn from.
       learning_signal: learningSignal,
 
       produced_by: {
@@ -376,9 +386,6 @@
     var opportunities = (allocationSnapshot && allocationSnapshot.rows) || [];
     var allocationSnapshotAvailable = !!allocationSnapshot;
 
-    // Only ALLOCATED (and already IN-MOTION / DEPLETED, for idempotency)
-    // opportunities are subject to depletion observation. Everything else
-    // is passed through unchanged.
     var observableStates = [STATE_ALLOCATED, STATE_IN_MOTION, STATE_DEPLETED];
     var observable = opportunities.filter(function (o) {
       return observableStates.indexOf(o.opportunity_state) !== -1;
@@ -388,7 +395,7 @@
       .filter(Boolean)
       .filter(function (v, k, a) { return a.indexOf(v) === k; });
 
-    var movementsRead = await readStockMovements(user.id, productIds);
+    var movementsRead = await readDepletionObservations(user.id, productIds);
     var movements = movementsRead.rows;
 
     var observedById = Object.create(null);
@@ -429,7 +436,8 @@
         movements_state:               movementsRead.state,
         movements_note:                movementsRead.note,
         movements_count:               movements.length,
-        s2_dependency_note:            "Canon §24 requires observed stock transitions. Until server migration S2 populates stock_movements, outcome is PENDING with basis S2_UNAVAILABLE and no lifecycle transition past ALLOCATED occurs."
+        s2_source:                     "public.get_depletion_observations",
+        s2_dependency_note:            "Canon §24 requires observed stock transitions. The authoritative source is public.depletion_executions, read via the SECURITY DEFINER RPC get_depletion_observations. If the RPC is unavailable, outcome is PENDING with basis S2_RPC_UNAVAILABLE and no lifecycle transition past ALLOCATED occurs."
       }
     };
   }
@@ -444,5 +452,5 @@
     run: run
   };
 
-  console.log("[GoodsbarnX] depletor-depletion.js loaded (" + VERSION + ")");
+  console.log("[GoodsbarnX] depletar-depletion.js loaded (" + VERSION + " rev.1)");
 })();
