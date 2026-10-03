@@ -38,11 +38,14 @@ const DISPUTE_STATUS_COLORS = {
 
 const DISPUTE_OPEN_STATUSES = ["open", "pending", "under_review"];
 
+// Phase 6 Step 0.5 / D-18: added `suspended` to match the server enum
+// `trade_relationship_status` which has six values, not five.
 const RELATIONSHIP_STATUS_LABELS = {
   pending:    "Pending",
   active:     "Active",
   paused:     "Paused",
   released:   "Released",
+  suspended:  "Suspended",
   terminated: "Terminated"
 };
 
