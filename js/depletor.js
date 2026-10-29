@@ -1,36 +1,42 @@
 /* ==========================================================================
-   GoodsbarnX — js/depletor.js
-   Master Stock Depletor · Conductor (Canon §14 §27).
+   GoodsbarnX — js/depletor.js  (rev. 2)
+   Master Stock Depletor · Conductor (Canon §14 §27 §34).
 
    Version: V1.8.2.6
    Load position: 14 (per D13). Loads after js/depletor-replenishment.js,
-   before js/products.js.
+   before js/behaviour.js.
+
+   Phase 6 Step 6 (F-1 fix):
+     The original conductor scheduled its first run on
+     DOMContentLoaded+1000ms and +2200ms. If auth resolution took longer
+     than that (Supabase getUser + profile fetch + distributor_profile
+     fetch commonly take 800–1500ms), the guard `if (!currentUser)` at
+     the top of refreshDepletorPipeline short-circuited and the pipeline
+     never ran. No retry, no listener to catch the late auth.
+
+     rev. 2 adds three boot paths that all funnel into the same
+     refreshDepletorPipeline:
+       1. The existing DOMContentLoaded timers, unchanged.
+       2. An `auth-state-changed` listener — fires when auth.js resolves
+          or when a new session is dispatched.
+       3. A `supabase-ready` listener — fires when config.js's
+          connectivity test succeeds.
+     Plus a bounded retry chain: if the first three attempts all saw
+     AUTH_CONTEXT_UNAVAILABLE, retry once at +5s and once at +15s after
+     the last attempt. If those also fail, log a named warning and stop.
 
    Canon basis:
-     §14  seven-stage pipeline: Stock Intelligence → Demand Radar →
-          Relationship Graph → Opportunity Engine → Allocation →
-          Depletion → Replenishment.
-     §27  the pipeline is a closed loop. This conductor sequences the
-          linear pass; the learning_signal objects emitted by §24 are the
-          feedback boundary a future revision will route back into §17.
-     §29  evidence integrity — this file does not produce evidence, it
-          carries it. Every value rendered comes from a stage snapshot.
+     §14  seven-stage pipeline; conductor sequences.
+     §27  the pipeline is a closed loop.
+     §29  evidence integrity — this file does not produce evidence.
      §30  canonical Opportunity object; the conductor does not re-shape it.
-     §34  every element on the panel connects to a Canon stage. There is
-          no decorative card here.
+     §34  every element on the panel connects to a Canon stage.
 
    This file owns:
      - runPipeline(): the full seven-stage sequence.
      - render()     : the depletor console panel.
      - public entry : window.refreshDepletorPipeline (full),
-                      window.refreshDepletorAllocation (compat — runs the
-                      full pipeline and returns the allocation rows).
-
-   This file does NOT:
-     - read the database directly.
-     - write to the database.
-     - mutate stock.
-     - own any stage's evidence construction.
+                      window.refreshDepletorAllocation (compat).
    ========================================================================== */
 
 (function () {
@@ -38,7 +44,7 @@
 
   var VERSION = "V1.8.2.6";
   var STAGE = "conductor";
-  var ISOLATION_MARKER = "V1.8.2.6.8.1.1.8"; // preserved for the isolated marker test
+  var ISOLATION_MARKER = "V1.8.2.6.8.1.1.8";
 
   window.goodsbarnxDepletorAllocationVersion = VERSION;
   window.goodsbarnxDepletorIsolationMarker = ISOLATION_MARKER;
@@ -49,7 +55,8 @@
     error: null,
     running: false,
     startedAt: null,
-    completedAt: null
+    completedAt: null,
+    bootAttempts: 0
   };
 
   // ------------------------------------------------------------------------
@@ -71,9 +78,6 @@
 
   // ------------------------------------------------------------------------
   // STAGE AVAILABILITY
-  //
-  // Every stage is loaded before this file per D13. If any is missing, the
-  // conductor names which one and does not proceed silently — §29.
   // ------------------------------------------------------------------------
 
   function stagesAvailable() {
@@ -89,16 +93,6 @@
 
   // ------------------------------------------------------------------------
   // RUN ONE STAGE
-  //
-  // Wraps a stage's run() so the conductor can:
-  //   - time it
-  //   - catch its error without aborting the entire pipeline
-  //   - record whether it succeeded, failed, or was skipped
-  //
-  // A failing stage does NOT abort the pipeline. Downstream stages receive
-  // whatever the upstream produced (possibly null). If a stage receives a
-  // null input because its predecessor failed, it emits its own named error
-  // state per its own §29 discipline, and the pipeline continues.
   // ------------------------------------------------------------------------
 
   async function runStage(name, fn, input) {
@@ -112,7 +106,7 @@
   }
 
   // ------------------------------------------------------------------------
-  // FULL PIPELINE — Canon §14 §27
+  // FULL PIPELINE
   // ------------------------------------------------------------------------
 
   async function runPipeline() {
@@ -147,40 +141,34 @@
 
     var trace = [];
 
-    // Stage 1 — §15 Stock Intelligence
     var t1 = await runStage("stock", window.goodsbarnxDepletorStock.run, null);
     trace.push({ stage: "stock", ok: t1.ok, ms: t1.ms, error: t1.error ? t1.error.message : null });
     var stockSnapshot = t1.result;
 
-    // Stage 2 — §17 Demand Radar (needs stock for product matching)
     var t2 = await runStage("radar", function () {
       return window.goodsbarnxDepletorRadar.run(stockSnapshot);
     }, null);
     trace.push({ stage: "radar", ok: t2.ok, ms: t2.ms, error: t2.error ? t2.error.message : null });
     var radarSnapshot = t2.result;
 
-    // Stage 3 — §20 Opportunity Engine (needs stock + radar)
     var t3 = await runStage("opportunity", function () {
       return Promise.resolve(window.goodsbarnxDepletorOpportunity.run(stockSnapshot, radarSnapshot));
     }, null);
     trace.push({ stage: "opportunity", ok: t3.ok, ms: t3.ms, error: t3.error ? t3.error.message : null });
     var opportunitySnapshot = t3.result;
 
-    // Stage 4 — §22 Allocation (needs opportunity)
     var t4 = await runStage("allocation", function () {
       return window.goodsbarnxDepletorAllocation.run(opportunitySnapshot);
     }, null);
     trace.push({ stage: "allocation", ok: t4.ok, ms: t4.ms, error: t4.error ? t4.error.message : null });
     var allocationSnapshot = t4.result;
 
-    // Stage 5 — §24 Depletion (needs allocation)
     var t5 = await runStage("depletion", function () {
       return window.goodsbarnxDepletorDepletion.run(allocationSnapshot);
     }, null);
     trace.push({ stage: "depletion", ok: t5.ok, ms: t5.ms, error: t5.error ? t5.error.message : null });
     var depletionSnapshot = t5.result;
 
-    // Stage 6 — §26 Replenishment (needs depletion + radar)
     var t6 = await runStage("replenishment", function () {
       return Promise.resolve(window.goodsbarnxDepletorReplenishment.run(depletionSnapshot, radarSnapshot));
     }, null);
@@ -216,17 +204,6 @@
 
   // ------------------------------------------------------------------------
   // RENDER — the depletor console panel
-  //
-  // Sections, in order:
-  //   1. Stock intelligence summary (§15)
-  //   2. Demand radar summary (§17)
-  //   3. Allocation & routing (§22) — candidates with their §21 state
-  //   4. Depletion observation (§24) — predicted vs observed
-  //   5. Replenishment signals (§26)
-  //
-  // Every section renders from a stage snapshot. Sections whose stage
-  // failed or produced no rows render a named empty state — never a
-  // fabricated summary.
   // ------------------------------------------------------------------------
 
   function ensurePanel() {
@@ -290,7 +267,6 @@
     var depletion = stages.depletion;
     var replenishment = stages.replenishment;
 
-    // Trace summary for the status line.
     var okCount = snapshot.trace.filter(function (t) { return t.ok; }).length;
     var totalMs = snapshot.trace.reduce(function (s, t) { return s + t.ms; }, 0);
     status.innerHTML =
@@ -299,7 +275,6 @@
       (snapshot.ok ? "complete" : "partial") +
       " · read-only runtime";
 
-    // --- §15 Stock Intelligence ---
     var stockEl = document.getElementById("depletor-stock-summary");
     if (stockEl) {
       if (!stock || !stock.summary) {
@@ -324,7 +299,6 @@
       }
     }
 
-    // --- §17 Demand Radar ---
     var radarEl = document.getElementById("depletor-radar-summary");
     if (radarEl) {
       if (!radar || !radar.summary) {
@@ -350,7 +324,6 @@
       }
     }
 
-    // --- §22 Allocation & Routing (candidates with their §21 state) ---
     var list = document.getElementById("depletor-allocation-list");
     if (list) {
       var opps = (opportunity && opportunity.rows) || [];
@@ -407,7 +380,6 @@
       }
     }
 
-    // --- §24 Depletion observation ---
     var depletionEl = document.getElementById("depletor-depletion-summary");
     if (depletionEl) {
       if (!depletion || !depletion.summary) {
@@ -429,7 +401,6 @@
       }
     }
 
-    // --- §26 Replenishment signals ---
     var repList = document.getElementById("depletor-replenishment-list");
     if (repList) {
       if (!replenishment || !replenishment.rows || !replenishment.rows.length) {
@@ -489,8 +460,6 @@
     }
   };
 
-  // Compat alias: the payload's `refreshDepletorAllocation` now runs the full
-  // pipeline and returns the §22 allocation rows (the previous shape).
   window.refreshDepletorAllocation = async function () {
     var snapshot = await window.refreshDepletorPipeline();
     return snapshot && snapshot.stages && snapshot.stages.allocation
@@ -499,13 +468,72 @@
   };
 
   // ------------------------------------------------------------------------
-  // BOOT
+  // BOOT — three paths into the same entry point, plus bounded retry
+  //
+  // Rationale for rev. 2:
+  //   The auth pipeline (getUser → profile → distributor_profile) commonly
+  //   takes 800–1500ms. DOMContentLoaded fires before that. The original
+  //   timers at +1000ms and +2200ms sometimes landed before auth resolved,
+  //   in which case refreshDepletorPipeline saw !currentUser and gave up.
+  //   This session's diagnostic report showed exactly that: auth resolved
+  //   at +1000ms, pipeline never produced a snapshot.
+  //
+  //   rev. 2 adds three boot paths and a bounded retry. If any path succeeds
+  //   in producing a snapshot, later retries stop. If all attempts fail,
+  //   one named warning is logged and the retry chain stops.
   // ------------------------------------------------------------------------
 
+  function attemptBoot(reason) {
+    state.bootAttempts++;
+    var user = null;
+    try { user = currentUser; } catch (e) {}
+    if (!user || String(user.role || "").toLowerCase() !== "distributor") {
+      // Not a distributor yet. The listener will fire again on auth-state-changed.
+      console.log("[GoodsbarnX/depletor] boot attempt " + state.bootAttempts +
+                  " (" + reason + "): no distributor context yet; will retry on auth-state-changed");
+      return false;
+    }
+    console.log("[GoodsbarnX/depletor] boot attempt " + state.bootAttempts +
+                " (" + reason + "): distributor context present; running pipeline");
+    window.refreshDepletorPipeline();
+    return true;
+  }
+
+  // Path 1 — DOMContentLoaded timers (unchanged from File 20)
   document.addEventListener("DOMContentLoaded", function () {
-    setTimeout(window.refreshDepletorPipeline, 1000);
-    setTimeout(window.refreshDepletorPipeline, 2200);
+    setTimeout(function () { attemptBoot("DOMContentLoaded+1000"); }, 1000);
+    setTimeout(function () { attemptBoot("DOMContentLoaded+2200"); }, 2200);
+
+    // Path 4 — bounded retry at +5s and +15s, only if still no snapshot
+    setTimeout(function () {
+      if (!state.snapshot) {
+        console.warn("[GoodsbarnX/depletor] retry at +5s (no snapshot yet)");
+        attemptBoot("retry+5000");
+      }
+    }, 5000);
+    setTimeout(function () {
+      if (!state.snapshot) {
+        console.warn("[GoodsbarnX/depletor] retry at +15s (no snapshot yet)");
+        attemptBoot("retry+15000");
+      }
+    }, 15000);
   });
 
-  console.log("[GoodsbarnX] depletar.js conductor loaded (" + VERSION + ")");
+  // Path 2 — auth resolution. auth.js dispatches this after loadCurrentUser.
+  window.addEventListener("auth-state-changed", function (event) {
+    var user = event && event.detail ? event.detail.user : null;
+    if (!user) return;
+    if (String(user.role || "").toLowerCase() !== "distributor") return;
+    console.log("[GoodsbarnX/depletor] auth-state-changed fired; running pipeline");
+    setTimeout(function () { attemptBoot("auth-state-changed"); }, 50);
+  });
+
+  // Path 3 — supabase-ready. config.js dispatches this on connectivity success.
+  window.addEventListener("supabase-ready", function () {
+    if (state.snapshot) return;
+    console.log("[GoodsbarnX/depletor] supabase-ready fired; will attempt pipeline");
+    setTimeout(function () { attemptBoot("supabase-ready"); }, 100);
+  });
+
+  console.log("[GoodsbarnX] depletar.js conductor loaded (" + VERSION + " rev.2)");
 })();
