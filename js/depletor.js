@@ -1,27 +1,27 @@
 /* ==========================================================================
-   GoodsbarnX — js/depletor.js  (rev. 3)
+   GoodsbarnX — js/depletor.js  (rev. 4)
    Master Stock Depletor · Conductor (Canon §14 §27 §34).
 
    Version: V1.8.2.6
    Load position: 14 (per D13). Loads after js/depletor-replenishment.js,
    before js/behaviour.js.
 
-   Phase 6 Step 6 (F-1 fix, rev. 2):
-     Pipeline boot timing. DOMContentLoaded timers may run before auth
-     resolves; rev. 2 adds auth-state-changed and supabase-ready listeners
-     plus a bounded retry chain.
+   rev. 2 — F-1 fix: pipeline boot timing (auth-state-changed and
+   supabase-ready listeners, plus bounded retry).
 
-   Phase 6 Step 7 (F-3 fix, rev. 3):
-     When allocation produces routable opportunities that are not allocated,
-     the panel previously showed an opaque message. rev. 3 reads
-     evidence.commercial_constraints from allocation.rows and surfaces the
-     blocking reason per opportunity — MOQ shortfall with the actual
-     numbers, or a demanded/available mismatch, or the named next_action.
+   rev. 3 — F-3 fix: allocation panel shows per-opportunity MOQ/stock
+   shortfall instead of the opaque "not yet allocated" message.
+
+   rev. 4 — F-12 fix: render() now removes the `hidden` attribute from
+   #depletor-console after successful render for a distributor. Previously
+   the panel was populated but never un-hidden, so its content was
+   invisible in production and the distributor dashboard's "Open" button
+   scrolled to a display:none element (a silent no-op). The panel is now
+   revealed as soon as the pipeline produces a snapshot.
 
    Canon basis:
      §14  pipeline stage sequencing.
-     §22  allocation / matching. The constraint evaluation belongs to §22;
-              the panel's job is to surface what §22 decided, not to decide.
+     §22  allocation / matching. §22 decides; the panel describes.
      §34  every element on the panel connects to a Canon stage.
    ========================================================================== */
 
@@ -65,6 +65,14 @@
   function num(v, fallback) {
     var n = Number(v);
     return isFinite(n) ? n : (fallback == null ? 0 : fallback);
+  }
+
+  function isDistributor() {
+    try {
+      return !!(currentUser && String(currentUser.role || "").toLowerCase() === "distributor");
+    } catch (e) {
+      return false;
+    }
   }
 
   // ------------------------------------------------------------------------
@@ -121,9 +129,7 @@
       return null;
     }
 
-    var user = null;
-    try { user = currentUser; } catch (e) {}
-    if (!user || String(user.role || "").toLowerCase() !== "distributor") {
+    if (!isDistributor()) {
       state.error = new Error("AUTH_CONTEXT_UNAVAILABLE");
       state.running = false;
       state.completedAt = new Date().toISOString();
@@ -194,7 +200,7 @@
   }
 
   // ------------------------------------------------------------------------
-  // RENDER — the depletor console panel
+  // RENDER
   // ------------------------------------------------------------------------
 
   function ensurePanel() {
@@ -237,14 +243,40 @@
   }
 
   // ------------------------------------------------------------------------
-  // F-3: render the reason a routing-ready opportunity is not allocated
+  // F-12: reveal the panel once it has real content for a distributor.
   //
-  // Reads allocation.rows (which §22 populates with evidence.commercial_
-  // constraints per opportunity). For each routing-ready row that did not
-  // allocate, show the specific reason: MOQ shortfall with the actual
-  // numbers, or a demanded/available mismatch, or the named next_action.
+  // The section carries `hidden` in index.html (to prevent a non-distributor
+  // session from briefly flashing an empty panel). Nothing in the codebase
+  // ever removed that attribute. The consequence: the panel was always
+  // populated but permanently display:none, and the distributor dashboard's
+  // "Open" button — which calls scrollIntoView on the panel — had no visible
+  // element to scroll to.
   //
-  // §22 owns the decision. This function only reads and describes it.
+  // removeHiddenIfReady() is called from render() once a real snapshot is
+  // present. It only acts when:
+  //   - #depletor-console exists
+  //   - the current user is a distributor
+  //   - the panel's status line has real text (not the "Waiting…" placeholder)
+  // ------------------------------------------------------------------------
+
+  function removeHiddenIfReady() {
+    var root = document.getElementById("depletor-console");
+    if (!root) return;
+    if (!isDistributor()) return;
+
+    var status = document.getElementById("depletor-allocation-status");
+    if (!status) return;
+    var text = String(status.textContent || "").trim();
+    if (!text || text.indexOf("Waiting for") === 0) return;
+
+    if (root.hasAttribute("hidden")) {
+      root.removeAttribute("hidden");
+      console.log("[GoodsbarnX/depletor] panel revealed for distributor");
+    }
+  }
+
+  // ------------------------------------------------------------------------
+  // F-3: describe the reason a routing-ready opportunity is not allocated
   // ------------------------------------------------------------------------
 
   function describeAllocationBlocker(row) {
@@ -429,9 +461,6 @@
             '</div>';
           }).join("");
       } else {
-        // F-3: routable opportunities exist but §22 did not allocate any.
-        // Read allocation.rows, filter for ROUTING-READY, and describe
-        // each row's blocking reason.
         var routableAllocatedRows = allocated.filter(function (o) {
           return o.opportunity_state === "ROUTING-READY";
         });
@@ -486,6 +515,9 @@
           }).join("");
       }
     }
+
+    // F-12: after all sections are populated, reveal the panel.
+    removeHiddenIfReady();
   }
 
   // ------------------------------------------------------------------------
@@ -496,9 +528,7 @@
     var root = document.getElementById("depletor-console");
     if (!root) { depletWarnMissing("depletor-console"); return null; }
 
-    var user = null;
-    try { user = currentUser; } catch (e) {}
-    if (!user || String(user.role || "").toLowerCase() !== "distributor") {
+    if (!isDistributor()) {
       state.error = new Error("AUTH_CONTEXT_UNAVAILABLE");
       state.snapshot = null;
       render(null);
@@ -527,14 +557,12 @@
   };
 
   // ------------------------------------------------------------------------
-  // BOOT — three paths into the same entry point, plus bounded retry
+  // BOOT
   // ------------------------------------------------------------------------
 
   function attemptBoot(reason) {
     state.bootAttempts++;
-    var user = null;
-    try { user = currentUser; } catch (e) {}
-    if (!user || String(user.role || "").toLowerCase() !== "distributor") {
+    if (!isDistributor()) {
       console.log("[GoodsbarnX/depletor] boot attempt " + state.bootAttempts +
                   " (" + reason + "): no distributor context yet; will retry on auth-state-changed");
       return false;
@@ -577,5 +605,5 @@
     setTimeout(function () { attemptBoot("supabase-ready"); }, 100);
   });
 
-  console.log("[GoodsbarnX] depletar.js conductor loaded (" + VERSION + " rev.3)");
+  console.log("[GoodsbarnX] depletar.js conductor loaded (" + VERSION + " rev.4)");
 })();
