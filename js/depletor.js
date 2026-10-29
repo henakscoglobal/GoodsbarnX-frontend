@@ -1,23 +1,30 @@
 /* ==========================================================================
-   GoodsbarnX — js/depletor.js  (rev. 4)
+   GoodsbarnX — js/depletor.js  (rev. 5)
    Master Stock Depletor · Conductor (Canon §14 §27 §34).
 
    Version: V1.8.2.6
    Load position: 14 (per D13). Loads after js/depletor-replenishment.js,
    before js/behaviour.js.
 
-   rev. 2 — F-1 fix: pipeline boot timing (auth-state-changed and
-   supabase-ready listeners, plus bounded retry).
-
+   rev. 2 — F-1 fix: pipeline boot timing.
    rev. 3 — F-3 fix: allocation panel shows per-opportunity MOQ/stock
-   shortfall instead of the opaque "not yet allocated" message.
-
-   rev. 4 — F-12 fix: render() now removes the `hidden` attribute from
-   #depletor-console after successful render for a distributor. Previously
-   the panel was populated but never un-hidden, so its content was
-   invisible in production and the distributor dashboard's "Open" button
-   scrolled to a display:none element (a silent no-op). The panel is now
-   revealed as soon as the pipeline produces a snapshot.
+                       shortfall instead of the opaque "not yet allocated".
+   rev. 4 — F-12 fix: render() removes the `hidden` attribute after
+                       successful render for a distributor.
+   rev. 5 — Collapsible panel:
+     - Header toggle (chevron) collapses/expands the panel.
+     - Closed by default; state persists in localStorage under
+       gbx_depletor_console_state ("open" | "closed").
+     - Collapsed strip shows a live summary:
+         "13 signals · 4 allocated · 14 restock"
+       so the distributor can decide before expanding.
+     - Distributor dashboard's "Open" button (in relationship.js) still
+       calls showScreen + scrollIntoView on the panel. When the panel is
+       collapsed at that moment, this module expands it so the user sees
+       content. Expand also scrolls the panel header into view.
+     - Chevron rotates 180° between states.
+     - Backward compatible: if localStorage is unavailable, defaults to
+       closed and does not throw.
 
    Canon basis:
      §14  pipeline stage sequencing.
@@ -31,6 +38,7 @@
   var VERSION = "V1.8.2.6";
   var STAGE = "conductor";
   var ISOLATION_MARKER = "V1.8.2.6.8.1.1.8";
+  var STORAGE_KEY = "gbx_depletor_console_state";
 
   window.goodsbarnxDepletorAllocationVersion = VERSION;
   window.goodsbarnxDepletorIsolationMarker = ISOLATION_MARKER;
@@ -42,7 +50,8 @@
     running: false,
     startedAt: null,
     completedAt: null,
-    bootAttempts: 0
+    bootAttempts: 0,
+    collapsed: true
   };
 
   // ------------------------------------------------------------------------
@@ -76,6 +85,25 @@
   }
 
   // ------------------------------------------------------------------------
+  // PERSISTENCE — collapse/expand state
+  // ------------------------------------------------------------------------
+
+  function readCollapseState() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw === "open") return false;  // not collapsed
+      if (raw === "closed") return true; // collapsed
+    } catch (e) {}
+    return true; // default: collapsed
+  }
+
+  function writeCollapseState(collapsed) {
+    try {
+      localStorage.setItem(STORAGE_KEY, collapsed ? "closed" : "open");
+    } catch (e) {}
+  }
+
+  // ------------------------------------------------------------------------
   // STAGE AVAILABILITY
   // ------------------------------------------------------------------------
 
@@ -89,10 +117,6 @@
       replenishment: !!(window.goodsbarnxDepletorReplenishment && typeof window.goodsbarnxDepletorReplenishment.run === "function")
     };
   }
-
-  // ------------------------------------------------------------------------
-  // RUN ONE STAGE
-  // ------------------------------------------------------------------------
 
   async function runStage(name, fn, input) {
     var t0 = Date.now();
@@ -200,7 +224,33 @@
   }
 
   // ------------------------------------------------------------------------
-  // RENDER
+  // HEADER SUMMARY — live counts for the collapsed strip
+  // ------------------------------------------------------------------------
+
+  function buildHeaderSummary(snapshot) {
+    if (!snapshot || !snapshot.stages) return "";
+    var radar = snapshot.stages.radar;
+    var allocation = snapshot.stages.allocation;
+    var replenishment = snapshot.stages.replenishment;
+
+    var signals = (radar && radar.summary && radar.summary.signalCount) || 0;
+    var allocated = (allocation && allocation.summary && allocation.summary.allocatedCount) || 0;
+    var restock = 0;
+    if (replenishment && Array.isArray(replenishment.rows)) {
+      restock = replenishment.rows.filter(function (s) {
+        return s.signal_type === "RESTOCK_NOW" || s.signal_type === "RESTOCK_SOON";
+      }).length;
+    }
+
+    var parts = [];
+    parts.push(signals + " signal" + (signals === 1 ? "" : "s"));
+    parts.push(allocated + " allocated");
+    if (restock > 0) parts.push(restock + " restock");
+    return parts.join(" · ");
+  }
+
+  // ------------------------------------------------------------------------
+  // PANEL SHELL — header with toggle, body wrapping the section renderers
   // ------------------------------------------------------------------------
 
   function ensurePanel() {
@@ -210,23 +260,36 @@
     var existing = document.getElementById("depletor-allocation-runtime");
     if (existing) return existing;
 
+    // Initial collapse state from localStorage (default: closed).
+    state.collapsed = readCollapseState();
+
     var s = document.createElement("section");
     s.id = "depletor-allocation-runtime";
-    s.className = "depletor-allocation-runtime";
+    s.className = "depletor-allocation-runtime" + (state.collapsed ? " collapsed" : "");
+
     s.innerHTML =
-      '<div class="depletor-heading">' +
-        '<div>' +
+      // Header — always visible. Contains title, chevron, and refresh.
+      '<div class="depletor-header" role="button" tabindex="0">' +
+        '<div class="depletor-header-left">' +
           '<span class="intel-label">MASTER STOCK DEPLETOR</span>' +
-          '<h3>Pipeline output</h3>' +
+          '<div class="depletor-header-title">Pipeline output</div>' +
+          '<div class="depletor-header-summary" id="depletor-header-summary">Waiting for evidence…</div>' +
         '</div>' +
-        '<button type="button" id="depletor-allocation-refresh">Refresh</button>' +
+        '<div class="depletor-header-right">' +
+          '<button type="button" id="depletor-allocation-refresh" class="depletor-refresh-btn" title="Refresh">↻</button>' +
+          '<span class="depletor-chevron" aria-hidden="true">⌄</span>' +
+        '</div>' +
       '</div>' +
-      '<div id="depletor-allocation-status" class="depletor-empty">Waiting for pipeline evidence…</div>' +
-      '<div id="depletor-stock-summary" class="depletor-empty">Stock intelligence not yet run.</div>' +
-      '<div id="depletor-radar-summary" class="depletor-empty">Demand radar not yet run.</div>' +
-      '<div id="depletor-allocation-list" class="depletor-opportunities"></div>' +
-      '<div id="depletor-depletion-summary" class="depletor-empty">Depletion observation not yet run.</div>' +
-      '<div id="depletor-replenishment-list" class="depletor-opportunities"></div>';
+
+      // Body — hidden when the panel is collapsed.
+      '<div class="depletor-body">' +
+        '<div id="depletor-allocation-status" class="depletor-empty">Waiting for pipeline evidence…</div>' +
+        '<div id="depletor-stock-summary" class="depletor-empty">Stock intelligence not yet run.</div>' +
+        '<div id="depletor-radar-summary" class="depletor-empty">Demand radar not yet run.</div>' +
+        '<div id="depletor-allocation-list" class="depletor-opportunities"></div>' +
+        '<div id="depletor-depletion-summary" class="depletor-empty">Depletion observation not yet run.</div>' +
+        '<div id="depletor-replenishment-list" class="depletor-opportunities"></div>' +
+      '</div>';
 
     var opportunitiesBox = document.getElementById("depletor-opportunities");
     if (opportunitiesBox && opportunitiesBox.parentNode) {
@@ -235,28 +298,67 @@
       root.appendChild(s);
     }
 
+    // Header click / keyboard toggles collapse.
+    var header = s.querySelector(".depletor-header");
+    if (header) {
+      header.addEventListener("click", function (e) {
+        // Ignore clicks on the refresh button; it has its own handler.
+        if (e.target && e.target.id === "depletor-allocation-refresh") return;
+        toggleCollapsed();
+      });
+      header.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggleCollapsed();
+        }
+      });
+    }
+
     var refreshBtn = document.getElementById("depletor-allocation-refresh");
     if (refreshBtn) {
-      refreshBtn.addEventListener("click", function () { window.refreshDepletorPipeline(); });
+      refreshBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        window.refreshDepletorPipeline();
+      });
     }
+
     return s;
   }
 
+  function toggleCollapsed() {
+    state.collapsed = !state.collapsed;
+    writeCollapseState(state.collapsed);
+    applyCollapsed();
+    if (!state.collapsed) {
+      // On expand, scroll the panel header into view.
+      setTimeout(function () {
+        var panel = document.getElementById("depletor-allocation-runtime");
+        var header = panel && panel.querySelector(".depletor-header");
+        if (header) header.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 60);
+    }
+  }
+
+  function applyCollapsed() {
+    var panel = document.getElementById("depletor-allocation-runtime");
+    if (!panel) return;
+    if (state.collapsed) panel.classList.add("collapsed");
+    else panel.classList.remove("collapsed");
+  }
+
+  // Public: called by the distributor dashboard's "Open" button via
+  // relationship.js before scrolling to the panel, so the intent "show
+  // me the depletor" always reveals the content.
+  window.goodsbarnxDepletorExpand = function () {
+    ensurePanel();
+    state.collapsed = false;
+    writeCollapseState(false);
+    applyCollapsed();
+  };
+
   // ------------------------------------------------------------------------
-  // F-12: reveal the panel once it has real content for a distributor.
-  //
-  // The section carries `hidden` in index.html (to prevent a non-distributor
-  // session from briefly flashing an empty panel). Nothing in the codebase
-  // ever removed that attribute. The consequence: the panel was always
-  // populated but permanently display:none, and the distributor dashboard's
-  // "Open" button — which calls scrollIntoView on the panel — had no visible
-  // element to scroll to.
-  //
-  // removeHiddenIfReady() is called from render() once a real snapshot is
-  // present. It only acts when:
-  //   - #depletor-console exists
-  //   - the current user is a distributor
-  //   - the panel's status line has real text (not the "Waiting…" placeholder)
+  // REVEAL — F-12 — remove `hidden` on the outer #depletor-console once the
+  // panel has real content for a distributor.
   // ------------------------------------------------------------------------
 
   function removeHiddenIfReady() {
@@ -346,6 +448,8 @@
       status.textContent = message === "AUTH_CONTEXT_UNAVAILABLE"
         ? "Waiting for authenticated distributor context…"
         : "Depletor pipeline unavailable. " + (message || "See console for details.");
+      var summaryEl0 = document.getElementById("depletor-header-summary");
+      if (summaryEl0) summaryEl0.textContent = "Pipeline unavailable";
       return;
     }
 
@@ -356,6 +460,10 @@
     var radar = stages.radar;
     var depletion = stages.depletion;
     var replenishment = stages.replenishment;
+
+    // Header summary line (live counts for collapsed strip).
+    var summaryEl = document.getElementById("depletor-header-summary");
+    if (summaryEl) summaryEl.textContent = buildHeaderSummary(snapshot) || "No signals yet";
 
     var okCount = snapshot.trace.filter(function (t) { return t.ok; }).length;
     var totalMs = snapshot.trace.reduce(function (s, t) { return s + t.ms; }, 0);
@@ -516,7 +624,6 @@
       }
     }
 
-    // F-12: after all sections are populated, reveal the panel.
     removeHiddenIfReady();
   }
 
@@ -605,5 +712,5 @@
     setTimeout(function () { attemptBoot("supabase-ready"); }, 100);
   });
 
-  console.log("[GoodsbarnX] depletar.js conductor loaded (" + VERSION + " rev.4)");
+  console.log("[GoodsbarnX] depletar.js conductor loaded (" + VERSION + " rev.5)");
 })();
