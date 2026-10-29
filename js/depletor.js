@@ -1,42 +1,28 @@
 /* ==========================================================================
-   GoodsbarnX — js/depletor.js  (rev. 2)
+   GoodsbarnX — js/depletor.js  (rev. 3)
    Master Stock Depletor · Conductor (Canon §14 §27 §34).
 
    Version: V1.8.2.6
    Load position: 14 (per D13). Loads after js/depletor-replenishment.js,
    before js/behaviour.js.
 
-   Phase 6 Step 6 (F-1 fix):
-     The original conductor scheduled its first run on
-     DOMContentLoaded+1000ms and +2200ms. If auth resolution took longer
-     than that (Supabase getUser + profile fetch + distributor_profile
-     fetch commonly take 800–1500ms), the guard `if (!currentUser)` at
-     the top of refreshDepletorPipeline short-circuited and the pipeline
-     never ran. No retry, no listener to catch the late auth.
+   Phase 6 Step 6 (F-1 fix, rev. 2):
+     Pipeline boot timing. DOMContentLoaded timers may run before auth
+     resolves; rev. 2 adds auth-state-changed and supabase-ready listeners
+     plus a bounded retry chain.
 
-     rev. 2 adds three boot paths that all funnel into the same
-     refreshDepletorPipeline:
-       1. The existing DOMContentLoaded timers, unchanged.
-       2. An `auth-state-changed` listener — fires when auth.js resolves
-          or when a new session is dispatched.
-       3. A `supabase-ready` listener — fires when config.js's
-          connectivity test succeeds.
-     Plus a bounded retry chain: if the first three attempts all saw
-     AUTH_CONTEXT_UNAVAILABLE, retry once at +5s and once at +15s after
-     the last attempt. If those also fail, log a named warning and stop.
+   Phase 6 Step 7 (F-3 fix, rev. 3):
+     When allocation produces routable opportunities that are not allocated,
+     the panel previously showed an opaque message. rev. 3 reads
+     evidence.commercial_constraints from allocation.rows and surfaces the
+     blocking reason per opportunity — MOQ shortfall with the actual
+     numbers, or a demanded/available mismatch, or the named next_action.
 
    Canon basis:
-     §14  seven-stage pipeline; conductor sequences.
-     §27  the pipeline is a closed loop.
-     §29  evidence integrity — this file does not produce evidence.
-     §30  canonical Opportunity object; the conductor does not re-shape it.
+     §14  pipeline stage sequencing.
+     §22  allocation / matching. The constraint evaluation belongs to §22;
+              the panel's job is to surface what §22 decided, not to decide.
      §34  every element on the panel connects to a Canon stage.
-
-   This file owns:
-     - runPipeline(): the full seven-stage sequence.
-     - render()     : the depletor console panel.
-     - public entry : window.refreshDepletorPipeline (full),
-                      window.refreshDepletorAllocation (compat).
    ========================================================================== */
 
 (function () {
@@ -74,6 +60,11 @@
     if (__depletorWarned[id]) return;
     __depletorWarned[id] = true;
     console.warn("[GoodsbarnX/depletor] DOM target #" + id + " is missing.");
+  }
+
+  function num(v, fallback) {
+    var n = Number(v);
+    return isFinite(n) ? n : (fallback == null ? 0 : fallback);
   }
 
   // ------------------------------------------------------------------------
@@ -245,6 +236,73 @@
     return s;
   }
 
+  // ------------------------------------------------------------------------
+  // F-3: render the reason a routing-ready opportunity is not allocated
+  //
+  // Reads allocation.rows (which §22 populates with evidence.commercial_
+  // constraints per opportunity). For each routing-ready row that did not
+  // allocate, show the specific reason: MOQ shortfall with the actual
+  // numbers, or a demanded/available mismatch, or the named next_action.
+  //
+  // §22 owns the decision. This function only reads and describes it.
+  // ------------------------------------------------------------------------
+
+  function describeAllocationBlocker(row) {
+    var e = row.evidence || {};
+    var constraints = e.commercial_constraints || {};
+    var demanded = num(row.demanded_quantity, 0);
+    var available = num(row.stock_quantity, 0);
+    var moq = num(constraints.moq, 1);
+    var moqOk = constraints.moq_satisfied === true;
+    var productLabel = row.what || ("Product " + (row.product_id || "?"));
+
+    var lines = [];
+
+    if (!moqOk) {
+      var shortfall = Math.max(0, moq - demanded);
+      lines.push(
+        productLabel + " — demanded " + demanded.toLocaleString() +
+        ", MOQ " + moq.toLocaleString() +
+        " (shortfall " + shortfall.toLocaleString() + ")"
+      );
+    } else if (demanded > 0 && available < demanded) {
+      lines.push(
+        productLabel + " — demanded " + demanded.toLocaleString() +
+        ", stock " + available.toLocaleString() +
+        " (shortfall " + Math.max(0, demanded - available).toLocaleString() + ")"
+      );
+    } else if (demanded === 0) {
+      lines.push(productLabel + " — demanded quantity unknown");
+    } else {
+      lines.push(productLabel + " — not allocated; see next action");
+    }
+
+    if (row.next_action) {
+      lines.push("Next action: " + row.next_action);
+    }
+
+    return lines;
+  }
+
+  function renderAllocationBlockers(routableRows) {
+    if (!routableRows.length) {
+      return '<div class="depletor-empty">No opportunity reached ROUTING-READY.</div>';
+    }
+    var blocks = routableRows.slice(0, 6).map(function (row) {
+      var lines = describeAllocationBlocker(row);
+      return '<div class="opportunity">' +
+        '<div class="op-icon">⊘</div>' +
+        '<div class="op-copy">' +
+          '<div class="op-name">' + esc(lines[0] || "Routing-ready; not allocated") + '</div>' +
+          (lines.slice(1).map(function (l) {
+            return '<div class="op-detail">' + esc(l) + '</div>';
+          }).join("")) +
+        '</div>' +
+      '</div>';
+    }).join("");
+    return blocks;
+  }
+
   function render(snapshot) {
     ensurePanel();
 
@@ -337,7 +395,7 @@
 
       if (!opps.length) {
         list.innerHTML = '<div class="depletor-empty">No evidence-backed opportunity yet.</div>';
-      } else {
+      } else if (allocatedOnly.length) {
         list.innerHTML =
           allocatedOnly.slice(0, 6).map(function (o) {
             var isReady = o.opportunity_state === "ALLOCATED" || o.opportunity_state === "IN-MOTION" || o.opportunity_state === "DEPLETED";
@@ -369,14 +427,15 @@
                 '</div>' +
               '</div>' +
             '</div>';
-          }).join("") +
-          (!allocatedOnly.length
-            ? '<div class="depletor-empty">' +
-                (routable.length
-                  ? routable.length + ' opportunity(ies) are routing-ready but not yet allocated.'
-                  : 'No opportunity reached ROUTING-READY.') +
-              '</div>'
-            : "");
+          }).join("");
+      } else {
+        // F-3: routable opportunities exist but §22 did not allocate any.
+        // Read allocation.rows, filter for ROUTING-READY, and describe
+        // each row's blocking reason.
+        var routableAllocatedRows = allocated.filter(function (o) {
+          return o.opportunity_state === "ROUTING-READY";
+        });
+        list.innerHTML = renderAllocationBlockers(routableAllocatedRows);
       }
     }
 
@@ -469,18 +528,6 @@
 
   // ------------------------------------------------------------------------
   // BOOT — three paths into the same entry point, plus bounded retry
-  //
-  // Rationale for rev. 2:
-  //   The auth pipeline (getUser → profile → distributor_profile) commonly
-  //   takes 800–1500ms. DOMContentLoaded fires before that. The original
-  //   timers at +1000ms and +2200ms sometimes landed before auth resolved,
-  //   in which case refreshDepletorPipeline saw !currentUser and gave up.
-  //   This session's diagnostic report showed exactly that: auth resolved
-  //   at +1000ms, pipeline never produced a snapshot.
-  //
-  //   rev. 2 adds three boot paths and a bounded retry. If any path succeeds
-  //   in producing a snapshot, later retries stop. If all attempts fail,
-  //   one named warning is logged and the retry chain stops.
   // ------------------------------------------------------------------------
 
   function attemptBoot(reason) {
@@ -488,7 +535,6 @@
     var user = null;
     try { user = currentUser; } catch (e) {}
     if (!user || String(user.role || "").toLowerCase() !== "distributor") {
-      // Not a distributor yet. The listener will fire again on auth-state-changed.
       console.log("[GoodsbarnX/depletor] boot attempt " + state.bootAttempts +
                   " (" + reason + "): no distributor context yet; will retry on auth-state-changed");
       return false;
@@ -499,12 +545,10 @@
     return true;
   }
 
-  // Path 1 — DOMContentLoaded timers (unchanged from File 20)
   document.addEventListener("DOMContentLoaded", function () {
     setTimeout(function () { attemptBoot("DOMContentLoaded+1000"); }, 1000);
     setTimeout(function () { attemptBoot("DOMContentLoaded+2200"); }, 2200);
 
-    // Path 4 — bounded retry at +5s and +15s, only if still no snapshot
     setTimeout(function () {
       if (!state.snapshot) {
         console.warn("[GoodsbarnX/depletor] retry at +5s (no snapshot yet)");
@@ -519,7 +563,6 @@
     }, 15000);
   });
 
-  // Path 2 — auth resolution. auth.js dispatches this after loadCurrentUser.
   window.addEventListener("auth-state-changed", function (event) {
     var user = event && event.detail ? event.detail.user : null;
     if (!user) return;
@@ -528,12 +571,11 @@
     setTimeout(function () { attemptBoot("auth-state-changed"); }, 50);
   });
 
-  // Path 3 — supabase-ready. config.js dispatches this on connectivity success.
   window.addEventListener("supabase-ready", function () {
     if (state.snapshot) return;
     console.log("[GoodsbarnX/depletor] supabase-ready fired; will attempt pipeline");
     setTimeout(function () { attemptBoot("supabase-ready"); }, 100);
   });
 
-  console.log("[GoodsbarnX] depletar.js conductor loaded (" + VERSION + " rev.2)");
+  console.log("[GoodsbarnX] depletar.js conductor loaded (" + VERSION + " rev.3)");
 })();
