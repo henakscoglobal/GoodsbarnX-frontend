@@ -1,33 +1,29 @@
 /* ==========================================================================
-   GoodsbarnX — js/behaviour.js  (rev. 1)
+   GoodsbarnX — js/behaviour.js  (rev. 2)
    Buyer behaviour instrumentation (Canon §28, §29, D1, D11, D25–D28).
 
    Version: V1.8.2.6
-   Load position: 15 (per D25). Loaded after the seven MSD files, before
-   js/products.js.
+   Load position: 15 (per D25).
 
-   rev. 1 — dead-code remediation (declared in File 25 §1):
-     contextFromSelectedContact() previously contained a branch that wrote
-     a UUID to a field name "buyer_placeholder_noop" which no consumer ever
-     read. buyer_id is not a buyer_behavior_events column; the buyer identity
-     for an event is established by the server from auth.uid() via RLS, not
-     by a client-passed field. The branch is removed. No behaviour change.
+   rev. 1 — dead-code remediation (contextFromSelectedContact buyer branch
+            removed; buyer_id is derived from auth.uid() server-side).
+
+   rev. 2 — wider telemetry (diagnostic only; no emission change):
+     The `recent` array in window.goodsbarnxBehaviourState().recent now
+     stores per-event detail rather than a single boolean:
+       - event_type      : the canonical type
+       - source          : ui | producer | market | storefront | screen | function
+       - missing         : array of missing context field names
+       - had_context     : object with per-field booleans
+     The emission path, context extraction, RPC call, error handling, and
+     failure counters are unchanged. This revision purely widens the
+     observability surface so a diagnostic report can name which event
+     types are failing to carry context.
 
    Canon basis:
      §28  behaviour events preserve their commercial context.
-     §29  evidence integrity — an event without a context field is recorded
-          with metadata.missing_context naming the absent field. An event is
-          never silently discarded.
-     §38-2 no silent fallback that changes meaning — a rejected emission is
-          logged once with the event type and error message, and counted in
-          the module's telemetry.
-
-   Server dependency:
-     S4  record_buyer_behavior_event must accept p_metadata.missing_context.
-         If the RPC rejects because it enforces non-null context, the module
-         retries once with a reduced payload (null context fields removed,
-         metadata.s4_unavailable = true). If that also rejects, the event is
-         recorded in the module's failed count and named in the console.
+     §29  evidence integrity.
+     §38-2 no silent fallback.
    ========================================================================== */
 
 (function () {
@@ -36,7 +32,6 @@
   var VERSION = "V1.8.2.6";
   var SESSION_KEY = "gbx_v180_session_id";
 
-  // D26 — the 26 canonical event types. No other type is emitted.
   var CANON_EVENT_TYPES = [
     "market_view",
     "search",
@@ -160,13 +155,6 @@
   }
 
   function contextFromSelectedContact() {
-    // ui.js's selected* values were set from a click on an element that
-    // carried the id. We read them here only when the click's own element
-    // did not carry a data-* attribute for the same field.
-    //
-    // rev. 1: the buyer case is removed. buyer_id is not a column on
-    // buyer_behavior_events; the server derives buyer identity from
-    // auth.uid() under RLS. There is no client-passed buyer_id field.
     var out = {
       product_id: null,
       distributor_id: null,
@@ -218,6 +206,17 @@
     return names;
   }
 
+  function contextPresence(c) {
+    return {
+      product_id:      !!c.product_id,
+      distributor_id:  !!c.distributor_id,
+      inquiry_id:      !!c.inquiry_id,
+      relationship_id: !!c.relationship_id,
+      cart_id:         !!c.cart_id,
+      order_id:        !!c.order_id
+    };
+  }
+
   // ------------------------------------------------------------------------
   // TRACK — the single emit path
   // ------------------------------------------------------------------------
@@ -232,11 +231,13 @@
       console.warn("[GoodsbarnX/behaviour] sb.rpc unavailable; event not emitted: " + type);
       telemetry.failed++;
       telemetry.last_failure = { type: type, reason: "sb_unavailable", at: new Date().toISOString() };
+      recordRecent(type, source, ["sb_unavailable"], {});
       return null;
     }
 
     ctx = ctx || {};
     var missing = missingContextFields(ctx);
+    var presence = contextPresence(ctx);
     var metadata = Object.assign({}, meta || {});
     metadata.source = source || metadata.source || "behaviour";
     metadata.instrumentation_version = VERSION;
@@ -256,15 +257,13 @@
       p_occurred_at:     new Date().toISOString()
     };
 
-    // Attempt 1 — full payload (S4 semantics).
     var first = await safeRpc(payload);
     if (first.ok) {
       recordSuccess(missing.length);
+      recordRecent(type, source, missing, presence);
       return first.data;
     }
 
-    // Attempt 2 — S4-absent fallback: strip null context fields entirely
-    // and add metadata.s4_unavailable.
     var reducedPayload = {
       p_session_id:  payload.p_session_id,
       p_event_type:  payload.p_event_type,
@@ -279,10 +278,10 @@
     var second = await safeRpc(reducedPayload);
     if (second.ok) {
       recordSuccess(missing.length);
+      recordRecent(type, source, missing, presence);
       return second.data;
     }
 
-    // Both attempts failed. Named failure, counted, last-failure recorded.
     telemetry.failed++;
     telemetry.last_failure = {
       type: type,
@@ -290,6 +289,7 @@
       first_error: first.error,
       second_error: second.error
     };
+    recordRecent(type, source, missing.concat(["FAILED"]), presence);
     console.warn(
       "[GoodsbarnX/behaviour] event emission failed after 2 attempts: " +
       type + " — " + (second.error || first.error)
@@ -310,7 +310,16 @@
   function recordSuccess(hadMissing) {
     if (hadMissing) telemetry.emitted_with_missing_context++;
     else telemetry.emitted++;
-    telemetry.recent.push({ at: new Date().toISOString(), missing: !!hadMissing });
+  }
+
+  function recordRecent(type, source, missing, presence) {
+    telemetry.recent.push({
+      at: new Date().toISOString(),
+      event_type: type,
+      source: source || "unknown",
+      missing: Array.isArray(missing) ? missing : [],
+      had_context: presence || {}
+    });
     if (telemetry.recent.length > RECENT_CAP) telemetry.recent.shift();
   }
 
@@ -496,13 +505,12 @@
   }
 
   // ------------------------------------------------------------------------
-  // BOOT — one pass. No intervals.
+  // BOOT
   // ------------------------------------------------------------------------
 
   function boot() {
     if (booted) return;
     booted = true;
-
     hookProducerFunctions();
     hookShowScreen();
     attachListeners();
@@ -543,5 +551,5 @@
 
   window.goodsbarnxBehaviourTrack = track;
 
-  console.log("[GoodsbarnX] behaviour.js loaded (" + VERSION + " rev.1)");
+  console.log("[GoodsbarnX] behaviour.js loaded (" + VERSION + " rev.2)");
 })();
