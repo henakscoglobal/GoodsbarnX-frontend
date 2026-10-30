@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GoodsbarnX — js/depletor.js  (rev. 6)
+   GoodsbarnX — js/depletor.js  (rev. 7)
    Master Stock Depletor · Conductor (Canon §14 §27 §34).
 
    Version: V1.8.2.6
@@ -14,9 +14,10 @@
    rev. 5 — Collapsible panel (chevron, persistence, live summary).
    rev. 6 — F-13 fix: panel styles are injected inline, scoped to
                        #depletor-allocation-runtime and its descendants
-                       only. No global CSS is touched. Any drift caused by
-                       rev. 5's components.css append is reverted by
-                       removing that append (see F-13 note in the ledger).
+                       only.
+   rev. 7 — Clears the premium skeleton loader from #depletor-opportunities
+                       when the panel mounts, so the transition from loading
+                       to populated is clean.
 
    Canon basis:
      §14  pipeline stage sequencing.
@@ -78,13 +79,7 @@
   }
 
   // ------------------------------------------------------------------------
-  // SCOPED STYLES — injected once, apply ONLY to the panel subtree.
-  //
-  // Every selector is either #depletor-allocation-runtime itself or a
-  // descendant of it (via the class names that only that subtree uses).
-  // No global element or class rule is introduced. If the parent stylesheet
-  // changes, this block is unaffected. If this block is removed, the panel
-  // still renders — it just becomes a plain unstyled section.
+  // SCOPED STYLES
   // ------------------------------------------------------------------------
 
   function injectPanelStyles() {
@@ -362,6 +357,10 @@
     var existing = document.getElementById("depletor-allocation-runtime");
     if (existing) return existing;
 
+    // Clear the skeleton loader from index.html
+    var oppBox = document.getElementById("depletor-opportunities");
+    if (oppBox) oppBox.innerHTML = ""; 
+
     state.collapsed = readCollapseState();
 
     var s = document.createElement("section");
@@ -390,9 +389,8 @@
         '<div id="depletor-replenishment-list" class="depletor-opportunities"></div>' +
       '</div>';
 
-    var opportunitiesBox = document.getElementById("depletor-opportunities");
-    if (opportunitiesBox && opportunitiesBox.parentNode) {
-      opportunitiesBox.parentNode.insertBefore(s, opportunitiesBox.nextSibling);
+    if (oppBox) {
+      oppBox.appendChild(s);
     } else {
       root.appendChild(s);
     }
@@ -803,5 +801,5 @@
     setTimeout(function () { attemptBoot("supabase-ready"); }, 100);
   });
 
-  console.log("[GoodsbarnX] depletar.js conductor loaded (" + VERSION + " rev.6)");
+  console.log("[GoodsbarnX] depletar.js conductor loaded (" + VERSION + " rev.7)");
 })();
