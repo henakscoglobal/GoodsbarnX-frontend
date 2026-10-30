@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GoodsbarnX — js/depletor.js  (rev. 5)
+   GoodsbarnX — js/depletor.js  (rev. 6)
    Master Stock Depletor · Conductor (Canon §14 §27 §34).
 
    Version: V1.8.2.6
@@ -11,20 +11,12 @@
                        shortfall instead of the opaque "not yet allocated".
    rev. 4 — F-12 fix: render() removes the `hidden` attribute after
                        successful render for a distributor.
-   rev. 5 — Collapsible panel:
-     - Header toggle (chevron) collapses/expands the panel.
-     - Closed by default; state persists in localStorage under
-       gbx_depletor_console_state ("open" | "closed").
-     - Collapsed strip shows a live summary:
-         "13 signals · 4 allocated · 14 restock"
-       so the distributor can decide before expanding.
-     - Distributor dashboard's "Open" button (in relationship.js) still
-       calls showScreen + scrollIntoView on the panel. When the panel is
-       collapsed at that moment, this module expands it so the user sees
-       content. Expand also scrolls the panel header into view.
-     - Chevron rotates 180° between states.
-     - Backward compatible: if localStorage is unavailable, defaults to
-       closed and does not throw.
+   rev. 5 — Collapsible panel (chevron, persistence, live summary).
+   rev. 6 — F-13 fix: panel styles are injected inline, scoped to
+                       #depletor-allocation-runtime and its descendants
+                       only. No global CSS is touched. Any drift caused by
+                       rev. 5's components.css append is reverted by
+                       removing that append (see F-13 note in the ledger).
 
    Canon basis:
      §14  pipeline stage sequencing.
@@ -39,6 +31,7 @@
   var STAGE = "conductor";
   var ISOLATION_MARKER = "V1.8.2.6.8.1.1.8";
   var STORAGE_KEY = "gbx_depletor_console_state";
+  var STYLE_ID = "gbx-depletor-panel-style";
 
   window.goodsbarnxDepletorAllocationVersion = VERSION;
   window.goodsbarnxDepletorIsolationMarker = ISOLATION_MARKER;
@@ -85,16 +78,123 @@
   }
 
   // ------------------------------------------------------------------------
-  // PERSISTENCE — collapse/expand state
+  // SCOPED STYLES — injected once, apply ONLY to the panel subtree.
+  //
+  // Every selector is either #depletor-allocation-runtime itself or a
+  // descendant of it (via the class names that only that subtree uses).
+  // No global element or class rule is introduced. If the parent stylesheet
+  // changes, this block is unaffected. If this block is removed, the panel
+  // still renders — it just becomes a plain unstyled section.
+  // ------------------------------------------------------------------------
+
+  function injectPanelStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    var style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent =
+      "#depletor-allocation-runtime {" +
+      "  margin-top: 8px;" +
+      "  border-top: 1px solid var(--gbx-line);" +
+      "}" +
+      "#depletor-allocation-runtime .depletor-header {" +
+      "  display: flex;" +
+      "  align-items: center;" +
+      "  justify-content: space-between;" +
+      "  gap: 12px;" +
+      "  padding: 14px 13px;" +
+      "  cursor: pointer;" +
+      "  user-select: none;" +
+      "  border-radius: 12px;" +
+      "  -webkit-tap-highlight-color: transparent;" +
+      "}" +
+      "#depletor-allocation-runtime .depletor-header:hover {" +
+      "  background: rgba(255, 255, 255, 0.02);" +
+      "}" +
+      "#depletor-allocation-runtime .depletor-header:focus {" +
+      "  outline: 2px solid var(--gbx-emerald);" +
+      "  outline-offset: -2px;" +
+      "}" +
+      "#depletor-allocation-runtime .depletor-header-left {" +
+      "  min-width: 0;" +
+      "  flex: 1;" +
+      "}" +
+      "#depletor-allocation-runtime .depletor-header-title {" +
+      "  margin-top: 3px;" +
+      "  font-size: 13px;" +
+      "  font-weight: 700;" +
+      "  color: var(--gbx-ivory);" +
+      "  letter-spacing: -0.01em;" +
+      "}" +
+      "#depletor-allocation-runtime .depletor-header-summary {" +
+      "  margin-top: 3px;" +
+      "  font-size: 10px;" +
+      "  color: var(--gbx-muted);" +
+      "  line-height: 1.35;" +
+      "  white-space: nowrap;" +
+      "  overflow: hidden;" +
+      "  text-overflow: ellipsis;" +
+      "}" +
+      "#depletor-allocation-runtime .depletor-header-right {" +
+      "  display: flex;" +
+      "  align-items: center;" +
+      "  gap: 6px;" +
+      "  flex: 0 0 auto;" +
+      "}" +
+      "#depletor-allocation-runtime .depletor-refresh-btn {" +
+      "  width: 30px;" +
+      "  height: 30px;" +
+      "  border: 1px solid var(--gbx-line);" +
+      "  border-radius: 9px;" +
+      "  background: rgba(255, 255, 255, 0.03);" +
+      "  color: var(--gbx-green);" +
+      "  font-size: 14px;" +
+      "  cursor: pointer;" +
+      "  display: grid;" +
+      "  place-items: center;" +
+      "  padding: 0;" +
+      "}" +
+      "#depletor-allocation-runtime .depletor-refresh-btn:hover {" +
+      "  border-color: rgba(85, 217, 150, 0.4);" +
+      "  background: rgba(85, 217, 150, 0.08);" +
+      "}" +
+      "#depletor-allocation-runtime .depletor-chevron {" +
+      "  width: 24px;" +
+      "  height: 24px;" +
+      "  display: grid;" +
+      "  place-items: center;" +
+      "  font-size: 18px;" +
+      "  line-height: 1;" +
+      "  color: var(--gbx-muted);" +
+      "  transition: transform 0.2s ease, color 0.2s ease;" +
+      "}" +
+      "#depletor-allocation-runtime.collapsed .depletor-chevron {" +
+      "  transform: rotate(0deg);" +
+      "}" +
+      "#depletor-allocation-runtime:not(.collapsed) .depletor-chevron {" +
+      "  transform: rotate(180deg);" +
+      "  color: var(--gbx-green);" +
+      "}" +
+      "#depletor-allocation-runtime .depletor-body {" +
+      "  padding: 4px 13px 14px;" +
+      "  border-top: 1px solid var(--gbx-line);" +
+      "}" +
+      "#depletor-allocation-runtime.collapsed .depletor-body {" +
+      "  display: none;" +
+      "}";
+    document.head.appendChild(style);
+  }
+
+  // ------------------------------------------------------------------------
+  // PERSISTENCE
   // ------------------------------------------------------------------------
 
   function readCollapseState() {
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
-      if (raw === "open") return false;  // not collapsed
-      if (raw === "closed") return true; // collapsed
+      if (raw === "open") return false;
+      if (raw === "closed") return true;
     } catch (e) {}
-    return true; // default: collapsed
+    return true;
   }
 
   function writeCollapseState(collapsed) {
@@ -224,7 +324,7 @@
   }
 
   // ------------------------------------------------------------------------
-  // HEADER SUMMARY — live counts for the collapsed strip
+  // HEADER SUMMARY
   // ------------------------------------------------------------------------
 
   function buildHeaderSummary(snapshot) {
@@ -250,17 +350,18 @@
   }
 
   // ------------------------------------------------------------------------
-  // PANEL SHELL — header with toggle, body wrapping the section renderers
+  // PANEL SHELL
   // ------------------------------------------------------------------------
 
   function ensurePanel() {
+    injectPanelStyles();
+
     var root = document.getElementById("depletor-console");
     if (!root) { depletWarnMissing("depletor-console"); return null; }
 
     var existing = document.getElementById("depletor-allocation-runtime");
     if (existing) return existing;
 
-    // Initial collapse state from localStorage (default: closed).
     state.collapsed = readCollapseState();
 
     var s = document.createElement("section");
@@ -268,7 +369,6 @@
     s.className = "depletor-allocation-runtime" + (state.collapsed ? " collapsed" : "");
 
     s.innerHTML =
-      // Header — always visible. Contains title, chevron, and refresh.
       '<div class="depletor-header" role="button" tabindex="0">' +
         '<div class="depletor-header-left">' +
           '<span class="intel-label">MASTER STOCK DEPLETOR</span>' +
@@ -281,7 +381,6 @@
         '</div>' +
       '</div>' +
 
-      // Body — hidden when the panel is collapsed.
       '<div class="depletor-body">' +
         '<div id="depletor-allocation-status" class="depletor-empty">Waiting for pipeline evidence…</div>' +
         '<div id="depletor-stock-summary" class="depletor-empty">Stock intelligence not yet run.</div>' +
@@ -298,11 +397,9 @@
       root.appendChild(s);
     }
 
-    // Header click / keyboard toggles collapse.
     var header = s.querySelector(".depletor-header");
     if (header) {
       header.addEventListener("click", function (e) {
-        // Ignore clicks on the refresh button; it has its own handler.
         if (e.target && e.target.id === "depletor-allocation-refresh") return;
         toggleCollapsed();
       });
@@ -330,7 +427,6 @@
     writeCollapseState(state.collapsed);
     applyCollapsed();
     if (!state.collapsed) {
-      // On expand, scroll the panel header into view.
       setTimeout(function () {
         var panel = document.getElementById("depletor-allocation-runtime");
         var header = panel && panel.querySelector(".depletor-header");
@@ -346,9 +442,6 @@
     else panel.classList.remove("collapsed");
   }
 
-  // Public: called by the distributor dashboard's "Open" button via
-  // relationship.js before scrolling to the panel, so the intent "show
-  // me the depletor" always reveals the content.
   window.goodsbarnxDepletorExpand = function () {
     ensurePanel();
     state.collapsed = false;
@@ -357,8 +450,7 @@
   };
 
   // ------------------------------------------------------------------------
-  // REVEAL — F-12 — remove `hidden` on the outer #depletor-console once the
-  // panel has real content for a distributor.
+  // REVEAL — F-12
   // ------------------------------------------------------------------------
 
   function removeHiddenIfReady() {
@@ -378,7 +470,7 @@
   }
 
   // ------------------------------------------------------------------------
-  // F-3: describe the reason a routing-ready opportunity is not allocated
+  // F-3: allocation blocker description
   // ------------------------------------------------------------------------
 
   function describeAllocationBlocker(row) {
@@ -461,7 +553,6 @@
     var depletion = stages.depletion;
     var replenishment = stages.replenishment;
 
-    // Header summary line (live counts for collapsed strip).
     var summaryEl = document.getElementById("depletor-header-summary");
     if (summaryEl) summaryEl.textContent = buildHeaderSummary(snapshot) || "No signals yet";
 
@@ -712,5 +803,5 @@
     setTimeout(function () { attemptBoot("supabase-ready"); }, 100);
   });
 
-  console.log("[GoodsbarnX] depletar.js conductor loaded (" + VERSION + " rev.5)");
+  console.log("[GoodsbarnX] depletar.js conductor loaded (" + VERSION + " rev.6)");
 })();
