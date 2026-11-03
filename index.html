@@ -117,6 +117,16 @@
       <div id="lock-banner-holder"></div>
       <div id="distributor-tools-holder"></div>
 
+      <!-- Buyer pending connections banner (populated by relationship.js) -->
+      <section id="buyer-action-banner" class="buyer-action-banner" hidden>
+        <div class="buyer-action-kicker">ACTION REQUIRED</div>
+        <div class="buyer-action-title" id="buyer-action-title">A distributor wants to connect</div>
+        <div class="buyer-action-sub" id="buyer-action-sub">Review the request and decide whether to accept.</div>
+        <button type="button" class="buyer-action-btn" onclick="showScreen('relationship')">
+          Review connection requests
+        </button>
+      </section>
+
       <div class="search-bar-wrap">
         <span>🔍</span>
         <input type="text" id="search-input"
@@ -205,6 +215,7 @@
     <div class="screen" id="screen-relationship">
       <div class="section-label">Relationship commerce</div>
       <div id="my-relationship-card"></div>
+      <div id="buyer-pending-connections"></div>
       <div id="my-preferred-products"></div>
       <div id="my-relationship-disputes"></div>
       <div id="my-relationship-history"></div>
