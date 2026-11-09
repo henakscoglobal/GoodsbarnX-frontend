@@ -15,6 +15,14 @@
 //     card; submission number is now derived from persisted history.
 //   - Single writer of #history-list (previously also written by app.js).
 //   - Registered an "inquiries" screen loader (Phase 2.3).
+//
+// F-11 (inquiry deduplication):
+//   - submitInquiry is now guarded by a three-layer protection:
+//       1) in-flight Set keyed on a payload fingerprint
+//       2) button disable + label swap during the request
+//       3) 8s post-success cooldown on the same fingerprint
+//     This closes the double-tap / slow-network duplicate-inquiry defect
+//     without any schema change or dependency on other modules.
 // ==========================================================================
 
 // ==========================================================================
@@ -35,6 +43,48 @@ function inqWarnMissing(id) {
   if (__gbxInqWarned[id]) return;
   __gbxInqWarned[id] = true;
   console.warn("[GoodsbarnX/inquiries] DOM target #" + id + " is missing from index.html.");
+}
+
+// ==========================================================================
+// F-11 DEDUPLICATION STATE
+// ==========================================================================
+
+const __gbxInquiryInFlight = new Set();   // fingerprints currently sending
+const __gbxInquiryRecent  = new Map();    // fingerprint -> timestamp (ms)
+const __GBX_INQUIRY_COOLDOWN_MS = 8000;
+
+function __gbxInquiryFingerprint(p) {
+  // Stable, order-independent key. Only fields that define "same inquiry".
+  return [
+    String(p.inquirer_id    || ""),
+    String(p.buyer_id       || ""),
+    String(p.distributor_id || ""),
+    String(p.contact_type   || ""),
+    String(p.item           || "").trim().toLowerCase(),
+    String(p.quantity       || "").trim().toLowerCase(),
+    String(p.order_scale    || "")
+  ].join("|");
+}
+
+function __gbxInquirySetBusy(busy, finalLabel) {
+  const modal = document.getElementById("inquiry-modal");
+  if (!modal) return;
+  const btn = modal.querySelector("button.submit-btn");
+  if (!btn) return;
+  if (busy) {
+    if (!btn.dataset.__gbxOriginalLabel) {
+      btn.dataset.__gbxOriginalLabel = btn.textContent || "Send inquiry now";
+    }
+    btn.disabled = true;
+    btn.textContent = finalLabel || "Sending…";
+    btn.style.opacity = "0.7";
+    btn.style.cursor = "not-allowed";
+  } else {
+    btn.disabled = false;
+    btn.textContent = btn.dataset.__gbxOriginalLabel || "Send inquiry now";
+    btn.style.opacity = "";
+    btn.style.cursor = "";
+  }
 }
 
 // ==========================================================================
@@ -66,7 +116,7 @@ function inquiryFormatDate(v) {
 }
 
 // ==========================================================================
-// SUBMIT INQUIRY (V1.6.1 attribution)
+// SUBMIT INQUIRY (V1.6.1 attribution · F-11 deduplication)
 // ==========================================================================
 
 async function submitInquiry() {
@@ -119,71 +169,110 @@ async function submitInquiry() {
     inquirer_id:    currentUser ? currentUser.id : null
   };
 
-  const { error } = await sb.from("inquiries").insert(payload);
-  if (error) {
-    showStatus("Error: " + error.message);
+  // ---- F-11: duplicate guards -------------------------------------------
+  const fp = __gbxInquiryFingerprint(payload);
+
+  if (__gbxInquiryInFlight.has(fp)) {
+    showStatus("Already sending — please wait.");
     return;
   }
 
-  // ------------------------------------------------------------------------
-  // EMAIL NOTIFICATION (D12)
-  //
-  // The Supabase insert above is authoritative. The notification is a
-  // best-effort side effect; it must not make the user believe the inquiry
-  // itself failed if it does.
-  //
-  // The request is authenticated with the caller's Supabase JWT. If no
-  // session is available (guest), the notification is skipped and logged.
-  // No plaintext shared secret is transmitted. Backend deliverable S5.
-  // ------------------------------------------------------------------------
+  const lastSentAt = __gbxInquiryRecent.get(fp);
+  if (lastSentAt && (Date.now() - lastSentAt) < __GBX_INQUIRY_COOLDOWN_MS) {
+    const remaining = Math.ceil((__GBX_INQUIRY_COOLDOWN_MS - (Date.now() - lastSentAt)) / 1000);
+    showStatus("Sent moments ago. Please wait " + remaining + "s before resending.");
+    return;
+  }
 
-  (async function notifyBackend() {
-    if (typeof BACKEND !== "string" || !BACKEND) {
-      console.warn("[GoodsbarnX/inquiries] BACKEND unavailable; notification skipped.");
+  __gbxInquiryInFlight.add(fp);
+  __gbxInquirySetBusy(true, "Sending…");
+  showStatus("Sending…");
+
+  try {
+    const { error } = await sb.from("inquiries").insert(payload);
+    if (error) {
+      showStatus("Error: " + error.message);
       return;
     }
 
-    let accessToken = null;
-    try {
-      const sessionResult = await sb.auth.getSession();
-      accessToken = sessionResult?.data?.session?.access_token || null;
-    } catch (err) {
-      console.warn("[GoodsbarnX/inquiries] could not read session for notification:", err && err.message);
-    }
+    // ------------------------------------------------------------------------
+    // EMAIL NOTIFICATION (D12)
+    //
+    // The Supabase insert above is authoritative. The notification is a
+    // best-effort side effect; it must not make the user believe the inquiry
+    // itself failed if it does.
+    //
+    // The request is authenticated with the caller's Supabase JWT. If no
+    // session is available (guest), the notification is skipped and logged.
+    // No plaintext shared secret is transmitted. Backend deliverable S5.
+    // ------------------------------------------------------------------------
 
-    if (!accessToken) {
-      console.warn("[GoodsbarnX/inquiries] no session token; notification skipped (inquiry row already saved).");
-      return;
-    }
-
-    try {
-      const response = await fetch(BACKEND + "/inquiries", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + accessToken
-        },
-        body: JSON.stringify({
-          name: name,
-          phone: phone,
-          email: payload.inquirer_email,
-          distributor: selectedContactType === "distributor" ? selectedContactName : null,
-          buyer:       selectedContactType === "buyer"       ? selectedContactName : null,
-          contactType: selectedContactType,
-          contactId:   selectedContactId
-        })
-      });
-
-      if (!response.ok) {
-        console.warn("[GoodsbarnX/inquiries] notification endpoint returned HTTP " + response.status);
+    (async function notifyBackend() {
+      if (typeof BACKEND !== "string" || !BACKEND) {
+        console.warn("[GoodsbarnX/inquiries] BACKEND unavailable; notification skipped.");
+        return;
       }
-    } catch (err) {
-      console.warn("[GoodsbarnX/inquiries] notification request failed:", err && err.message);
-    }
-  })();
 
-  showStatus("Sent!");
-  setTimeout(closeModal, 1500);
+      let accessToken = null;
+      try {
+        const sessionResult = await sb.auth.getSession();
+        accessToken = sessionResult?.data?.session?.access_token || null;
+      } catch (err) {
+        console.warn("[GoodsbarnX/inquiries] could not read session for notification:", err && err.message);
+      }
+
+      if (!accessToken) {
+        console.warn("[GoodsbarnX/inquiries] no session token; notification skipped (inquiry row already saved).");
+        return;
+      }
+
+      try {
+        const response = await fetch(BACKEND + "/inquiries", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + accessToken
+          },
+          body: JSON.stringify({
+            name: name,
+            phone: phone,
+            email: payload.inquirer_email,
+            distributor: selectedContactType === "distributor" ? selectedContactName : null,
+            buyer:       selectedContactType === "buyer"       ? selectedContactName : null,
+            contactType: selectedContactType,
+            contactId:   selectedContactId
+          })
+        });
+
+        if (!response.ok) {
+          console.warn("[GoodsbarnX/inquiries] notification endpoint returned HTTP " + response.status);
+        }
+      } catch (err) {
+        console.warn("[GoodsbarnX/inquiries] notification request failed:", err && err.message);
+      }
+    })();
+
+    // Success: record fingerprint, prune stale entries, show confirmation.
+    __gbxInquiryRecent.set(fp, Date.now());
+    const cutoff = Date.now() - (__GBX_INQUIRY_COOLDOWN_MS * 10);
+    for (const [k, ts] of __gbxInquiryRecent) {
+      if (ts < cutoff) __gbxInquiryRecent.delete(k);
+    }
+
+    __gbxInquirySetBusy(true, "Sent ✓");
+    showStatus("Sent!");
+    setTimeout(closeModal, 1500);
+  } catch (e) {
+    console.error("[GoodsbarnX/inquiries] submitInquiry failed:", e);
+    showStatus("Error: " + (e && e.message ? e.message : String(e)));
+  } finally {
+    __gbxInquiryInFlight.delete(fp);
+    // Re-enable the button after the modal closes (or after a beat) so that
+    // if closeModal is delayed or cancelled, the user is not stuck.
+    setTimeout(() => {
+      if (!__gbxInquiryInFlight.has(fp)) __gbxInquirySetBusy(false);
+    }, 1600);
+  }
 }
 
 // ==========================================================================
@@ -737,4 +826,4 @@ window.closeInquiryDetail   = closeInquiryDetail;
 
 window.loadBuyerEvidenceRecovery = loadBuyerEvidenceRecovery;
 
-console.log("[GoodsbarnX] inquiries.js loaded.");
+console.log("[GoodsbarnX] inquiries.js loaded (F-11 dedup).");
