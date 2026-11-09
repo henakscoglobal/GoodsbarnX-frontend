@@ -26,13 +26,23 @@
      - aggregateByProduct(): §26 evidence aggregation per product.
      - classifySignal()    : which signal type(s) apply and why.
      - recommendQuantity() : where derivable from evidence.
-     - classifyUrgency()   : HIGH / NORMAL / LOW + reasons.
+     - classifyUrgency()   : HIGH / MODERATE / LOW / UNKNOWN + reasons.
      - run()               : returns the pipeline snapshot.
 
    This file does NOT:
      - write to the database.
      - render UI.
      - re-run the pipeline.
+
+   F-5 (V1.8.2.6 revision):
+     - classifyUrgency() no longer collapses every non-trivial case to HIGH.
+       Each of the four drivers (RESTOCK_NOW, stock health, UNFULFILLED,
+       REPEAT_DEMAND) is graded independently; the product band is the max
+       across drivers. Low-signal rows now surface as LOW, moderate as
+       MODERATE, severe as HIGH. UNKNOWN is reserved for rows that reach
+       this stage with no computable evidence at all (§29 — visible gap).
+     - Band name NORMAL renamed to MODERATE to align with the F-5 tiers
+       and the CSS tokens already in components.css.
    ========================================================================== */
 
 (function () {
@@ -52,6 +62,14 @@
   var STATE_ALLOCATED = "ALLOCATED";
   var STATE_IN_MOTION = "IN-MOTION";
   var STATE_DEPLETED  = "DEPLETED";
+
+  // Urgency bands, ordered by severity for max() and sort.
+  var BAND_UNKNOWN  = "UNKNOWN";
+  var BAND_LOW      = "LOW";
+  var BAND_MODERATE = "MODERATE";
+  var BAND_HIGH     = "HIGH";
+
+  var BAND_RANK = { UNKNOWN: -1, LOW: 0, MODERATE: 1, HIGH: 2 };
 
   // ------------------------------------------------------------------------
   // SMALL HELPERS
@@ -300,32 +318,115 @@
   }
 
   // ------------------------------------------------------------------------
-  // URGENCY BAND — Canon §26
+  // URGENCY BAND — Canon §26 / F-5
+  //
+  // Each independent driver is graded separately, and the product's band
+  // is the maximum across drivers. `reasons` records which driver(s) fired
+  // and at what severity, so the band is fully traceable back to evidence.
+  //
+  // Drivers (in decreasing typical severity):
+  //
+  //   1. RESTOCK_NOW — confirmed depletion. HIGH when observed >= predicted
+  //                    and positive; MODERATE when confirmed but partial.
+  //   2. Stock health — Critical = HIGH, At Risk = MODERATE.
+  //   3. UNFULFILLED  — HIGH when unfulfilled quantity is material
+  //                    (>= max(10, 25% of predicted)); MODERATE when any.
+  //   4. RESTOCK_SOON — MODERATE when in-motion or partial; LOW when only
+  //                    allocated opportunities exist.
+  //   5. REPEAT_DEMAND — HIGH when >= 2 repeat buyers or >= 4 signals;
+  //                     MODERATE when >= 1 repeat buyer or >= 2 signals.
+  //
+  // If no driver fires and the product has no demand and no depletion,
+  // the band is LOW with reason no_active_demand_or_depletion. Products
+  // that reach this stage with *neither* any signal *nor* any depletion
+  // evidence at all are UNKNOWN (§29: visible gap, not silent LOW).
   // ------------------------------------------------------------------------
 
   function classifyUrgency(product, signals) {
     var reasons = [];
+    var band = BAND_UNKNOWN;
 
+    function raise(candidate, reason) {
+      reasons.push(reason);
+      if (BAND_RANK[candidate] > BAND_RANK[band]) band = candidate;
+    }
+
+    // 1. RESTOCK_NOW — confirmed depletion.
     var hasRestockNow = signals.some(function (s) { return s.type === SIGNAL_RESTOCK_NOW; });
-    var hasUnfulfilled = signals.some(function (s) { return s.type === SIGNAL_UNFULFILLED; });
-    var health = product.depleted_stock_health;
-
     if (hasRestockNow) {
-      reasons.push("restock_now_signal_present");
-    }
-    if (hasUnfulfilled) {
-      reasons.push("unfulfilled_demand_present");
-    }
-    if (health === "Critical" || health === "At Risk") {
-      reasons.push("stock_health=" + health);
+      var observed  = num(product.observed_depletion_total, 0);
+      var predicted = num(product.predicted_depletion_total, 0);
+      if (observed > 0 && observed >= predicted) {
+        raise(BAND_HIGH, "restock_now:observed>=" + "predicted (" + observed + ">=" + predicted + ")");
+      } else if (observed > 0) {
+        raise(BAND_MODERATE, "restock_now:partial_observed (" + observed + "/" + predicted + ")");
+      } else {
+        raise(BAND_MODERATE, "restock_now:confirmed_without_observed");
+      }
     }
 
-    var band = "NORMAL";
-    if (hasRestockNow || health === "Critical") band = "HIGH";
-    else if (hasUnfulfilled || health === "At Risk") band = "HIGH";
-    else if (product.demand_signals.length === 0 && product.observed_depletion_total === 0) {
-      band = "LOW";
-      reasons.push("no_active_demand_or_depletion");
+    // 2. Stock health.
+    var health = product.depleted_stock_health;
+    if (health === "Critical") {
+      raise(BAND_HIGH, "stock_health=Critical");
+    } else if (health === "At Risk") {
+      raise(BAND_MODERATE, "stock_health=At Risk");
+    }
+
+    // 3. Unfulfilled demand.
+    var hasUnfulfilled = signals.some(function (s) { return s.type === SIGNAL_UNFULFILLED; });
+    if (hasUnfulfilled) {
+      var u = num(product.unfulfilled_quantity, 0);
+      var predicted2 = num(product.predicted_depletion_total, 0);
+      var threshold = Math.max(10, predicted2 * 0.25);
+      if (u >= threshold && u > 0) {
+        raise(BAND_HIGH, "unfulfilled:material (" + u + ">=" + threshold.toFixed(1) + ")");
+      } else if (u > 0) {
+        raise(BAND_MODERATE, "unfulfilled:present (" + u + ")");
+      }
+    }
+
+    // 4. RESTOCK_SOON (partial or in-motion).
+    var hasRestockSoon = signals.some(function (s) { return s.type === SIGNAL_RESTOCK_SOON; });
+    if (hasRestockSoon) {
+      var inMotion = num(product.in_motion_opportunity_count, 0);
+      var partial  = product.outcomes && num(product.outcomes.PARTIAL, 0);
+      var allocatedOnly = num(product.allocated_opportunity_count, 0) > 0
+                          && inMotion === 0 && partial === 0;
+      if (inMotion > 0 || partial > 0) {
+        raise(BAND_MODERATE, "restock_soon:in_motion_or_partial");
+      } else if (allocatedOnly) {
+        raise(BAND_LOW, "restock_soon:allocated_only");
+      }
+    }
+
+    // 5. REPEAT_DEMAND.
+    var hasRepeatDemand = signals.some(function (s) { return s.type === SIGNAL_REPEAT_DEMAND; });
+    if (hasRepeatDemand) {
+      var repeatBuyers = Object.keys(product.repeat_demand_buyers)
+        .filter(function (b) { return product.repeat_demand_buyers[b] > 1; }).length;
+      var demandCount = (product.demand_signals || []).length;
+      if (repeatBuyers >= 2 || demandCount >= 4) {
+        raise(BAND_HIGH, "repeat_demand:strong (" + repeatBuyers + " repeat, " + demandCount + " total)");
+      } else if (repeatBuyers >= 1 || demandCount >= 2) {
+        raise(BAND_MODERATE, "repeat_demand:present (" + repeatBuyers + " repeat, " + demandCount + " total)");
+      }
+    }
+
+    // Fallback: no driver fired.
+    if (band === BAND_UNKNOWN) {
+      var noDemand     = (product.demand_signals || []).length === 0;
+      var noDepletion  = num(product.observed_depletion_total, 0) === 0;
+      var noPredicted  = num(product.predicted_depletion_total, 0) === 0;
+      var noHealth     = !health;
+      if (noDemand && noDepletion && noPredicted && noHealth) {
+        // No computable evidence at all — this row should not be silent.
+        band = BAND_UNKNOWN;
+        reasons.push("no_evidence_available");
+      } else {
+        band = BAND_LOW;
+        reasons.push("no_active_demand_or_depletion");
+      }
     }
 
     return { band: band, reasons: reasons };
@@ -416,7 +517,7 @@
       REPEAT_DEMAND: 3,
       SEASONAL_PATTERN: 4
     };
-    var urgencyOrder = { HIGH: 0, NORMAL: 1, LOW: 2 };
+    var urgencyOrder = { HIGH: 0, MODERATE: 1, LOW: 2, UNKNOWN: 3 };
     signals.sort(function (a, b) {
       var ua = urgencyOrder[a.urgency] != null ? urgencyOrder[a.urgency] : 99;
       var ub = urgencyOrder[b.urgency] != null ? urgencyOrder[b.urgency] : 99;
@@ -428,7 +529,7 @@
 
     // Summary.
     var byType = Object.create(null);
-    var byUrgency = { HIGH: 0, NORMAL: 0, LOW: 0 };
+    var byUrgency = { HIGH: 0, MODERATE: 0, LOW: 0, UNKNOWN: 0 };
     signals.forEach(function (s) {
       byType[s.signal_type] = (byType[s.signal_type] || 0) + 1;
       if (byUrgency[s.urgency] != null) byUrgency[s.urgency]++;
@@ -464,5 +565,5 @@
     run: run
   };
 
-  console.log("[GoodsbarnX] depletor-replenishment.js loaded (" + VERSION + ")");
+  console.log("[GoodsbarnX] depletor-replenishment.js loaded (" + VERSION + ", F-5 urgency bands)");
 })();
