@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=DM+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="css/main.css" />
-  <link rel="stylesheet" href="css/components.css" />
+  <link rel="stylesheet" href="css/components.css?v=1.8.2.6-f14" />
 </head>
 <body>
 
@@ -670,7 +670,7 @@
   </div>
 
   <!-- ====================================================================
-       SCRIPT LOAD ORDER (Canon §10, amended by D13, D25, and diagnostics)
+       SCRIPT LOAD ORDER (Canon §10, amended by D13, D25, D33, F-14)
 
        1  config
        2  ui
@@ -692,10 +692,11 @@
       18  profile
       19  upgrade
       20  staff
-      21  relationship
+      21  relationship    ← F-14 buyer connection UI
       22  agent
-      23  diagnostics       ← added; gated by ?diagnostics=1
-      24  app               (last)
+      23  diagnostics     ← gated by ?diagnostics=1
+      24  integration     ← gated by ?integration, depends on #21
+      25  app             (last)
        ==================================================================== -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://js.paystack.co/v2/inline.js"></script>
@@ -720,9 +721,10 @@
   <script src="js/profile.js"></script>
   <script src="js/upgrade.js"></script>
   <script src="js/staff.js"></script>
-  <script src="js/relationship.js"></script>
+  <script src="js/relationship.js?v=1.8.2.6-f14"></script>
   <script src="js/agent.js"></script>
   <script src="js/diagnostics.js"></script>
+  <script src="js/integration.js?v=1.8.2.6-f14"></script>
   <script src="js/app.js"></script>
 
 </body>
