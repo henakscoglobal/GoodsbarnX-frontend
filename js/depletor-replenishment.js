@@ -46,13 +46,16 @@
 
    F-15 mitigation (V1.8.2.6 revision, in-stage):
      - The replenishment stage cannot safely assume the catalog is clean.
-       When the same physical product exists as N rows (same name + brand
-       + distributor, different product_id), aggregating urgency per row
-       would multiply one commercial reality into N HIGH signals. §29
-       forbids that.
+       When the same physical product exists as N rows, aggregating urgency
+       per row would multiply one commercial reality into N HIGH signals.
+       §29 forbids that.
      - groupByCommercial() collapses the aggregation to the commercial
        level for urgency + recommendation, and tags each emitted row with
        its commercial group and (when N > 1) a DUPLICATE_CANDIDATE flag.
+     - Commercial key is (name, brand, sku, distributor_id). Two rows with
+       different SKUs are treated as genuinely different products (e.g.
+       "Metal sheets 2MM" vs "Metal sheets 2.5MM"); two rows with the same
+       name+brand+SKU+distributor are true duplicates and are grouped.
      - Every product_id still emits its own row (pipeline contract is
        preserved). Only the *urgency* and *recommendation* are shared.
    ========================================================================== */
@@ -63,8 +66,7 @@
   var VERSION = "V1.8.2.6";
   var STAGE = "replenishment";
 
-  // Canon §26 signal types. Seasonal is declared but only emitted when
-  // evidence for it exists — see classifySignal().
+  // Canon §26 signal types.
   var SIGNAL_RESTOCK_SOON      = "RESTOCK_SOON";
   var SIGNAL_RESTOCK_NOW       = "RESTOCK_NOW";
   var SIGNAL_UNFULFILLED       = "UNFULFILLED_DEMAND";
@@ -100,9 +102,6 @@
 
   // ------------------------------------------------------------------------
   // AGGREGATION — one evidence bundle per product
-  //
-  // The inputs are the §24 depletion snapshot (which carries §22 allocation
-  // data) and the §17 demand-radar snapshot (for unfulfilled demand).
   // ------------------------------------------------------------------------
 
   function aggregateByProduct(depletionSnapshot, radarSnapshot) {
@@ -118,27 +117,24 @@
           distributor_id: seed.distributor_id || null,
           product_name: seed.product_name || null,
           brand: seed.brand || null,
+          sku: seed.sku || null,
           category: seed.category || null,
           stock_quantity: seed.stock_quantity != null ? num(seed.stock_quantity, 0) : null,
 
-          // Observed depletion from §24
           observed_depletion_total: 0,
           predicted_depletion_total: 0,
           outcomes: { PENDING: 0, PARTIAL: 0, CONFIRMED: 0, NOT_OBSERVED: 0 },
           movement_ids: [],
 
-          // Allocation breadth
           allocated_opportunity_count: 0,
           in_motion_opportunity_count: 0,
           depleted_opportunity_count: 0,
           depleted_stock_health: null,
 
-          // Demand evidence
           demand_signals: [],
           repeat_demand_buyers: {},
           unfulfilled_quantity: 0,
 
-          // Timing
           first_opportunity_at: null,
           last_opportunity_at: null
         };
@@ -146,7 +142,6 @@
       return byProduct[productId];
     }
 
-    // --- Fold in the depletion records ---
     opportunities.forEach(function (o) {
       var productId = o.product_id;
       if (!productId) return;
@@ -155,6 +150,7 @@
         distributor_id: o.distributor_id,
         product_name: o.what,
         brand: o.brand,
+        sku: o.sku,
         stock_quantity: o.stock_quantity
       });
 
@@ -188,7 +184,6 @@
       }
     });
 
-    // --- Fold in the §17 radar signals for unfulfilled demand ---
     signals.forEach(function (s) {
       var productMatches = s.product_matches || [];
       if (!productMatches.length) return;
@@ -225,30 +220,30 @@
   // ------------------------------------------------------------------------
   // COMMERCIAL GROUPING — F-15 mitigation
   //
-  // Group per-(name, brand, distributor). Products with the same identity
-  // triple are treated as one commercial reality for urgency purposes,
-  // even though they retain distinct product_id rows for evidence.
+  // Key: (name, brand, sku, distributor_id).
   //
-  // For each group we compute the union of all products' evidence:
-  //   - unfulfilled_quantity: MAX across group members (not SUM — the
-  //     same buyer demand was attributed to each member by the radar, so
-  //     summing would multiply demand. MAX captures the largest truthful
-  //     representation without fabrication).
-  //   - outcomes / observed / predicted: MAX across members (same reason —
-  //     each member's record reflects the same underlying depletion when
-  //     duplicated).
+  //   - Same name + brand + SKU + distributor ⇒ SAME physical product.
+  //     Group together; compute urgency once; flag DUPLICATE_CANDIDATE.
+  //   - Same name + brand + distributor but DIFFERENT SKU ⇒ legitimately
+  //     distinct products (e.g. "Metal sheets 2MM" vs "Metal sheets 2.5MM").
+  //     Different groups; separate urgency; NO flag.
+  //   - Different distributor ⇒ never related.
+  //
+  // Group-level evidence rules (duplicates must not multiply demand):
+  //   - unfulfilled_quantity, observed, predicted: MAX across members
+  //     (not SUM — the same buyer demand was attributed to each member
+  //     by the radar, so summing would fabricate).
+  //   - outcomes and counts: MAX.
+  //   - stock health: worst.
   //   - demand_signals: dedupe by inquiry_id.
-  //   - repeat_demand_buyers: union by buyer_id, take max per buyer.
-  //
-  // The group's urgency is then classified once, and shared by every row
-  // in the group. Rows in groups of size > 1 are flagged DUPLICATE_CANDIDATE
-  // with their sibling product_ids so the reviewer can merge them (F-15).
+  //   - repeat_demand_buyers: max count per buyer.
   // ------------------------------------------------------------------------
 
   function commercialKey(product) {
     return [
       trimLower(product.product_name || ""),
       trimLower(product.brand || ""),
+      trimLower(product.sku || ""),
       String(product.distributor_id || "")
     ].join("|");
   }
@@ -264,9 +259,9 @@
           key: key,
           product_name: p.product_name,
           brand: p.brand,
+          sku: p.sku,
           distributor_id: p.distributor_id,
           member_ids: [],
-          // Aggregated evidence (see rules above)
           unfulfilled_quantity: 0,
           observed_depletion_total: 0,
           predicted_depletion_total: 0,
@@ -284,35 +279,29 @@
       var g = groups[key];
       g.member_ids.push(productId);
 
-      // MAX for quantities that reflect the same underlying demand/depletion.
       if (p.unfulfilled_quantity > g.unfulfilled_quantity) g.unfulfilled_quantity = p.unfulfilled_quantity;
       if (p.observed_depletion_total > g.observed_depletion_total) g.observed_depletion_total = p.observed_depletion_total;
       if (p.predicted_depletion_total > g.predicted_depletion_total) g.predicted_depletion_total = p.predicted_depletion_total;
 
-      // Outcomes: MAX per bucket.
       ["PENDING", "PARTIAL", "CONFIRMED", "NOT_OBSERVED"].forEach(function (k) {
         if (p.outcomes[k] > g.outcomes[k]) g.outcomes[k] = p.outcomes[k];
       });
 
-      // Counts: MAX.
       if (p.allocated_opportunity_count > g.allocated_opportunity_count) g.allocated_opportunity_count = p.allocated_opportunity_count;
       if (p.in_motion_opportunity_count > g.in_motion_opportunity_count) g.in_motion_opportunity_count = p.in_motion_opportunity_count;
       if (p.depleted_opportunity_count > g.depleted_opportunity_count) g.depleted_opportunity_count = p.depleted_opportunity_count;
 
-      // Health: worst wins.
       var healthRank = { "Critical": 3, "At Risk": 2, "Low": 1, "Healthy": 0 };
       var curRank = g.depleted_stock_health ? (healthRank[g.depleted_stock_health] || 0) : -1;
       var newRank = p.depleted_stock_health ? (healthRank[p.depleted_stock_health] || 0) : -1;
       if (newRank > curRank) g.depleted_stock_health = p.depleted_stock_health;
 
-      // Demand signals: dedupe by inquiry_id.
       (p.demand_signals || []).forEach(function (s) {
         if (!g.demand_signals_by_inquiry[s.inquiry_id]) {
           g.demand_signals_by_inquiry[s.inquiry_id] = s;
         }
       });
 
-      // Repeat buyers: max count per buyer.
       Object.keys(p.repeat_demand_buyers).forEach(function (bid) {
         var c = p.repeat_demand_buyers[bid];
         if (!g.repeat_demand_buyers[bid] || g.repeat_demand_buyers[bid] < c) {
@@ -320,7 +309,6 @@
         }
       });
 
-      // Timing: widest window.
       if (p.first_opportunity_at && (!g.first_opportunity_at || p.first_opportunity_at < g.first_opportunity_at)) {
         g.first_opportunity_at = p.first_opportunity_at;
       }
@@ -329,8 +317,6 @@
       }
     });
 
-    // Materialise the group as a "virtual product" for classifySignal /
-    // classifyUrgency / recommendQuantity — same shape, group-level numbers.
     Object.keys(groups).forEach(function (k) {
       var g = groups[k];
       g.demand_signals = Object.keys(g.demand_signals_by_inquiry).map(function (id) {
@@ -346,10 +332,6 @@
 
   // ------------------------------------------------------------------------
   // SIGNAL CLASSIFICATION — Canon §26
-  //
-  // The rules are ordered by precedence. Each rule produces a signal type
-  // only when its evidence is present. Multiple signals per product are
-  // allowed when multiple independent justifications exist.
   // ------------------------------------------------------------------------
 
   function classifySignal(product) {
@@ -416,7 +398,7 @@
   }
 
   // ------------------------------------------------------------------------
-  // RECOMMENDED QUANTITY — derived from evidence only
+  // RECOMMENDED QUANTITY
   // ------------------------------------------------------------------------
 
   function recommendQuantity(product) {
@@ -433,11 +415,7 @@
   }
 
   // ------------------------------------------------------------------------
-  // URGENCY BAND — Canon §26 / F-5
-  //
-  // See previous F-5 block for full explanation. Each independent driver
-  // is graded, band = max across drivers. On F-15 duplicated groups this
-  // runs ONCE per group (not per member), so urgency is not amplified.
+  // URGENCY BAND
   // ------------------------------------------------------------------------
 
   function classifyUrgency(product, signals) {
@@ -449,7 +427,6 @@
       if (BAND_RANK[candidate] > BAND_RANK[band]) band = candidate;
     }
 
-    // 1. RESTOCK_NOW
     var hasRestockNow = signals.some(function (s) { return s.type === SIGNAL_RESTOCK_NOW; });
     if (hasRestockNow) {
       var observed  = num(product.observed_depletion_total, 0);
@@ -463,7 +440,6 @@
       }
     }
 
-    // 2. Stock health
     var health = product.depleted_stock_health;
     if (health === "Critical") {
       raise(BAND_HIGH, "stock_health=Critical");
@@ -471,7 +447,6 @@
       raise(BAND_MODERATE, "stock_health=At Risk");
     }
 
-    // 3. Unfulfilled demand
     var hasUnfulfilled = signals.some(function (s) { return s.type === SIGNAL_UNFULFILLED; });
     if (hasUnfulfilled) {
       var u = num(product.unfulfilled_quantity, 0);
@@ -484,7 +459,6 @@
       }
     }
 
-    // 4. RESTOCK_SOON
     var hasRestockSoon = signals.some(function (s) { return s.type === SIGNAL_RESTOCK_SOON; });
     if (hasRestockSoon) {
       var inMotion = num(product.in_motion_opportunity_count, 0);
@@ -498,7 +472,6 @@
       }
     }
 
-    // 5. REPEAT_DEMAND
     var hasRepeatDemand = signals.some(function (s) { return s.type === SIGNAL_REPEAT_DEMAND; });
     if (hasRepeatDemand) {
       var repeatBuyers = Object.keys(product.repeat_demand_buyers || {})
@@ -511,7 +484,6 @@
       }
     }
 
-    // Fallback
     if (band === BAND_UNKNOWN) {
       var noDemand     = (product.demand_signals || []).length === 0;
       var noDepletion  = num(product.observed_depletion_total, 0) === 0;
@@ -530,19 +502,14 @@
   }
 
   // ------------------------------------------------------------------------
-  // BUILD ONE REPLENISHMENT SIGNAL RECORD — Canon §26
-  //
-  // Row shape is unchanged for existing consumers. Added fields:
-  //   commercial_group  — group identity (key, member_ids, size)
-  //   data_quality_flag — DUPLICATE_CANDIDATE when group size > 1
-  //   data_quality_note — human-readable explanation of the flag
+  // BUILD ONE REPLENISHMENT SIGNAL RECORD
   // ------------------------------------------------------------------------
 
   function buildSignalRecord(product, signal, urgency, recommendation, group) {
     var groupSize = group ? group.member_ids.length : 1;
     var flag = groupSize > 1 ? FLAG_DUPLICATE : null;
     var note = groupSize > 1
-      ? "This product shares its name + brand + distributor with " +
+      ? "This product shares its name + brand + SKU + distributor with " +
         (groupSize - 1) + " other active product row(s). Urgency and " +
         "recommendation are computed once for the commercial group; " +
         "merge the catalog rows to resolve (F-15)."
@@ -553,6 +520,7 @@
       distributor_id:      product.distributor_id,
       product_name:        product.product_name,
       brand:               product.brand || null,
+      sku:                 product.sku || null,
       category:            product.category,
 
       signal_type:         signal.type,
@@ -565,7 +533,6 @@
       recommended_quantity: recommendation.value,
       recommendation_basis: recommendation.basis,
 
-      // F-15 mitigation:
       commercial_group: group ? {
         key:         group.key,
         member_ids:  group.member_ids.slice(),
@@ -609,15 +576,9 @@
     var depletionAvailable = !!depletionSnapshot;
     var radarAvailable = !!radarSnapshot;
 
-    // Step 1: aggregate evidence per product (unchanged).
     var byProduct = aggregateByProduct(depletionSnapshot, radarSnapshot);
-
-    // Step 2: group products by commercial identity (F-15).
     var groups = groupByCommercial(byProduct);
 
-    // Step 3: for each group, classify signals + urgency + recommendation
-    // ONCE. Then emit one row per product_id with the shared commercial
-    // verdict but each row's own evidence.
     var signals = [];
 
     Object.keys(groups).forEach(function (groupKey) {
@@ -636,8 +597,6 @@
       });
     });
 
-    // Sort: HIGH urgency first, then by signal type priority, then stable
-    // by product_name for predictable display.
     var typeOrder = {
       RESTOCK_NOW: 0,
       UNFULFILLED_DEMAND: 1,
@@ -656,7 +615,6 @@
       return String(a.product_name || "").localeCompare(String(b.product_name || ""));
     });
 
-    // Summary
     var byType = Object.create(null);
     var byUrgency = { HIGH: 0, MODERATE: 0, LOW: 0, UNKNOWN: 0 };
     var duplicateRowCount = 0;
@@ -666,7 +624,6 @@
       if (s.data_quality_flag === FLAG_DUPLICATE) duplicateRowCount++;
     });
 
-    // Count of *commercial* groups (the "real" count of distinct products).
     var commercialGroupCount = Object.keys(groups).length;
 
     return {
@@ -702,5 +659,5 @@
     run: run
   };
 
-  console.log("[GoodsbarnX] depletor-replenishment.js loaded (" + VERSION + ", F-5 urgency + F-15 dedup)");
+  console.log("[GoodsbarnX] depletor-replenishment.js loaded (" + VERSION + ", F-5 urgency + F-15 dedup A)");
 })();
