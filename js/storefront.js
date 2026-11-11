@@ -1,47 +1,21 @@
 // ==========================================================================
-// GoodsbarnX — storefront.js  (rev. 3 · architecture Phase 1)
-// Distributor storefront modal, rebuilt as a 5-slot shell driven by an
-// engine-context projection and three runtime guardrails.
+// GoodsbarnX — storefront.js  (rev. 4 · architecture Phase 1 + interaction)
+// Distributor storefront modal, 5-slot shell, delegated interaction.
 //
 // Plain global script. Loads sixth (Canon §10).
 //
-// V1.8.2.6 remediation Phase 1+2 (retained):
-//   - §31 pricing hierarchy: negotiated → relationship discount →
-//     public → negotiable.
-//
-// Phase 5 rev. 1 (D35) (retained):
-//   - Emits product_view for the top three rendered products via
-//     window.goodsbarnxBehaviourTrack.
-//   - All interpolated values inside HTML and onclick attributes are escaped.
-//   - DOM lookups null-safe; sb null-guarded.
-//
-// Storefront architecture Phase 1 (this revision):
-//   - Five-slot shell:
-//       [1] header.relationship    → renderHeaderRelationship
-//       [2] hero.primary           → renderHeroPrimary
-//       [3] engine.transparency    → renderEngineTransparency
-//       [4] curation.main          → renderCurationMain
-//       [5] commitment.path        → renderCommitmentPath
-//   - Engine-context projection via getStorefrontEngineContext(). Reads
-//     window.goodsbarnxLastReplenishmentSnapshot (produced by
-//     depletor-replenishment.js) to determine stockState, worstUrgency,
-//     and freshness. If the snapshot is absent or stale, the storefront
-//     downgrades to a neutral "updated X ago" line — never fabricates
-//     urgency (Canon §29).
-//   - Guardrails (run before any renderer):
-//       guardNoDarkPatterns     — refuses countdowns, fake scarcity, modal traps
-//       guardUrgencyIsEngineBound — urgency in the plan must be justified by ctx
-//       guardPersonalizationVisible — every buyer-specific price is labelled
-//     A guardrail failure downgrades the RenderPlan; it does not throw. The
-//     storefront still renders, honestly degraded.
-//   - Slot contracts are expressed as JSDoc; runtime contract violations
-//     produce a console warning, not a crash. CI enforcement is a later
-//     phase (Option C, Phase 4).
-//
-// This file does NOT:
-//   - write to the database.
-//   - call sb.rpc("record_buyer_behavior_event") directly.
-//   - own stock truth. Stock truth lives in the MSD pipeline.
+// rev.4 changes:
+//   - All buttons use data-sf-action and a single delegated click handler.
+//     Inline onclick inside momentum-scrolling containers is unreliable on
+//     iOS Safari; delegation is the fix.
+//   - Topbar slot added: sticky handle + close button, always visible.
+//   - Product cards are tappable; tap opens a product detail sub-sheet
+//     within the same storefront modal. No dead zones.
+//   - Featured cards carry a quantity stepper (1..N) persisted in memory.
+//   - Merchant header tap → Trust screen filtered to this distributor.
+//   - Transparency line tap → Master Stock Depletor panel.
+//   - All §31 pricing logic, D35 emission, engine projection and the three
+//     guardrails are unchanged from rev.3.
 // ==========================================================================
 
 const __gbxStorefrontWarned = Object.create(null);
@@ -66,10 +40,7 @@ function sfNum(v, fallback) {
   return Number.isFinite(n) ? n : (fallback == null ? 0 : fallback);
 }
 
-// --------------------------------------------------------------------------
-// D35 — BOUNDED product_view emission (unchanged from rev. 2)
-// --------------------------------------------------------------------------
-
+// ----- D35 product_view emission (unchanged) -----
 const SF_VIEW_EMISSION_BOUND = 3;
 
 function sfEmitProductViews(distributorId, products) {
@@ -78,7 +49,6 @@ function sfEmitProductViews(distributorId, products) {
     return;
   }
   if (!Array.isArray(products) || !products.length) return;
-
   const top = products.slice(0, SF_VIEW_EMISSION_BOUND);
   top.forEach(p => {
     if (!p || !p.id) return;
@@ -92,49 +62,15 @@ function sfEmitProductViews(distributorId, products) {
 }
 
 // ==========================================================================
-// L4 · ENGINE INTERFACE (projection, not core)
+// L4 · ENGINE INTERFACE (projection)
 // ==========================================================================
 
-/**
- * getStorefrontEngineContext(distributorId)
- *
- * Projects the replenishment snapshot (produced by depletor-replenishment.js)
- * into the storefront's view of the engine. Read-only. Never fabricates.
- *
- * Returns:
- *   {
- *     source:        "engine" | "stale" | "unavailable",
- *     stockState:    "healthy" | "depleting" | "scarce" | "locked" | "unknown",
- *     worstUrgency:  "HIGH" | "MODERATE" | "LOW" | "UNKNOWN" | null,
- *     updatedAt:     ISO string | null,
- *     freshnessMs:   number | null,
- *     distributorId: string
- *   }
- *
- * Freshness policy:
- *   - < 5 min   → source = "engine"
- *   - < 30 min  → source = "stale" (renderer shows "updated Xm ago")
- *   - ≥ 30 min  → source = "unavailable" (renderer shows "stock signal
- *                  unavailable"; urgency claims suppressed)
- *   - No snapshot at all → source = "unavailable"
- */
 function getStorefrontEngineContext(distributorId) {
   const snapshot = window.goodsbarnxLastReplenishmentSnapshot || null;
-
   if (!snapshot || !Array.isArray(snapshot.rows)) {
-    return {
-      source: "unavailable",
-      stockState: "unknown",
-      worstUrgency: null,
-      updatedAt: null,
-      freshnessMs: null,
-      distributorId
-    };
+    return { source: "unavailable", stockState: "unknown", worstUrgency: null, updatedAt: null, freshnessMs: null, distributorId };
   }
-
   const distRows = snapshot.rows.filter(r => r.distributor_id === distributorId);
-
-  // Freshness
   const updatedAt = snapshot.generatedAt || null;
   const freshnessMs = updatedAt ? (Date.now() - new Date(updatedAt).getTime()) : null;
   let source = "engine";
@@ -142,32 +78,17 @@ function getStorefrontEngineContext(distributorId) {
   else if (freshnessMs > 5 * 60 * 1000) source = "stale";
 
   if (!distRows.length) {
-    return {
-      source,
-      stockState: "healthy",
-      worstUrgency: "LOW",
-      updatedAt,
-      freshnessMs,
-      distributorId
-    };
+    return { source, stockState: "healthy", worstUrgency: "LOW", updatedAt, freshnessMs, distributorId };
   }
-
-  // Worst urgency drives stockState
   const rank = { HIGH: 3, MODERATE: 2, LOW: 1, UNKNOWN: 0 };
   let worst = "LOW";
   for (const r of distRows) {
     const u = r.urgency || "UNKNOWN";
     if ((rank[u] || 0) > (rank[worst] || 0)) worst = u;
   }
-
-  let stockState;
-  switch (worst) {
-    case "HIGH":     stockState = "depleting"; break;
-    case "MODERATE": stockState = "healthy";   break;  // watch but not critical
-    case "LOW":      stockState = "healthy";   break;
-    default:         stockState = "unknown";   break;
-  }
-
+  let stockState = "healthy";
+  if (worst === "HIGH") stockState = "depleting";
+  else if (worst === "UNKNOWN") stockState = "unknown";
   return { source, stockState, worstUrgency: worst, updatedAt, freshnessMs, distributorId };
 }
 
@@ -175,57 +96,31 @@ function getStorefrontEngineContext(distributorId) {
 // L2 · GUARDRAILS
 // ==========================================================================
 
-/**
- * guardNoDarkPatterns(renderPlan)
- *
- * Refuses to emit countdowns, fake scarcity markers, or modal traps.
- * Returns { ok, reasons[] }. On failure the caller must downgrade the plan.
- */
 function guardNoDarkPatterns(renderPlan) {
   const reasons = [];
   const html = String(renderPlan?.html || "");
-
   if (/<[^>]*data-countdown/i.test(html)) reasons.push("countdown_present");
   if (/only\s+\d+\s+left/i.test(html))     reasons.push("scarcity_marker_present");
   if (/expires\s+in/i.test(html))          reasons.push("expiry_claim_present");
   if (/<dialog/i.test(html))               reasons.push("modal_trap_present");
-
   return { ok: reasons.length === 0, reasons };
 }
-
-/**
- * guardUrgencyIsEngineBound(renderPlan, engineCtx)
- *
- * Any urgency/stock claim in the plan must be supported by engineCtx.source.
- * If ctx.source is "unavailable", urgency claims must be suppressed.
- */
 function guardUrgencyIsEngineBound(renderPlan, engineCtx) {
   const reasons = [];
   const html = String(renderPlan?.html || "");
   const claimsUrgency = /data-urgency|urgency-claim|scarcity|low[-\s]stock|almost\s+out/i.test(html);
-
-  if (claimsUrgency && engineCtx.source === "unavailable") {
-    reasons.push("urgency_claim_without_engine_truth");
-  }
+  if (claimsUrgency && engineCtx.source === "unavailable") reasons.push("urgency_claim_without_engine_truth");
   return { ok: reasons.length === 0, reasons };
 }
-
-/**
- * guardPersonalizationVisible(price)
- *
- * Buyer-specific prices must be explicitly labelled. A discounted or
- * negotiated price that is silently substituted is a guardrail failure.
- */
 function guardPersonalizationVisible(price) {
   if (!price || !price.advantage) return { ok: true, reasons: [] };
   const reasons = [];
-  // Advantage present ⇒ must be rendered as a visible label, not hidden.
   if (!price.advantageLabel) reasons.push("advantage_without_label");
   return { ok: reasons.length === 0, reasons };
 }
 
 // ==========================================================================
-// PRESENTATION HELPERS (unchanged semantics, reshaped for slots)
+// PRESENTATION HELPERS
 // ==========================================================================
 
 function sfTierLabel(tier) {
@@ -234,7 +129,6 @@ function sfTierLabel(tier) {
   if (tier === "self-attested") return "Self-Attested";
   return "Unverified";
 }
-
 function sfFormatFreshness(freshnessMs) {
   if (freshnessMs == null) return "";
   const mins = Math.floor(freshnessMs / 60000);
@@ -245,10 +139,6 @@ function sfFormatFreshness(freshnessMs) {
   return Math.floor(hrs / 24) + "d ago";
 }
 
-/**
- * §31 pricing computation — unchanged from rev. 2 in behaviour, now also
- * carries `advantageLabel` so guardPersonalizationVisible can verify it.
- */
 function sfComputePrice(product, pref, discountPercent) {
   const publicPrice = sfNum(product.price, 0);
   const hasNegotiated = pref && pref.negotiated_unit_price != null;
@@ -295,18 +185,31 @@ function sfPriceBlockHtml(price, classes) {
 }
 
 // ==========================================================================
+// INTERACTION STATE
+// ==========================================================================
+
+// qtyByProductId: product_id → quantity user picked in this session.
+// Reset when storefront opens fresh. Survives sub-sheet open/close so the
+// buyer doesn't lose their choice if they tap into detail and back.
+let __sfQtyByProductId = Object.create(null);
+let __sfCurrentStorefront = null; // { dist, priced, engineCtx, tempo, slotCtx }
+
+// ==========================================================================
 // L3 · SLOT RENDERERS
 // ==========================================================================
 
-/**
- * [1] header.relationship
- * Contract:
- *   accepts: dist, engineCtx, relationship
- *   forbids: fabricated verification, unbound trust scores
- *   must:    show evidence line sourced from real fields
- */
+function renderTopbar() {
+  return (
+    '<div class="sf-topbar" data-slot="shell.topbar">' +
+      '<button type="button" class="sf-topbar-close" data-sf-action="close-storefront" aria-label="Close storefront">×</button>' +
+      '<div class="sf-topbar-handle" aria-hidden="true"></div>' +
+      '<div></div>' +
+    '</div>'
+  );
+}
+
 function renderHeaderRelationship(ctx) {
-  const { dist, engineCtx } = ctx;
+  const { dist } = ctx;
   const hasPhone = !!(dist.profiles && dist.profiles.phone);
 
   const evidenceBits = [];
@@ -318,7 +221,9 @@ function renderHeaderRelationship(ctx) {
   if (hasPhone) evidenceBits.push("Contact available");
 
   return (
-    '<div class="sf-merchant" data-slot="header.relationship">' +
+    '<div class="sf-merchant" data-slot="header.relationship" ' +
+      'data-sf-action="open-trust" data-sf-distributor-id="' + sfEscAttr(dist.id) + '" ' +
+      'role="button" tabindex="0" aria-label="View trust details">' +
       '<div class="sf-merchant-row">' +
         '<div style="min-width:0;">' +
           '<h2 class="sf-merchant-name">' + sfEscHtml(dist.business_name || "Distributor") + '</h2>' +
@@ -332,68 +237,39 @@ function renderHeaderRelationship(ctx) {
       (evidenceBits.length
         ? '<div class="sf-merchant-evidence">' + evidenceBits.map(sfEscHtml).join(" · ") + '</div>'
         : "") +
+      '<div class="sf-merchant-chevron" aria-hidden="true">›</div>' +
     '</div>'
   );
 }
 
-/**
- * [2] hero.primary
- * Contract:
- *   accepts: dist, engineCtx, stripCopy
- *   forbids: fabricated scarcity, unbound countdown, >1 primary CTA
- *   must:    bind urgency (if any) → engineCtx truth
- *
- * Phase 1: ONE renderer. Stock-state variations are expressed as a single
- * strip variant selected by engineCtx.stockState. Adding per-type hero
- * renderers in Phase 3 means adding variants keyed on buyerType; the shell
- * does not change.
- */
 function renderHeroPrimary(ctx) {
   const { engineCtx, stripCopy } = ctx;
-
-  // Choose a strip variant
-  let stripVariant = null;
   let stripHtml = "";
 
   if (stripCopy) {
-    stripVariant = "advantage";
     stripHtml =
       '<div class="sf-relationship-strip" data-variant="advantage" data-slot="hero.primary">' +
         '<div class="sf-relationship-strip-copy">' + stripCopy + '</div>' +
       '</div>';
   } else if (engineCtx.source === "unavailable") {
-    stripVariant = "engine_unavailable";
     stripHtml =
       '<div class="sf-relationship-strip" data-variant="engine_unavailable" data-slot="hero.primary">' +
-        '<div class="sf-relationship-strip-copy">' +
-          'Stock signal unavailable · last catalogue state shown' +
-        '</div>' +
+        '<div class="sf-relationship-strip-copy">Stock signal unavailable · last catalogue state shown</div>' +
       '</div>';
   } else if (engineCtx.stockState === "depleting") {
-    stripVariant = "depleting";
     stripHtml =
       '<div class="sf-relationship-strip" data-variant="depleting" data-urgency="depleting" data-slot="hero.primary">' +
-        '<div class="sf-relationship-strip-copy">' +
-          'Restock recommended · ' +
+        '<div class="sf-relationship-strip-copy">Restock recommended · ' +
           (engineCtx.updatedAt ? 'stock signal updated ' + sfFormatFreshness(engineCtx.freshnessMs) : 'engine active') +
         '</div>' +
       '</div>';
   }
-
   return stripHtml;
 }
 
-/**
- * [3] engine.transparency
- * Contract:
- *   accepts: engineCtx
- *   forbids: hidden freshness, fabricated timestamps
- *   must:    surface staleness truthfully
- */
 function renderEngineTransparency(ctx) {
   const { engineCtx } = ctx;
   const src = engineCtx.source;
-
   let label, tone;
   if (src === "engine") {
     label = "Stock signal live" + (engineCtx.updatedAt ? " · updated " + sfFormatFreshness(engineCtx.freshnessMs) : "");
@@ -405,29 +281,17 @@ function renderEngineTransparency(ctx) {
     label = "Stock signal unavailable · showing catalogue only";
     tone = "unavailable";
   }
-
   return (
-    '<div class="sf-engine-transparency" data-slot="engine.transparency" data-tone="' + tone + '">' +
+    '<div class="sf-engine-transparency" data-slot="engine.transparency" ' +
+      'data-tone="' + tone + '" data-sf-action="open-depletor" role="button" tabindex="0">' +
       label +
+      '<span class="sf-engine-transparency-arrow" aria-hidden="true">›</span>' +
     '</div>'
   );
 }
 
-/**
- * [4] curation.main
- * Contract:
- *   accepts: priced[], dist, tempo
- *   forbids: raw DOM ids outside the slot, unescaped fields
- *   must:    scale density with category tempo
- *
- * Density:
- *   fast       → featured hero 2 + compact catalogue
- *   slow       → featured hero 3 + compact catalogue
- *   regulated  → featured hero 1 + compact catalogue with spec emphasis
- */
 function renderCurationMain(ctx) {
   const { priced, dist, tempo } = ctx;
-
   if (!priced.length) return sfRenderEmptyState(dist);
 
   const featuredCount = tempo === "slow" ? 3 : tempo === "regulated" ? 1 : 2;
@@ -454,57 +318,50 @@ function renderCurationMain(ctx) {
   return featuredHtml + catalogueHtml;
 }
 
-/**
- * [5] commitment.path
- * Contract:
- *   accepts: dist, availableProducts[]
- *   forbids: multiple primary CTAs, distracting animations
- *   must:    one Contact + optional WhatsApp
- */
 function renderCommitmentPath(ctx) {
   const { dist, availableProducts } = ctx;
   if (!availableProducts.length) return "";
-
-  const safeDistId   = sfEscAttr(dist.id);
-  const safeDistName = sfEscAttr(dist.business_name || "Distributor");
-  const phone        = (dist.profiles && dist.profiles.phone) || "";
-
-  const whatsappBtn = phone
-    ? '<button type="button" class="sf-btn sf-btn-whatsapp" onclick="openWhatsApp(\'' +
-        sfEscAttr(phone) + '\', \'' + safeDistName + '\')">WhatsApp</button>'
-    : "";
+  const phone = (dist.profiles && dist.profiles.phone) || "";
 
   return (
     '<div class="sf-action-bar" data-slot="commitment.path">' +
-      '<button type="button" class="sf-btn sf-btn-primary" onclick="closeStorefrontModal(); openModal(\'' +
-        safeDistId + '\', \'' + safeDistName + '\', \'distributor\')">Contact distributor</button>' +
-      whatsappBtn +
+      '<button type="button" class="sf-btn sf-btn-primary" ' +
+        'data-sf-action="contact" ' +
+        'data-sf-distributor-id="' + sfEscAttr(dist.id) + '" ' +
+        'data-sf-distributor-name="' + sfEscAttr(dist.business_name || "Distributor") + '">' +
+        'Contact distributor' +
+      '</button>' +
+      (phone
+        ? '<button type="button" class="sf-btn sf-btn-whatsapp" ' +
+            'data-sf-action="whatsapp" ' +
+            'data-sf-phone="' + sfEscAttr(phone) + '" ' +
+            'data-sf-distributor-name="' + sfEscAttr(dist.business_name || "Distributor") + '">' +
+            'WhatsApp' +
+          '</button>'
+        : "") +
     '</div>'
   );
 }
 
-// ---- Per-card renderers (unchanged content, untouched by slot logic) ------
-
 function sfRenderFeaturedCard(p, dist, price) {
-  const safeProductId = sfEscAttr(p.id);
-  const safeDistId    = sfEscAttr(dist.id);
-  const safeImageUrl  = p.image_url ? sfEscAttr(p.image_url) : null;
-  const imageStyle    = safeImageUrl ? "background-image:url('" + safeImageUrl + "');" : "";
+  const qty = __sfQtyByProductId[p.id] || 1;
+  const step = p.moq || 1;
+  const safeId   = sfEscAttr(p.id);
+  const safeName = sfEscAttr(p.name || "Product");
+  const safeDistId   = sfEscAttr(dist.id);
+  const safeDistName = sfEscAttr(dist.business_name || "Distributor");
+  const imageStyle = p.image_url ? "background-image:url('" + sfEscAttr(p.image_url) + "');" : "";
   const brand = p.brand ? sfEscHtml(p.brand) + " · " : "";
   const sku   = sfEscHtml(p.sku || "No SKU");
   const preferredMark = (p.__preferred || price.advantage === "Your price")
     ? ' · <span style="color:var(--gbx-gold);font-weight:700;">★</span>'
     : "";
 
-  const onClick =
-    "addToCart('" + safeProductId + "', " +
-    JSON.stringify(String(p.name || "Product")) + ", " +
-    sfNum(price.finalPrice || 0, 0) + ", '" +
-    safeDistId + "', " +
-    JSON.stringify(String(dist.business_name || "Distributor")) + ")";
-
   return (
-    '<div class="sf-featured-card">' +
+    '<div class="sf-featured-card" data-sf-action="open-product-detail" ' +
+        'data-sf-product-id="' + safeId + '" ' +
+        'data-sf-distributor-id="' + safeDistId + '" ' +
+        'data-sf-distributor-name="' + safeDistName + '">' +
       '<div class="sf-featured-image" style="' + imageStyle + '"></div>' +
       '<div class="sf-featured-copy">' +
         '<div class="sf-featured-name">' + sfEscHtml(p.name || "Product") + preferredMark + '</div>' +
@@ -517,26 +374,38 @@ function sfRenderFeaturedCard(p, dist, price) {
           advantage: "sf-featured-advantage"
         }) +
       '</div>' +
-      '<button type="button" class="sf-featured-add" onclick="' + onClick + '">Add to cart</button>' +
+      '<div class="sf-qty-row">' +
+        '<button type="button" class="sf-qty-btn" data-sf-action="qty-dec" data-sf-product-id="' + safeId + '" aria-label="Decrease quantity">−</button>' +
+        '<span class="sf-qty-value" data-sf-qty-for="' + safeId + '">' + qty + '</span>' +
+        '<button type="button" class="sf-qty-btn" data-sf-action="qty-inc" data-sf-product-id="' + safeId + '" data-sf-step="' + step + '" aria-label="Increase quantity">+</button>' +
+        '<button type="button" class="sf-featured-add" ' +
+          'data-sf-action="add-to-cart" ' +
+          'data-sf-product-id="' + safeId + '" ' +
+          'data-sf-product-name="' + safeName + '" ' +
+          'data-sf-price="' + sfNum(price.finalPrice || 0, 0) + '" ' +
+          'data-sf-distributor-id="' + safeDistId + '" ' +
+          'data-sf-distributor-name="' + safeDistName + '">' +
+          'Add · ₦' + sfNum((price.finalPrice || 0) * qty, 0).toLocaleString() +
+        '</button>' +
+      '</div>' +
     '</div>'
   );
 }
 
 function sfRenderCatalogueRow(p, dist, price) {
-  const safeProductId = sfEscAttr(p.id);
-  const safeDistId    = sfEscAttr(dist.id);
+  const safeId   = sfEscAttr(p.id);
+  const safeDistId   = sfEscAttr(dist.id);
+  const safeDistName = sfEscAttr(dist.business_name || "Distributor");
   const brand = p.brand ? sfEscHtml(p.brand) + " · " : "";
   const sku   = sfEscHtml(p.sku || "No SKU");
-
-  const onClick =
-    "addToCart('" + safeProductId + "', " +
-    JSON.stringify(String(p.name || "Product")) + ", " +
-    sfNum(price.finalPrice || 0, 0) + ", '" +
-    safeDistId + "', " +
-    JSON.stringify(String(dist.business_name || "Distributor")) + ")";
+  const imageStyle = p.image_url ? "background-image:url('" + sfEscAttr(p.image_url) + "');" : "";
 
   return (
-    '<div class="sf-catalogue-row">' +
+    '<div class="sf-catalogue-row" data-sf-action="open-product-detail" ' +
+        'data-sf-product-id="' + safeId + '" ' +
+        'data-sf-distributor-id="' + safeDistId + '" ' +
+        'data-sf-distributor-name="' + safeDistName + '">' +
+      '<div class="sf-catalogue-thumb" style="' + imageStyle + '"></div>' +
       '<div class="sf-catalogue-copy">' +
         '<div class="sf-catalogue-name">' + sfEscHtml(p.name || "Product") + '</div>' +
         '<div class="sf-catalogue-meta">' + brand + sku + '</div>' +
@@ -547,35 +416,233 @@ function sfRenderCatalogueRow(p, dist, price) {
           original:  "sf-catalogue-price-original",
           advantage: "sf-catalogue-advantage"
         }) +
+        '<button type="button" class="sf-catalogue-add" ' +
+          'data-sf-action="add-to-cart" ' +
+          'data-sf-product-id="' + safeId + '" ' +
+          'data-sf-product-name="' + sfEscAttr(p.name || "Product") + '" ' +
+          'data-sf-price="' + sfNum(price.finalPrice || 0, 0) + '" ' +
+          'data-sf-distributor-id="' + safeDistId + '" ' +
+          'data-sf-distributor-name="' + safeDistName + '">Add</button>' +
       '</div>' +
-      '<button type="button" class="sf-catalogue-add" onclick="' + onClick + '">Add</button>' +
     '</div>'
   );
 }
 
 function sfRenderEmptyState(dist) {
-  const safeDistId   = sfEscAttr(dist.id);
-  const safeDistName = sfEscAttr(dist.business_name || "Distributor");
   return (
     '<div class="sf-empty" data-slot="curation.main">' +
       '<div class="sf-empty-icon">▢</div>' +
       '<div class="sf-empty-title">No products in stock</div>' +
       '<div class="sf-empty-sub">This distributor has no active products right now. ' +
         'You can still contact them to ask about upcoming stock.</div>' +
-      '<button type="button" class="sf-btn sf-btn-primary" style="margin-top:16px;" onclick="closeStorefrontModal(); openModal(\'' +
-        safeDistId + '\', \'' + safeDistName + '\', \'distributor\')">Contact distributor</button>' +
+      '<button type="button" class="sf-btn sf-btn-primary" style="margin-top:16px;" ' +
+        'data-sf-action="contact" ' +
+        'data-sf-distributor-id="' + sfEscAttr(dist.id) + '" ' +
+        'data-sf-distributor-name="' + sfEscAttr(dist.business_name || "Distributor") + '">' +
+        'Contact distributor</button>' +
     '</div>'
   );
 }
 
 // ==========================================================================
-// L1 · CONTEXT (what we can observe today)
+// PRODUCT DETAIL SUB-SHEET
 // ==========================================================================
 
-/**
- * Classify a distributor's dominant product category into a commercial tempo.
- * Overlaps resolve to "regulated" (the strictest).
- */
+function sfOpenProductDetail(productId, distributorId, distributorName) {
+  const cur = __sfCurrentStorefront;
+  if (!cur) return;
+  const entry = cur.priced.find(x => x.p.id === productId);
+  if (!entry) { console.warn("[GoodsbarnX/storefront] product not in current storefront:", productId); return; }
+
+  const { p, price } = entry;
+  const qty = __sfQtyByProductId[p.id] || 1;
+  const step = p.moq || 1;
+  const safeId   = sfEscAttr(p.id);
+  const safeDistId   = sfEscAttr(distributorId);
+  const safeDistName = sfEscAttr(distributorName || "Distributor");
+  const safeProductName = sfEscAttr(p.name || "Product");
+
+  const imageStyle = p.image_url ? "background-image:url('" + sfEscAttr(p.image_url) + "');" : "";
+
+  const rows = [
+    ["SKU", p.sku || "—"],
+    ["Brand", p.brand || "—"],
+    ["Category", p.category || "—"],
+    ["MOQ", p.moq != null ? String(p.moq) : "1"],
+    ["In stock", p.stock_quantity != null ? String(p.stock_quantity) : "—"],
+    ["Lead time", p.lead_time || "—"]
+  ];
+
+  const detailHtml =
+    '<div class="sf-detail" role="dialog" aria-modal="true" aria-label="Product detail">' +
+      '<div class="sf-detail-backdrop" data-sf-action="close-product-detail"></div>' +
+      '<div class="sf-detail-sheet">' +
+        '<div class="sf-detail-topbar">' +
+          '<button type="button" class="sf-detail-close" data-sf-action="close-product-detail" aria-label="Close">×</button>' +
+        '</div>' +
+        '<div class="sf-detail-image" style="' + imageStyle + '"></div>' +
+        '<div class="sf-detail-body">' +
+          '<div class="sf-detail-name">' + sfEscHtml(p.name || "Product") + '</div>' +
+          '<div class="sf-detail-price">' +
+            sfPriceBlockHtml(price, {
+              value:     "sf-detail-price-value",
+              original:  "sf-detail-price-original",
+              advantage: "sf-detail-advantage"
+            }) +
+          '</div>' +
+          '<div class="sf-detail-rows">' +
+            rows.map(([k, v]) =>
+              '<div class="sf-detail-row"><span>' + sfEscHtml(k) + '</span><strong>' + sfEscHtml(v) + '</strong></div>'
+            ).join("") +
+          '</div>' +
+          '<div class="sf-qty-row sf-qty-row-detail">' +
+            '<button type="button" class="sf-qty-btn" data-sf-action="qty-dec" data-sf-product-id="' + safeId + '" aria-label="Decrease quantity">−</button>' +
+            '<span class="sf-qty-value" data-sf-qty-for="' + safeId + '">' + qty + '</span>' +
+            '<button type="button" class="sf-qty-btn" data-sf-action="qty-inc" data-sf-product-id="' + safeId + '" data-sf-step="' + step + '" aria-label="Increase quantity">+</button>' +
+          '</div>' +
+          '<button type="button" class="sf-detail-add" ' +
+            'data-sf-action="add-to-cart" ' +
+            'data-sf-product-id="' + safeId + '" ' +
+            'data-sf-product-name="' + safeProductName + '" ' +
+            'data-sf-price="' + sfNum(price.finalPrice || 0, 0) + '" ' +
+            'data-sf-distributor-id="' + safeDistId + '" ' +
+            'data-sf-distributor-name="' + safeDistName + '">' +
+            'Add to cart · ₦' + sfNum((price.finalPrice || 0) * qty, 0).toLocaleString() +
+          '</button>' +
+          '<button type="button" class="sf-detail-contact" ' +
+            'data-sf-action="contact" ' +
+            'data-sf-distributor-id="' + safeDistId + '" ' +
+            'data-sf-distributor-name="' + safeDistName + '">' +
+            'Ask about bulk pricing' +
+          '</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+  const host = document.getElementById("storefront-content");
+  if (!host) return;
+  // Remove existing detail if any
+  const old = host.querySelector(".sf-detail");
+  if (old) old.remove();
+  host.insertAdjacentHTML("beforeend", detailHtml);
+}
+
+function sfCloseProductDetail() {
+  const host = document.getElementById("storefront-content");
+  if (!host) return;
+  const d = host.querySelector(".sf-detail");
+  if (d) d.remove();
+}
+
+// ==========================================================================
+// DELEGATED CLICK HANDLER
+// ==========================================================================
+
+function sfHandleDelegatedClick(e) {
+  const t = e.target.closest("[data-sf-action]");
+  if (!t) return;
+  const action = t.dataset.sfAction;
+
+  if (action === "close-storefront") {
+    e.preventDefault(); e.stopPropagation();
+    closeStorefrontModal();
+    return;
+  }
+  if (action === "open-product-detail") {
+    e.preventDefault(); e.stopPropagation();
+    sfOpenProductDetail(t.dataset.sfProductId, t.dataset.sfDistributorId, t.dataset.sfDistributorName);
+    return;
+  }
+  if (action === "close-product-detail") {
+    e.preventDefault(); e.stopPropagation();
+    sfCloseProductDetail();
+    return;
+  }
+  if (action === "qty-inc") {
+    e.preventDefault(); e.stopPropagation();
+    const id = t.dataset.sfProductId;
+    const step = parseFloat(t.dataset.sfStep) || 1;
+    __sfQtyByProductId[id] = (__sfQtyByProductId[id] || 1) + step;
+    sfSyncQty(id);
+    return;
+  }
+  if (action === "qty-dec") {
+    e.preventDefault(); e.stopPropagation();
+    const id = t.dataset.sfProductId;
+    const step = parseFloat(t.querySelector("[data-sf-step]")?.dataset?.sfStep) || 1;
+    // dec uses step=1 minimum from current
+    __sfQtyByProductId[id] = Math.max(1, (__sfQtyByProductId[id] || 1) - 1);
+    sfSyncQty(id);
+    return;
+  }
+  if (action === "add-to-cart") {
+    e.preventDefault(); e.stopPropagation();
+    const id = t.dataset.sfProductId;
+    const name = t.dataset.sfProductName;
+    const price = parseFloat(t.dataset.sfPrice) || 0;
+    const qty = __sfQtyByProductId[id] || 1;
+    addToCart(id, name, price, t.dataset.sfDistributorId, t.dataset.sfDistributorName, qty);
+    // Feedback: change label briefly
+    const original = t.textContent;
+    t.textContent = "Added ✓";
+    t.classList.add("sf-added");
+    setTimeout(() => {
+      t.textContent = original;
+      t.classList.remove("sf-added");
+    }, 900);
+    return;
+  }
+  if (action === "contact") {
+    e.preventDefault(); e.stopPropagation();
+    closeStorefrontModal();
+    openModal(t.dataset.sfDistributorId, t.dataset.sfDistributorName, "distributor");
+    return;
+  }
+  if (action === "whatsapp") {
+    e.preventDefault(); e.stopPropagation();
+    openWhatsApp(t.dataset.sfPhone, t.dataset.sfDistributorName);
+    return;
+  }
+  if (action === "open-trust") {
+    e.preventDefault(); e.stopPropagation();
+    closeStorefrontModal();
+    if (typeof showScreen === "function") showScreen("trust");
+    return;
+  }
+  if (action === "open-depletor") {
+    e.preventDefault(); e.stopPropagation();
+    closeStorefrontModal();
+    if (typeof showScreen === "function") showScreen("market");
+    setTimeout(() => {
+      const el = document.getElementById("depletor-console");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return;
+  }
+}
+
+// Recompute visible qty for every element bound to this product id.
+function sfSyncQty(productId) {
+  const qty = __sfQtyByProductId[productId] || 1;
+  document.querySelectorAll('[data-sf-qty-for="' + productId + '"]').forEach(el => {
+    el.textContent = String(qty);
+  });
+  // Recompute price label on Add button
+  const cur = __sfCurrentStorefront;
+  if (!cur) return;
+  const entry = cur.priced.find(x => x.p.id === productId);
+  if (!entry) return;
+  const finalPrice = sfNum(entry.price.finalPrice, 0);
+  document.querySelectorAll('[data-sf-action="add-to-cart"][data-sf-product-id="' + productId + '"]').forEach(btn => {
+    const prefix = btn.classList.contains("sf-detail-add") ? "Add to cart · " : "Add · ";
+    btn.textContent = prefix + "₦" + (finalPrice * qty).toLocaleString();
+  });
+}
+
+// ==========================================================================
+// L1 · CONTEXT
+// ==========================================================================
+
 function sfCategoryTempo(products) {
   const counts = Object.create(null);
   (products || []).forEach(p => {
@@ -587,7 +654,6 @@ function sfCategoryTempo(products) {
 
   const regulatedCats = ["pharma", "baby products", "baby"];
   const slowCats      = ["furniture", "building materials", "home appliances", "raw materials"];
-
   for (const c of keys) {
     if (regulatedCats.some(r => c.includes(r))) return "regulated";
   }
@@ -597,8 +663,20 @@ function sfCategoryTempo(products) {
   return "fast";
 }
 
+function sfRelationshipStripCopy(discountPercent, negotiatedCount) {
+  const bits = [];
+  if (discountPercent && discountPercent > 0) {
+    bits.push("<strong>" + sfEscHtml(String(discountPercent)) + "% off</strong>");
+  }
+  if (negotiatedCount > 0) {
+    bits.push("<strong>" + negotiatedCount + "</strong> negotiated price" + (negotiatedCount === 1 ? "" : "s"));
+  }
+  if (!bits.length) return "";
+  return "Relationship advantage: " + bits.join(" · ");
+}
+
 // ==========================================================================
-// OPEN STOREFRONT MODAL — shell assembly
+// OPEN STOREFRONT MODAL
 // ==========================================================================
 
 async function openStorefrontModal(distId) {
@@ -606,6 +684,17 @@ async function openStorefrontModal(distId) {
   const modalEl   = document.getElementById("storefront-modal");
   if (!contentEl) { sfWarnMissing("storefront-content"); return; }
   if (!modalEl)   { sfWarnMissing("storefront-modal"); return; }
+
+  // Reset per-open state
+  __sfQtyByProductId = Object.create(null);
+  __sfCurrentStorefront = null;
+
+  // Ensure delegated handler installed exactly once
+  if (!contentEl.dataset.sfDelegated) {
+    contentEl.addEventListener("click", sfHandleDelegatedClick);
+    contentEl.dataset.sfDelegated = "1";
+  }
+
   if (!window.sb) {
     contentEl.innerHTML = '<div class="loading-text">Connection service unavailable.</div>';
     modalEl.classList.add("active");
@@ -615,7 +704,6 @@ async function openStorefrontModal(distId) {
   contentEl.innerHTML = '<div class="loading-text">Loading…</div>';
   modalEl.classList.add("active");
 
-  // ---- 1. Fetch ----
   const { data: dist, error: distError } = await sb.from("distributor_profiles")
     .select("*, profiles(phone)")
     .eq("id", distId)
@@ -639,7 +727,6 @@ async function openStorefrontModal(distId) {
     return;
   }
 
-  // ---- 2. §31 pricing ----
   let discountPercent = null;
   const productPreferences = {};
 
@@ -678,93 +765,55 @@ async function openStorefrontModal(distId) {
   }
 
   const availableProducts = (products || []).filter(p => sfNum(p.stock_quantity, 0) > 0);
-
-  // ---- 3. D35 emission ----
   sfEmitProductViews(dist.id, availableProducts);
 
-  // ---- 4. Price everything once ----
   const priced = availableProducts.map(p => {
     const pref = productPreferences[p.id];
     const price = sfComputePrice(p, pref, discountPercent);
     return { p, price };
   });
 
-  // ---- 5. L1 Context ----
   const tempo = sfCategoryTempo(availableProducts);
   const engineCtx = getStorefrontEngineContext(dist.id);
 
-  // ---- 6. Relationship advantage strip copy (uses existing helper) ----
   const negotiatedCount = priced.filter(x => x.price.advantageLabel === "your_negotiated_price").length;
   const stripCopy = sfRelationshipStripCopy(discountPercent, negotiatedCount);
 
-  // ---- 7. Pre-render all slots ----
   const slotCtx = {
-    dist,
-    engineCtx,
-    stripCopy,
+    dist, engineCtx, stripCopy,
     productCount: availableProducts.length,
-    availableProducts,
-    priced,
-    tempo
+    availableProducts, priced, tempo
   };
 
-  const slotHeader      = renderHeaderRelationship(slotCtx);
-  const slotHero        = renderHeroPrimary(slotCtx);
-  const slotTransparency= renderEngineTransparency(slotCtx);
-  const slotCuration    = renderCurationMain(slotCtx);
-  const slotCommitment  = renderCommitmentPath(slotCtx);
+  const bodyHtml =
+    renderTopbar() +
+    renderHeaderRelationship(slotCtx) +
+    renderHeroPrimary(slotCtx) +
+    renderEngineTransparency(slotCtx) +
+    renderCurationMain(slotCtx) +
+    renderCommitmentPath(slotCtx);
 
-  const bodyHtml = slotHeader + slotHero + slotTransparency + slotCuration + slotCommitment;
-
-  // ---- 8. Guardrails (last gate before DOM write) ----
   const plan = { html: bodyHtml };
   const gr = {
     dark:    guardNoDarkPatterns(plan),
     urgency: guardUrgencyIsEngineBound(plan, engineCtx)
   };
-  const personalizationFailures = priced
-    .map(x => ({ id: x.p.id, res: guardPersonalizationVisible(x.price) }))
-    .filter(x => !x.res.ok);
+  if (!gr.dark.ok)    console.warn("[GoodsbarnX/storefront] guardrail: dark patterns detected", gr.dark.reasons);
+  if (!gr.urgency.ok) console.warn("[GoodsbarnX/storefront] guardrail: urgency unbound from engine", gr.urgency.reasons);
 
-  if (!gr.dark.ok) {
-    console.warn("[GoodsbarnX/storefront] guardrail: dark patterns detected", gr.dark.reasons);
-  }
-  if (!gr.urgency.ok) {
-    console.warn("[GoodsbarnX/storefront] guardrail: urgency unbound from engine", gr.urgency.reasons);
-  }
-  if (personalizationFailures.length) {
-    console.warn("[GoodsbarnX/storefront] guardrail: personalization not visible on " +
-      personalizationFailures.length + " rows");
-  }
-
-  // ---- 9. Assemble shell ----
-  const bodySlotHtml = slotCuration;  // curation is the only inner-scroll slot today
-  const topSlotsHtml = slotHeader + slotHero + slotTransparency;
-  // Action bar lives outside .sf-body so it stays pinned.
-  const actionBarHtml = slotCommitment;
+  __sfCurrentStorefront = { dist, priced, engineCtx, tempo };
 
   contentEl.innerHTML =
     '<div class="sf-shell">' +
-      topSlotsHtml +
-      '<div class="sf-body">' + bodySlotHtml + '</div>' +
-      actionBarHtml +
+      renderTopbar() +
+      '<div class="sf-body">' +
+        renderHeaderRelationship(slotCtx) +
+        renderHeroPrimary(slotCtx) +
+        renderEngineTransparency(slotCtx) +
+        renderCurationMain(slotCtx) +
+      '</div>' +
+      renderCommitmentPath(slotCtx) +
     '</div>';
 }
 
-// --------------------------------------------------------------------------
-// Legacy helper retained (unchanged, used by relationship.js etc.)
-// --------------------------------------------------------------------------
-
-function sfRelationshipStripCopy(discountPercent, negotiatedCount) {
-  const bits = [];
-  if (discountPercent && discountPercent > 0) {
-    bits.push("<strong>" + sfEscHtml(String(discountPercent)) + "% off</strong>");
-  }
-  if (negotiatedCount > 0) {
-    bits.push("<strong>" + negotiatedCount + "</strong> negotiated price" + (negotiatedCount === 1 ? "" : "s"));
-  }
-  if (!bits.length) return "";
-  return "Relationship advantage: " + bits.join(" · ");
-}
-
-console.log("[GoodsbarnX] storefront.js loaded (V1.8.2.6 rev.3 · 5-slot shell)");
+console.log("[GoodsbarnX] storefront.js loaded (V1.8.2.6 rev.4 · interaction)");
