@@ -2568,3 +2568,171 @@
   .sf-featured-image { width: 100px; height: 100px; }
   .sf-featured-price-value { font-size: 16px; }
 }
+
+/* ==========================================================================
+   MARKET — Relationship-first composition
+   Network strip · engine strip · relationship badges · pill tiles
+   ========================================================================== */
+
+/* "Your network" strip — light sectioning above the flat list */
+.market-network-strip {
+  margin: 0 0 16px;
+  padding: 14px 16px 12px;
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(8, 116, 67, 0.14), transparent 60%),
+    linear-gradient(160deg, #1A2420 0%, #131A16 100%);
+  border: 1px solid rgba(85, 217, 150, 0.16);
+  overflow: hidden;
+}
+.market-network-kicker {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gbx-green);
+  margin-bottom: 10px;
+}
+.market-network-pills {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.market-network-pills::-webkit-scrollbar { display: none; }
+.market-network-pill {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(85, 217, 150, 0.18);
+  color: var(--gbx-ivory);
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+  white-space: nowrap;
+}
+.market-network-pill:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(85, 217, 150, 0.35);
+}
+.market-network-pill:active { transform: scale(0.98); }
+.market-network-pill[data-status="active"]      { border-color: rgba(85, 217, 150, 0.45); }
+.market-network-pill[data-status="pending_in"]  { border-color: rgba(214, 168, 58, 0.45); }
+.market-network-pill[data-status="paused"]      { border-color: rgba(214, 168, 58, 0.30); opacity: 0.85; }
+.market-network-pill[data-status="suspended"]   { border-color: rgba(217, 92, 92, 0.35); opacity: 0.85; }
+.market-network-pill[data-status="released"]    { border-color: rgba(217, 92, 92, 0.30); opacity: 0.75; }
+.market-network-pill[data-status="terminated"]  { border-color: rgba(217, 92, 92, 0.25); opacity: 0.65; }
+
+.market-network-pill-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gbx-ivory);
+}
+.market-network-pill-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gbx-muted);
+}
+
+/* Engine strip — one line above the distributor list */
+.market-engine-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(85, 217, 150, 0.06);
+  border: 1px solid rgba(85, 217, 150, 0.14);
+}
+.market-engine-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gbx-green);
+  box-shadow: 0 0 0 3px rgba(85, 217, 150, 0.18);
+  flex: 0 0 6px;
+  animation: marketEnginePulse 2s ease-in-out infinite;
+}
+@keyframes marketEnginePulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(85, 217, 150, 0.18); }
+  50%      { box-shadow: 0 0 0 6px rgba(85, 217, 150, 0.05); }
+}
+.market-engine-copy {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gbx-green);
+  line-height: 1.35;
+}
+
+/* Relationship badge on a distributor card */
+.market-rel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.market-rel-badge::before {
+  content: "●";
+  font-size: 7px;
+}
+.market-rel-badge[data-status="active"] {
+  background: rgba(85, 217, 150, 0.10);
+  color: var(--gbx-green);
+  border: 1px solid rgba(85, 217, 150, 0.28);
+}
+.market-rel-badge[data-status="pending_in"] {
+  background: rgba(214, 168, 58, 0.10);
+  color: var(--accent);
+  border: 1px solid rgba(214, 168, 58, 0.28);
+}
+.market-rel-badge[data-status="pending_out"] {
+  background: rgba(214, 168, 58, 0.06);
+  color: rgba(214, 168, 58, 0.85);
+  border: 1px solid rgba(214, 168, 58, 0.20);
+}
+.market-rel-badge[data-status="paused"],
+.market-rel-badge[data-status="suspended"] {
+  background: rgba(217, 92, 92, 0.06);
+  color: rgba(217, 92, 92, 0.85);
+  border: 1px solid rgba(217, 92, 92, 0.20);
+}
+.market-rel-badge[data-status="released"],
+.market-rel-badge[data-status="terminated"] {
+  background: rgba(245, 243, 236, 0.04);
+  color: rgba(245, 243, 236, 0.55);
+  border: 1px solid rgba(245, 243, 236, 0.12);
+}
+.market-rel-badge[data-status="contacted"] {
+  background: rgba(245, 243, 236, 0.04);
+  color: rgba(245, 243, 236, 0.60);
+  border: 1px solid rgba(245, 243, 236, 0.10);
+}
+
+@media (max-width: 380px) {
+  .market-network-strip { padding: 12px 14px 10px; }
+  .market-network-pill  { padding: 7px 10px; }
+  .market-network-pill-name { font-size: 10.5px; }
+}
