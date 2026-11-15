@@ -1,5 +1,5 @@
 // ==========================================================================
-// GoodsbarnX — cart.js  (rev. 4 · Relationship-Order Assembly + Security)
+// GoodsbarnX — cart.js  (rev. 5 · Relationship-Order + Security + Refined V1)
 // Plain global script. Depends on the global `cart` array (loaded from
 // localStorage in the main inline script in index.html).
 //
@@ -19,7 +19,7 @@
 //                     relationship status, engine freshness
 //
 // Security (rev.4 · F-21):
-//   V1  Server-side price re-verification on submission.
+//   V1  Server-side price re-verification on submission (refined rev.5).
 //   V2  Product existence / ownership / status / stock re-check.
 //   V3  Sanitised WhatsApp payload; phone validated before use.
 //   V4  Phone number re-fetched and regex-validated (NG format).
@@ -27,6 +27,19 @@
 //       on mismatch. Honest label: smoke detector, not vault.
 //   V6  30-second per-(buyer,distributor) submission cooldown + in-flight
 //       mutex. Prevents duplicate-submission floods.
+//
+// rev.5 refinement (V1):
+//   The price snapshot check no longer demands exact equality with
+//   products.price. Legitimate discounts applied at add time (relationship
+//   discount, negotiated price, per-product override) surface as a lower
+//   snapshot value than products.price — blocking them was a false positive.
+//   The check now blocks only two classes:
+//     (a) snapshot HIGHER than DB public price  → buyer inflated price
+//     (b) snapshot LOWER than 40% of DB price with "public" basis
+//         → implausible discount, probable localStorage tampering
+//   Between 40% and 100% of DB price, with "public" basis, the snapshot
+//   is accepted with a console warning — it is almost always an untagged
+//   storefront discount (Part B in storefront.js will tag it properly).
 //
 // Backward compatibility (do not break):
 //   - addToCart(productId, name, price, distributorId, distributorName,
@@ -44,7 +57,7 @@
 
 const CART_STORAGE_KEY   = "goodsbarnx_cart";
 const CART_HASH_KEY      = "goodsbarnx_cart:hash";
-const CART_SCHEMA_VERSION = 4;
+const CART_SCHEMA_VERSION = 5;
 
 const CART_STALE_AFTER_MS       = 5  * 60 * 1000;
 const CART_UNAVAILABLE_AFTER_MS = 30 * 60 * 1000;
@@ -52,17 +65,14 @@ const CART_UNAVAILABLE_AFTER_MS = 30 * 60 * 1000;
 // Rate limit: per (buyer, distributor) submission cooldown.
 const CART_SUBMIT_COOLDOWN_MS = 30 * 1000;
 
+// Plausibility floor for an untagged discount. A "public" basis snapshot
+// below this fraction of DB price is treated as tampering.
+const CART_SUSPICIOUS_PRICE_FLOOR = 0.40;
+
 // ==========================================================================
 // L1 · STORE
 // ==========================================================================
 
-// -------------------------------------------------------------------------
-// V5: cart integrity hash (FNV-1a, 32-bit)
-// Detects accidental corruption and post-XSS mutation. NOT cryptographic —
-// an attacker who controls the page can forge it. Treated as a smoke
-// detector, not a vault. On mismatch, the cart is wiped and the buyer
-// is warned via console. Failing safe beats failing silent.
-// -------------------------------------------------------------------------
 function cartHash(str) {
   var h = 0x811c9dc5;
   for (var i = 0; i < str.length; i++) {
@@ -86,19 +96,14 @@ function cartVerifyIntegrity() {
   try {
     var payload = localStorage.getItem(CART_STORAGE_KEY);
     var stored  = localStorage.getItem(CART_HASH_KEY);
-    if (!payload) return true;   // empty cart, nothing to verify
-    if (!stored) return false;   // pre-rev.4 cart, no hash yet
+    if (!payload) return true;
+    if (!stored) return false;
     return cartHash(payload) === stored;
   } catch (_) {
     return false;
   }
 }
 
-/**
- * Upgrade a pre-v4 cart shape to v4. Preserves all data. Called at init,
- * BEFORE the integrity check, because the upgrade rewrites the payload
- * and re-signs the hash.
- */
 function migrateLegacyCart() {
   try {
     var raw = localStorage.getItem(CART_STORAGE_KEY);
@@ -140,12 +145,6 @@ function migrateLegacyCart() {
   }
 }
 
-/**
- * addToCart — public API, signature preserved.
- * qty is honoured. opts (7th arg) carries the snapshot from the storefront:
- *   { sku, brand, image_url, moq, price_basis, termsRef,
- *     relationship_status_at_add }
- */
 function addToCart(productId, name, price, distributorId, distributorName, qty, opts) {
   var addQty = Number(qty);
   if (!isFinite(addQty) || addQty < 1) addQty = 1;
@@ -254,7 +253,7 @@ function updateCartBadge() {
 }
 
 // ==========================================================================
-// L2 · GROUPING — per-distributor assembly
+// L2 · GROUPING
 // ==========================================================================
 
 function getCartGroups() {
@@ -403,25 +402,10 @@ function guardNoDarkPatternsCart(renderPlan) {
 // L4 · COMMITMENT
 // ==========================================================================
 
-// Rate-limit + in-flight state (V6)
 var __cartSubmitInFlight = false;
 var __cartLastSubmitByDist = Object.create(null);
 
-/**
- * submitCartGroup(distributorId, mode)
- *
- * mode: "inquiry" | "whatsapp" | "contact"
- *
- * Hardened (V1–V4, V6):
- *   - rate limit per (buyer, distributor)
- *   - live relationship check
- *   - product existence / ownership / status / stock re-check
- *   - price snapshot re-verification against DB
- *   - phone re-fetch + NG phone regex validation for WhatsApp
- *   - MOQ guardrail
- */
 async function submitCartGroup(distributorId, mode) {
-  // V6: cooldown
   var now = Date.now();
   var last = __cartLastSubmitByDist[distributorId] || 0;
   if (now - last < CART_SUBMIT_COOLDOWN_MS) {
@@ -483,27 +467,71 @@ async function submitCartGroup(distributorId, mode) {
       }
     }
 
-    // ---- V1: price snapshot re-verification ----
+    // ---- V1: price snapshot re-verification (refined rev.5) ----
+    // The goal is to catch FABRICATION, not to demand exact equality with
+    // products.price. Legitimate reasons the snapshot can be lower:
+    //   - relationship discount applied at add time
+    //   - negotiated unit price on the relationship
+    //   - per-product override from relationship_product_preferences
+    //
+    // We block:
+    //   (a) snapshot HIGHER than DB public price (buyer inflated price)
+    //   (b) snapshot LOWER than 40% of DB price with a "public" basis
+    //       (implausible discount → probable localStorage tampering)
+    //
+    // Everything else passes. Untagged discounts in the 40%–100% band are
+    // accepted with a console warning; storefront.js part B will tag them
+    // properly in a future revision so the warning goes away.
     var priceChanges = [];
     for (var j = 0; j < group.items.length; j++) {
       var it = group.items[j];
       var prod = byId[it.productId];
       var cartPrice = Number(it.price_snapshot && it.price_snapshot.value) || 0;
       var dbPrice   = Number(prod.price) || 0;
+      var basis     = (it.price_snapshot && it.price_snapshot.basis) || "public";
 
-      if (it.price_snapshot && it.price_snapshot.basis === "public") {
-        if (Math.abs(cartPrice - dbPrice) > 1) {
-          priceChanges.push({ productId: it.productId, name: it.name, cart: cartPrice, db: dbPrice });
-        }
+      // Rule 1: never allow a snapshot above the DB public price.
+      if (dbPrice > 0 && cartPrice > dbPrice + 1) {
+        priceChanges.push({
+          productId: it.productId,
+          name: it.name,
+          cart: cartPrice,
+          db: dbPrice,
+          direction: "higher"
+        });
+        continue;
       }
-      if (it.price_snapshot && (it.price_snapshot.basis === "negotiated" || it.price_snapshot.basis === "relationship_discount")) {
-        if (cartPrice > dbPrice + 1) {
-          console.warn("[GoodsbarnX/cart] cart price exceeds public for", it.name, "cart=", cartPrice, "db=", dbPrice);
-        }
+
+      // Rule 2: implausibly low price with a "public" basis — tampering.
+      if (basis === "public" && dbPrice > 0 && cartPrice < dbPrice * CART_SUSPICIOUS_PRICE_FLOOR) {
+        priceChanges.push({
+          productId: it.productId,
+          name: it.name,
+          cart: cartPrice,
+          db: dbPrice,
+          direction: "suspiciously_low"
+        });
+        continue;
+      }
+
+      // Acceptable difference: warn but pass — likely an untagged discount.
+      if (basis === "public" && dbPrice > 0 && Math.abs(cartPrice - dbPrice) > 1) {
+        console.warn(
+          "[GoodsbarnX/cart] accepting discount-like price:",
+          it.name,
+          "cart=", cartPrice,
+          "db=", dbPrice,
+          "(difference implies untagged storefront discount)"
+        );
       }
     }
     if (priceChanges.length) {
-      return { ok: false, reason: "price_changed:" + priceChanges.map(function (p) { return p.name; }).join(",") };
+      return {
+        ok: false,
+        reason: "price_changed:" + priceChanges.map(function (p) {
+          return p.name + " (" + p.direction + ")";
+        }).join(", ")
+      };
     }
 
     // ---- V4: fresh phone for WhatsApp mode ----
@@ -540,11 +568,6 @@ async function submitCartGroup(distributorId, mode) {
   }
 }
 
-/**
- * V3: sanitised WhatsApp handoff. Every field is whitelisted and clamped;
- * control characters, @/#/URLs stripped; product names truncated to 60
- * chars. Phone already validated by caller.
- */
 function submitCartGroupWhatsApp(group) {
   var phone = group.distributorPhone;
   if (!phone) return { ok: false, reason: "phone_unavailable" };
@@ -874,7 +897,14 @@ function humanizeCartReason(reason) {
     return "Not enough stock for " + r.split(":")[1] + ". Reduce quantity or contact the distributor.";
   }
   if (r.indexOf("price_changed:") === 0) {
-    return "Price changed since you added " + r.split(":")[1] + ". Remove and re-add to confirm the current price.";
+    var detail = r.split(":")[1] || "";
+    if (detail.indexOf("suspiciously_low") !== -1) {
+      return "The price for this item cannot be verified. Please remove it and re-add from the storefront.";
+    }
+    if (detail.indexOf("higher") !== -1) {
+      return "The price for this item is higher than the current catalogue. Please remove and re-add.";
+    }
+    return "Price changed since you added " + detail + ". Remove and re-add to confirm the current price.";
   }
   if (r === "phone_unavailable") {
     return "This distributor's phone number is unavailable. Try Contact instead.";
@@ -904,8 +934,6 @@ function escapeCartAttr(v) { return escapeCartHtml(v); }
 // ==========================================================================
 
 (function cartInit() {
-  // 1) Integrity check first (V5). A mismatch means tampering or corruption.
-  //    Wipe and warn — fail safe rather than submit a suspicious cart.
   if (!cartVerifyIntegrity()) {
     console.warn("[GoodsbarnX/cart] cart integrity check failed — clearing cart");
     try {
@@ -915,10 +943,8 @@ function escapeCartAttr(v) { return escapeCartHtml(v); }
     } catch (_) {}
   }
 
-  // 2) Migrate legacy carts (pre-v4 shape)
   try { migrateLegacyCart(); } catch (_) {}
 
-  // 3) Badge sync on load
   if (typeof window !== "undefined") {
     if (document.readyState === "complete" || document.readyState === "interactive") {
       setTimeout(function () { updateCartBadge(); }, 0);
@@ -928,4 +954,4 @@ function escapeCartAttr(v) { return escapeCartHtml(v); }
   }
 })();
 
-console.log("[GoodsbarnX] cart.js loaded (V1.8.2.6 rev.4 · Relationship-Order + Security F-21)");
+console.log("[GoodsbarnX] cart.js loaded (V1.8.2.6 rev.5 · Relationship-Order + Security + Refined V1)");
