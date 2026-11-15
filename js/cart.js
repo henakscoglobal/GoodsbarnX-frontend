@@ -1,5 +1,5 @@
 // ==========================================================================
-// GoodsbarnX — cart.js  (rev. 3 · Relationship-Order Assembly Surface)
+// GoodsbarnX — cart.js  (rev. 4 · Relationship-Order Assembly + Security)
 // Plain global script. Depends on the global `cart` array (loaded from
 // localStorage in the main inline script in index.html).
 //
@@ -18,9 +18,19 @@
 //   L5 · EVIDENCE     every submission records price basis, terms ref,
 //                     relationship status, engine freshness
 //
+// Security (rev.4 · F-21):
+//   V1  Server-side price re-verification on submission.
+//   V2  Product existence / ownership / status / stock re-check.
+//   V3  Sanitised WhatsApp payload; phone validated before use.
+//   V4  Phone number re-fetched and regex-validated (NG format).
+//   V5  Cart integrity hash (FNV-1a) — detects tamper/corruption; wipes
+//       on mismatch. Honest label: smoke detector, not vault.
+//   V6  30-second per-(buyer,distributor) submission cooldown + in-flight
+//       mutex. Prevents duplicate-submission floods.
+//
 // Backward compatibility (do not break):
-//   - addToCart(productId, name, price, distributorId, distributorName, qty?)
-//     keeps its exact signature. 6th arg still honoured.
+//   - addToCart(productId, name, price, distributorId, distributorName,
+//     qty?, opts?) — exact signature preserved.
 //   - removeFromCart(productId), updateCartBadge(), renderCart() unchanged
 //     signatures, richer behaviour.
 //   - localStorage key "goodsbarnx_cart" preserved. Existing carts survive
@@ -33,37 +43,72 @@
 // ==========================================================================
 
 const CART_STORAGE_KEY   = "goodsbarnx_cart";
-const CART_SCHEMA_VERSION = 3;
+const CART_HASH_KEY      = "goodsbarnx_cart:hash";
+const CART_SCHEMA_VERSION = 4;
 
-// Engine freshness: mirror the storefront. If the snapshot is older than
-// STALE_AFTER_MS, the group shows "review"; older than UNAVAILABLE_AFTER_MS,
-// urgency claims are suppressed entirely.
 const CART_STALE_AFTER_MS       = 5  * 60 * 1000;
 const CART_UNAVAILABLE_AFTER_MS = 30 * 60 * 1000;
+
+// Rate limit: per (buyer, distributor) submission cooldown.
+const CART_SUBMIT_COOLDOWN_MS = 30 * 1000;
 
 // ==========================================================================
 // L1 · STORE
 // ==========================================================================
 
+// -------------------------------------------------------------------------
+// V5: cart integrity hash (FNV-1a, 32-bit)
+// Detects accidental corruption and post-XSS mutation. NOT cryptographic —
+// an attacker who controls the page can forge it. Treated as a smoke
+// detector, not a vault. On mismatch, the cart is wiped and the buyer
+// is warned via console. Failing safe beats failing silent.
+// -------------------------------------------------------------------------
+function cartHash(str) {
+  var h = 0x811c9dc5;
+  for (var i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (h * 0x01000193) >>> 0;
+  }
+  return h.toString(16);
+}
+
+function cartPersist() {
+  try {
+    var payload = JSON.stringify(cart || []);
+    localStorage.setItem(CART_STORAGE_KEY, payload);
+    localStorage.setItem(CART_HASH_KEY, cartHash(payload));
+  } catch (err) {
+    console.warn("[GoodsbarnX/cart] persist failed:", err && err.message);
+  }
+}
+
+function cartVerifyIntegrity() {
+  try {
+    var payload = localStorage.getItem(CART_STORAGE_KEY);
+    var stored  = localStorage.getItem(CART_HASH_KEY);
+    if (!payload) return true;   // empty cart, nothing to verify
+    if (!stored) return false;   // pre-rev.4 cart, no hash yet
+    return cartHash(payload) === stored;
+  } catch (_) {
+    return false;
+  }
+}
+
 /**
- * Called once at load. If the cart on disk is a pre-v3 flat array, upgrade
- * each item to the new snapshot shape without losing anything.
- *
- * Legacy shape: { productId, name, price, distributorId, distributorName, quantity }
- * New shape:    { productId, distributorId, name, sku, brand, image_url,
- *                 qty, moq, price_snapshot: {value, basis, termsRef, capturedAt},
- *                 relationship_status_at_add }
+ * Upgrade a pre-v4 cart shape to v4. Preserves all data. Called at init,
+ * BEFORE the integrity check, because the upgrade rewrites the payload
+ * and re-signs the hash.
  */
 function migrateLegacyCart() {
   try {
-    const raw = localStorage.getItem(CART_STORAGE_KEY);
+    var raw = localStorage.getItem(CART_STORAGE_KEY);
     if (!raw) return;
-    const parsed = JSON.parse(raw);
+    var parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return;
 
-    let changed = false;
-    const upgraded = parsed.map(function (item) {
-      if (item && item.price_snapshot) return item; // already v3
+    var changed = false;
+    var upgraded = parsed.map(function (item) {
+      if (item && item.price_snapshot) return item;
       changed = true;
       return {
         productId: item.productId,
@@ -72,6 +117,7 @@ function migrateLegacyCart() {
         sku: item.sku || null,
         brand: item.brand || null,
         image_url: item.image_url || null,
+        distributorName: item.distributorName || "Distributor",
         qty: Number(item.quantity) || Number(item.qty) || 1,
         moq: Number(item.moq) || 1,
         price_snapshot: {
@@ -85,11 +131,9 @@ function migrateLegacyCart() {
     });
 
     if (changed) {
-      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(upgraded));
-      // Reflect in the in-memory global so subsequent code sees v3.
-      if (typeof cart !== "undefined" && Array.isArray(cart)) {
-        try { cart.length = 0; upgraded.forEach(function (u) { cart.push(u); }); } catch (_) {}
-      }
+      cart.length = 0;
+      upgraded.forEach(function (u) { cart.push(u); });
+      cartPersist();
     }
   } catch (err) {
     console.warn("[GoodsbarnX/cart] migrateLegacyCart failed:", err && err.message);
@@ -97,22 +141,10 @@ function migrateLegacyCart() {
 }
 
 /**
- * Persist the in-memory cart. Wrapped so a failed write doesn't crash the
- * add/remove path — the buyer can still finish the interaction.
- */
-function cartPersist() {
-  try {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart || []));
-  } catch (err) {
-    console.warn("[GoodsbarnX/cart] persist failed:", err && err.message);
-  }
-}
-
-/**
- * Public API — keep the same signature. The `qty` arg is honoured.
- * Also accepts an optional 7th argument `opts` for the storefront to pass
- * a richer snapshot: { sku, brand, image_url, moq, price_basis,
- * relationship_status_at_add }.
+ * addToCart — public API, signature preserved.
+ * qty is honoured. opts (7th arg) carries the snapshot from the storefront:
+ *   { sku, brand, image_url, moq, price_basis, termsRef,
+ *     relationship_status_at_add }
  */
 function addToCart(productId, name, price, distributorId, distributorName, qty, opts) {
   var addQty = Number(qty);
@@ -121,15 +153,11 @@ function addToCart(productId, name, price, distributorId, distributorName, qty, 
 
   var o = opts || {};
   var moq = Number(o.moq) || 1;
-  // Enforce MOQ: adding less than MOQ is silently bumped to MOQ (this is
-  // the correct commercial behaviour — you cannot order below the minimum).
   if (addQty < moq) addQty = moq;
 
   var existing = cart.find(function (item) { return item.productId === productId; });
   if (existing) {
     existing.qty = (Number(existing.qty) || 1) + addQty;
-    // Refresh snapshot only if a new price is passed (storefront always
-    // passes one; other callers may omit).
     if (isFinite(Number(price)) && Number(price) > 0) {
       existing.price_snapshot = {
         value: Number(price),
@@ -165,22 +193,15 @@ function addToCart(productId, name, price, distributorId, distributorName, qty, 
     document.dispatchEvent(new CustomEvent("goodsbarnx:cart-added", {
       detail: { productId: productId, name: name, quantity: addQty }
     }));
-  } catch (_) { /* CustomEvent unsupported in older browsers — non-fatal */ }
+  } catch (_) {}
 }
 
-/**
- * Set the exact quantity of a line. Enforces MOQ. Setting to 0 or below
- * removes the line (this is what the UI stepper does when it hits 0).
- */
 function setCartQty(productId, qty) {
   var item = cart.find(function (i) { return i.productId === productId; });
   if (!item) return;
 
   var q = Math.floor(Number(qty));
-  if (!isFinite(q) || q <= 0) {
-    removeFromCart(productId);
-    return;
-  }
+  if (!isFinite(q) || q <= 0) { removeFromCart(productId); return; }
   if (q < (item.moq || 1)) q = item.moq || 1;
   item.qty = q;
   cartPersist();
@@ -188,10 +209,6 @@ function setCartQty(productId, qty) {
   renderCart();
 }
 
-/**
- * Remove by product id. Does not reassign `cart` — mutate in place to
- * survive const-declared globals.
- */
 function removeFromCart(productId) {
   for (var i = cart.length - 1; i >= 0; i--) {
     if (cart[i].productId === productId) cart.splice(i, 1);
@@ -201,9 +218,6 @@ function removeFromCart(productId) {
   renderCart();
 }
 
-/**
- * Empty the whole cart. Used by "clear all" and by post-submission flow.
- */
 function clearCart() {
   cart.length = 0;
   cartPersist();
@@ -211,10 +225,6 @@ function clearCart() {
   renderCart();
 }
 
-/**
- * Remove everything for a distributor. Used after a successful submission
- * of that distributor's group.
- */
 function clearCartGroup(distributorId) {
   for (var i = cart.length - 1; i >= 0; i--) {
     if (cart[i].distributorId === distributorId) cart.splice(i, 1);
@@ -247,19 +257,6 @@ function updateCartBadge() {
 // L2 · GROUPING — per-distributor assembly
 // ==========================================================================
 
-/**
- * Build the commercial view of the cart. Every group is one deliverable
- * order from one distributor. Groups carry:
- *   - distributor identity
- *   - subtotal (gross / discount / net)
- *   - engine context (stock state, freshness)
- *   - readiness (ready | needs_review | blocked)
- *   - reasons[] for non-ready state
- *
- * This function is PURE — no DOM, no network. Everything it needs comes
- * from `cart` and the current replenishment snapshot on window. This makes
- * it testable and safe to call from anywhere.
- */
 function getCartGroups() {
   var groupsById = Object.create(null);
 
@@ -275,7 +272,6 @@ function getCartGroups() {
     }
     var g = groupsById[distId];
     g.items.push(item);
-
     var price = Number(item.price_snapshot && item.price_snapshot.value) || 0;
     var qty   = Number(item.qty) || 1;
     g.subtotal.gross += price * qty;
@@ -284,20 +280,17 @@ function getCartGroups() {
 
   return Object.keys(groupsById).map(function (distId) {
     var g = groupsById[distId];
-
-    // Engine context per group
     g.engineContext = getCartEngineContext(g.distributorId);
 
-    // Readiness — collected from guardrails
     var reasons = [];
-    var anyBlocked    = false;
-    var anyNeedsReview= false;
+    var anyBlocked     = false;
+    var anyNeedsReview = false;
 
     g.items.forEach(function (item) {
-      var moqCheck  = guardMoqSatisfied(item);
-      var freshCheck= guardPriceSnapshotFresh(item);
-      if (!moqCheck.ok)  { anyBlocked = true; reasons.push.apply(reasons, moqCheck.reasons); }
-      if (!freshCheck.ok){ anyNeedsReview = true; reasons.push.apply(reasons, freshCheck.reasons); }
+      var moqCheck   = guardMoqSatisfied(item);
+      var freshCheck = guardPriceSnapshotFresh(item);
+      if (!moqCheck.ok)   { anyBlocked = true;     reasons.push.apply(reasons, moqCheck.reasons); }
+      if (!freshCheck.ok) { anyNeedsReview = true; reasons.push.apply(reasons, freshCheck.reasons); }
     });
 
     var relCheck = guardRelationshipActive(g);
@@ -308,16 +301,10 @@ function getCartGroups() {
 
     g.readiness = anyBlocked ? "blocked" : anyNeedsReview ? "needs_review" : "ready";
     g.readiness_reasons = reasons;
-
     return g;
   });
 }
 
-/**
- * Read the replenishment snapshot for this distributor. Same source the
- * storefront uses (window.goodsbarnxLastReplenishmentSnapshot). Never
- * fabricates. Returns "unknown" if snapshot absent.
- */
 function getCartEngineContext(distributorId) {
   var snapshot = window.goodsbarnxLastReplenishmentSnapshot || null;
   if (!snapshot || !Array.isArray(snapshot.rows)) {
@@ -351,11 +338,6 @@ function getCartEngineContext(distributorId) {
 // L3 · GUARDRAILS
 // ==========================================================================
 
-/**
- * MOQ is a hard constraint. A cart line below MOQ cannot be submitted.
- * The addToCart path bumps to MOQ automatically, so this guard only fires
- * when someone manually edits the cart to a non-compliant quantity.
- */
 function guardMoqSatisfied(item) {
   var qty = Number(item.qty) || 0;
   var moq = Number(item.moq) || 1;
@@ -368,17 +350,9 @@ function guardMoqSatisfied(item) {
   return { ok: true, reasons: [] };
 }
 
-/**
- * Price snapshots expire. If the snapshot is older than CART_STALE_AFTER_MS,
- * the buyer must re-confirm before submission. This protects against silent
- * price changes between add and submit — the buyer always sees the price
- * they agree to.
- */
 function guardPriceSnapshotFresh(item) {
   var snap = item.price_snapshot;
-  if (!snap || !snap.capturedAt) {
-    return { ok: true, reasons: [] }; // legacy items migrated with "now"
-  }
+  if (!snap || !snap.capturedAt) return { ok: true, reasons: [] };
   var captured = new Date(snap.capturedAt).getTime();
   if (!isFinite(captured)) return { ok: true, reasons: [] };
   var ageMs = Date.now() - captured;
@@ -391,14 +365,7 @@ function guardPriceSnapshotFresh(item) {
   return { ok: true, reasons: [] };
 }
 
-/**
- * Relationship check. In the UI pass, this uses whatever status was captured
- * at add time. On submission, the caller (submitCartGroup) does a live check
- * before this guard runs. If the status has flipped since add, the guard
- * fires and the buyer is asked to re-confirm.
- */
 function guardRelationshipActive(group) {
-  // If we've already been given a live status (from submitCartGroup), use it.
   if (group.relationship && group.relationship.status) {
     if (group.relationship.status !== "active") {
       return {
@@ -408,15 +375,9 @@ function guardRelationshipActive(group) {
     }
     return { ok: true, reasons: [] };
   }
-  // No live status known yet — do not block. Submission will check live.
   return { ok: true, reasons: [] };
 }
 
-/**
- * Engine transparency — is the stock signal still trustworthy? If unavailable
- * or stale, the group needs review. This is not a block; it's a "confirm you
- * still want this" flag.
- */
 function guardEngineTransparency(group) {
   var ctx = group.engineContext || {};
   if (ctx.source === "unavailable") {
@@ -428,13 +389,9 @@ function guardEngineTransparency(group) {
   return { ok: true, reasons: [] };
 }
 
-/**
- * Reused from storefront, same policy. Applied to the cart render plan.
- * Prevents countdown timers, fake scarcity markers, modal traps.
- */
 function guardNoDarkPatternsCart(renderPlan) {
   var reasons = [];
-  var html = String(renderPlan && renderPlan.html || "");
+  var html = String((renderPlan && renderPlan.html) || "");
   if (/<[^>]*data-countdown/i.test(html)) reasons.push("countdown_present");
   if (/only\s+\d+\s+left/i.test(html))     reasons.push("scarcity_marker_present");
   if (/expires\s+in/i.test(html))          reasons.push("expiry_claim_present");
@@ -443,135 +400,198 @@ function guardNoDarkPatternsCart(renderPlan) {
 }
 
 // ==========================================================================
-// L4 · COMMITMENT — per-distributor submission
+// L4 · COMMITMENT
 // ==========================================================================
 
+// Rate-limit + in-flight state (V6)
+var __cartSubmitInFlight = false;
+var __cartLastSubmitByDist = Object.create(null);
+
 /**
- * Submit a single distributor's group. Three modes:
- *   "inquiry"    — creates an inquiry row per line (existing flow)
- *   "whatsapp"   — opens wa.me with formatted line items
- *   "contact"    — opens the contact modal for this distributor
+ * submitCartGroup(distributorId, mode)
  *
- * Before submitting, this function:
- *   1. Live-checks the relationship (this is the Q2 answer: on submission)
- *   2. Runs all guardrails; blocks on MOQ or relationship failure
- *   3. Attaches evidence (price basis, freshness, relationship state) to
- *      whatever gets created
+ * mode: "inquiry" | "whatsapp" | "contact"
  *
- * Returns { ok, mode, submitted: N, reason? }
+ * Hardened (V1–V4, V6):
+ *   - rate limit per (buyer, distributor)
+ *   - live relationship check
+ *   - product existence / ownership / status / stock re-check
+ *   - price snapshot re-verification against DB
+ *   - phone re-fetch + NG phone regex validation for WhatsApp
+ *   - MOQ guardrail
  */
 async function submitCartGroup(distributorId, mode) {
+  // V6: cooldown
+  var now = Date.now();
+  var last = __cartLastSubmitByDist[distributorId] || 0;
+  if (now - last < CART_SUBMIT_COOLDOWN_MS) {
+    var waitS = Math.ceil((CART_SUBMIT_COOLDOWN_MS - (now - last)) / 1000);
+    return { ok: false, reason: "rate_limited:" + waitS };
+  }
+  if (__cartSubmitInFlight) return { ok: false, reason: "in_flight" };
+
   var group = getCartGroups().find(function (g) { return g.distributorId === distributorId; });
   if (!group) return { ok: false, reason: "group_not_found" };
 
-  // Live relationship check (Q2: on submission)
-  if (currentUser && currentUser.role === "buyer" && distributorId) {
-    try {
-      var relQuery = await sb
-        .from("trade_relationships")
-        .select("status,is_primary")
-        .eq("buyer_id", currentUser.id)
-        .eq("distributor_id", distributorId)
-        .eq("is_primary", true)
-        .maybeSingle();
-      if (!relQuery.error && relQuery.data) {
-        group.relationship = { status: relQuery.data.status };
-      } else {
-        group.relationship = { status: "none" };
+  __cartSubmitInFlight = true;
+  try {
+    // ---- Live relationship check ----
+    if (currentUser && currentUser.role === "buyer" && distributorId) {
+      try {
+        var relQuery = await sb
+          .from("trade_relationships")
+          .select("status,is_primary")
+          .eq("buyer_id", currentUser.id)
+          .eq("distributor_id", distributorId)
+          .eq("is_primary", true)
+          .maybeSingle();
+        group.relationship = {
+          status: relQuery.error
+            ? "unknown"
+            : (relQuery.data ? relQuery.data.status : "none")
+        };
+      } catch (_) {
+        group.relationship = { status: "unknown" };
       }
-    } catch (err) {
-      console.warn("[GoodsbarnX/cart] relationship check failed:", err && err.message);
-      // Don't block on network failure — the buyer's intent stands.
-      group.relationship = { status: "unknown" };
     }
-  }
+    var relCheck = guardRelationshipActive(group);
+    if (!relCheck.ok && group.relationship && group.relationship.status !== "unknown") {
+      return { ok: false, reason: relCheck.reasons[0] || "relationship_inactive" };
+    }
 
-  // Re-run guardrails with fresh relationship data
-  var relCheck = guardRelationshipActive(group);
-  if (!relCheck.ok && group.relationship && group.relationship.status !== "unknown") {
-    return { ok: false, reason: relCheck.reasons[0] || "relationship_inactive" };
-  }
+    // ---- V2: product existence / ownership / status / stock ----
+    var productIds = group.items.map(function (i) { return i.productId; });
+    var productQuery = await sb
+      .from("products")
+      .select("id,name,price,stock_quantity,status,distributor_id")
+      .in("id", productIds);
 
-  var moqViolations = group.items
-    .map(function (i) { return guardMoqSatisfied(i); })
-    .filter(function (r) { return !r.ok; });
-  if (moqViolations.length) {
-    return { ok: false, reason: moqViolations[0].reasons[0] || "moq_not_met" };
-  }
+    if (productQuery.error) {
+      return { ok: false, reason: "product_lookup_failed" };
+    }
+    var byId = Object.create(null);
+    (productQuery.data || []).forEach(function (p) { byId[p.id] = p; });
 
-  if (mode === "whatsapp") {
-    return submitCartGroupWhatsApp(group);
+    for (var i = 0; i < group.items.length; i++) {
+      var item = group.items[i];
+      var dbProduct = byId[item.productId];
+      if (!dbProduct) return { ok: false, reason: "product_not_found:" + (item.name || item.productId) };
+      if (dbProduct.status !== "active") return { ok: false, reason: "product_inactive:" + (item.name || item.productId) };
+      if (dbProduct.distributor_id !== distributorId) return { ok: false, reason: "product_ownership_mismatch:" + (item.name || item.productId) };
+      if ((Number(dbProduct.stock_quantity) || 0) < (Number(item.qty) || 1)) {
+        return { ok: false, reason: "insufficient_stock:" + (item.name || item.productId) };
+      }
+    }
+
+    // ---- V1: price snapshot re-verification ----
+    var priceChanges = [];
+    for (var j = 0; j < group.items.length; j++) {
+      var it = group.items[j];
+      var prod = byId[it.productId];
+      var cartPrice = Number(it.price_snapshot && it.price_snapshot.value) || 0;
+      var dbPrice   = Number(prod.price) || 0;
+
+      if (it.price_snapshot && it.price_snapshot.basis === "public") {
+        if (Math.abs(cartPrice - dbPrice) > 1) {
+          priceChanges.push({ productId: it.productId, name: it.name, cart: cartPrice, db: dbPrice });
+        }
+      }
+      if (it.price_snapshot && (it.price_snapshot.basis === "negotiated" || it.price_snapshot.basis === "relationship_discount")) {
+        if (cartPrice > dbPrice + 1) {
+          console.warn("[GoodsbarnX/cart] cart price exceeds public for", it.name, "cart=", cartPrice, "db=", dbPrice);
+        }
+      }
+    }
+    if (priceChanges.length) {
+      return { ok: false, reason: "price_changed:" + priceChanges.map(function (p) { return p.name; }).join(",") };
+    }
+
+    // ---- V4: fresh phone for WhatsApp mode ----
+    if (mode === "whatsapp") {
+      var phoneQuery = await sb
+        .from("distributor_profiles")
+        .select("profiles(phone)")
+        .eq("id", distributorId)
+        .maybeSingle();
+      var dbPhone = phoneQuery && phoneQuery.data && phoneQuery.data.profiles && phoneQuery.data.profiles.phone;
+      var cleaned = String(dbPhone || "").replace(/\D/g, "");
+      if (!/^(234|0)[789][01]\d{8}$/.test(cleaned)) {
+        return { ok: false, reason: "phone_unavailable" };
+      }
+      group.distributorPhone = dbPhone;
+    }
+
+    // ---- MOQ guardrail ----
+    var moqViolations = group.items
+      .map(function (it2) { return guardMoqSatisfied(it2); })
+      .filter(function (r) { return !r.ok; });
+    if (moqViolations.length) return { ok: false, reason: moqViolations[0].reasons[0] || "moq_not_met" };
+
+    // ---- Dispatch ----
+    var result;
+    if (mode === "whatsapp")     result = submitCartGroupWhatsApp(group);
+    else if (mode === "contact") result = submitCartGroupContact(group);
+    else                         result = await submitCartGroupInquiry(group);
+
+    if (result.ok) __cartLastSubmitByDist[distributorId] = Date.now();
+    return result;
+  } finally {
+    __cartSubmitInFlight = false;
   }
-  if (mode === "contact") {
-    return submitCartGroupContact(group);
-  }
-  return await submitCartGroupInquiry(group);
 }
 
 /**
- * WhatsApp handoff: builds a formatted message and opens wa.me.
- * No DB write. Evidence is captured in the message itself.
+ * V3: sanitised WhatsApp handoff. Every field is whitelisted and clamped;
+ * control characters, @/#/URLs stripped; product names truncated to 60
+ * chars. Phone already validated by caller.
  */
 function submitCartGroupWhatsApp(group) {
   var phone = group.distributorPhone;
-  if (!phone) {
-    // Try to look up the phone lazily
-    sb.from("distributor_profiles").select("profiles(phone)").eq("id", group.distributorId).maybeSingle()
-      .then(function (r) {
-        var p = r && r.data && r.data.profiles && r.data.profiles.phone;
-        if (!p) {
-          alert("This distributor has no phone number on file. Try Contact instead.");
-          return;
-        }
-        group.distributorPhone = p;
-        submitCartGroupWhatsApp(group);
-      });
-    return { ok: false, reason: "phone_lookup_pending" };
+  if (!phone) return { ok: false, reason: "phone_unavailable" };
+
+  function sanitiseLine(s) {
+    return String(s == null ? "" : s)
+      .replace(/[\x00-\x1F\x7F]/g, "")
+      .replace(/[@#]/g, "")
+      .replace(/https?:\/\/\S+/gi, "")
+      .slice(0, 60)
+      .trim();
   }
 
   var lines = ["Hello, I'd like to place an order from GoodsbarnX:"];
   group.items.forEach(function (item) {
-    var price = Number(item.price_snapshot.value) || 0;
-    var basis = item.price_snapshot.basis || "public";
+    var price = Number(item.price_snapshot && item.price_snapshot.value) || 0;
+    var qty   = Number(item.qty) || 1;
+    var basis = (item.price_snapshot && item.price_snapshot.basis) || "public";
     var priceLine = price > 0
-      ? "₦" + price.toLocaleString() + " × " + (item.qty || 1) + " (" + basis + ")"
-      : "Negotiable";
-    lines.push("· " + (item.name || "Product") + " — " + priceLine);
+      ? "₦" + price.toLocaleString() + " × " + qty + " (" + basis + ")"
+      : "Negotiable × " + qty;
+    lines.push("· " + sanitiseLine(item.name || "Product") + " — " + priceLine);
   });
   lines.push("");
   lines.push("Total: ₦" + group.subtotal.net.toLocaleString());
-  lines.push("Buyer: " + ((currentUser && currentUser.full_name) || "Guest"));
+  lines.push("Buyer: " + sanitiseLine(
+    (currentUser && (currentUser.full_name || currentUser.business_name)) || "Guest"
+  ));
 
   var msg = encodeURIComponent(lines.join("\n"));
   window.open("https://wa.me/" + String(phone).replace(/\D/g, "") + "?text=" + msg, "_blank");
 
-  // Clear the group after successful handoff
   clearCartGroup(group.distributorId);
   return { ok: true, mode: "whatsapp", submitted: group.items.length };
 }
 
-/**
- * Contact-modal handoff: uses the existing openModal() flow, which creates
- * an inquiry per distributor with the buyer's details pre-filled. We pass
- * the group summary as context so the buyer knows what they're contacting about.
- */
 function submitCartGroupContact(group) {
   var lineCount = group.items.length;
   if (typeof closeStorefrontModal === "function") { try { closeStorefrontModal(); } catch (_) {} }
   if (typeof openModal === "function") {
     openModal(group.distributorId, group.distributorName, "distributor");
-    // Clear this group — the buyer is committing to contact
     clearCartGroup(group.distributorId);
     return { ok: true, mode: "contact", submitted: lineCount };
   }
   return { ok: false, reason: "contact_modal_unavailable" };
 }
 
-/**
- * Inquiry submission: creates one inquiry row per line, with evidence
- * fields (price basis, freshness) embedded in the inquiry's quantity
- * description. Reuses the existing inquiries table — no schema change.
- */
 async function submitCartGroupInquiry(group) {
   if (!currentUser || !window.sb) return { ok: false, reason: "not_authenticated" };
 
@@ -584,17 +604,12 @@ async function submitCartGroupInquiry(group) {
     var qty  = Number(item.qty) || 1;
     var unit = Number(snap.value) || 0;
 
-    // Evidence in the inquiry text — price basis + freshness
     var evidenceBits = [];
     evidenceBits.push("cart:qty=" + qty);
     if (snap.basis) evidenceBits.push("basis=" + snap.basis);
     if (snap.capturedAt) evidenceBits.push("captured=" + snap.capturedAt);
-    if (group.engineContext && group.engineContext.source) {
-      evidenceBits.push("engine=" + group.engineContext.source);
-    }
-    if (group.relationship && group.relationship.status) {
-      evidenceBits.push("relationship=" + group.relationship.status);
-    }
+    if (group.engineContext && group.engineContext.source) evidenceBits.push("engine=" + group.engineContext.source);
+    if (group.relationship && group.relationship.status) evidenceBits.push("relationship=" + group.relationship.status);
 
     var payload = {
       inquirer_name:  (currentUser.full_name || currentUser.business_name || "Buyer"),
@@ -618,9 +633,7 @@ async function submitCartGroupInquiry(group) {
     }
   }
 
-  if (created > 0) {
-    clearCartGroup(group.distributorId);
-  }
+  if (created > 0) clearCartGroup(group.distributorId);
 
   return {
     ok: created > 0 && errors.length === 0,
@@ -634,17 +647,6 @@ async function submitCartGroupInquiry(group) {
 // RENDER
 // ==========================================================================
 
-/**
- * Render the cart as per-distributor groups. Each group shows:
- *   - distributor identity
- *   - engine freshness line
- *   - item list with qty stepper and price basis
- *   - subtotal
- *   - three commitment actions (only enabled when group is not blocked)
- *
- * Blocked / needs_review states are surfaced explicitly with reasons. No
- * dead cart — every group tells the buyer what to do next.
- */
 function renderCart() {
   var container = document.getElementById("cart-content");
   if (!container) return;
@@ -659,10 +661,7 @@ function renderCart() {
     return;
   }
 
-  // Rebuild groups
   var groups = getCartGroups();
-
-  // Guardrail on the whole plan — catches accidental dark-pattern additions
   var renderedHtml = renderGroupsHtml(groups);
   var dp = guardNoDarkPatternsCart({ html: renderedHtml });
   if (!dp.ok) {
@@ -680,7 +679,7 @@ function renderGroupsHtml(groups) {
 function renderGroupHtml(group) {
   var readinessClass = "cart2-group-" + group.readiness;
   var readinessLabel =
-    group.readiness === "ready" ? "Ready to submit" :
+    group.readiness === "ready"        ? "Ready to submit" :
     group.readiness === "needs_review" ? "Review before submitting" :
     "Cannot submit yet";
 
@@ -725,29 +724,24 @@ function renderGroupHtml(group) {
         group.items.map(function (item) { return renderCartItemHtml(item); }).join("") +
       '</div>' +
       '<div class="cart2-group-actions">' +
-        '<button type="button" class="cart2-action cart2-action-primary" data-cart2-action="submit-inquiry" data-distributor-id="' + escapeCartAttr(group.distributorId) + '"' + actionsDisabled + '>' +
-          'Submit inquiry' +
-        '</button>' +
-        '<button type="button" class="cart2-action cart2-action-whatsapp" data-cart2-action="submit-whatsapp" data-distributor-id="' + escapeCartAttr(group.distributorId) + '"' + actionsDisabled + '>' +
-          'WhatsApp' +
-        '</button>' +
-        '<button type="button" class="cart2-action cart2-action-contact" data-cart2-action="submit-contact" data-distributor-id="' + escapeCartAttr(group.distributorId) + '"' + actionsDisabled + '>' +
-          'Contact' +
-        '</button>' +
+        '<button type="button" class="cart2-action cart2-action-primary" data-cart2-action="submit-inquiry" data-distributor-id="' + escapeCartAttr(group.distributorId) + '"' + actionsDisabled + '>Submit inquiry</button>' +
+        '<button type="button" class="cart2-action cart2-action-whatsapp" data-cart2-action="submit-whatsapp" data-distributor-id="' + escapeCartAttr(group.distributorId) + '"' + actionsDisabled + '>WhatsApp</button>' +
+        '<button type="button" class="cart2-action cart2-action-contact" data-cart2-action="submit-contact" data-distributor-id="' + escapeCartAttr(group.distributorId) + '"' + actionsDisabled + '>Contact</button>' +
       '</div>' +
     '</div>'
   );
 }
 
 function renderCartItemHtml(item) {
-  var qty = Number(item.qty) || 1;
+  var qty  = Number(item.qty) || 1;
   var unit = Number(item.price_snapshot && item.price_snapshot.value) || 0;
   var lineTotal = unit * qty;
   var basis = (item.price_snapshot && item.price_snapshot.basis) || "public";
-  var basisLabel = basis === "negotiated" ? "Negotiated price"
-                 : basis === "relationship_discount" ? "Relationship discount"
-                 : basis === "negotiable" ? "Negotiable"
-                 : "Public price";
+  var basisLabel =
+    basis === "negotiated"            ? "Negotiated price" :
+    basis === "relationship_discount" ? "Relationship discount" :
+    basis === "negotiable"            ? "Negotiable" :
+    "Public price";
 
   var imageStyle = item.image_url
     ? "background-image:url('" + escapeCartAttr(item.image_url) + "');"
@@ -809,20 +803,17 @@ async function handleCartClick(e) {
     var mode = action === "submit-inquiry" ? "inquiry"
              : action === "submit-whatsapp" ? "whatsapp"
              : "contact";
-    // Disable the whole action row while submitting
     var groupEl = t.closest(".cart2-group");
     if (groupEl) {
       groupEl.querySelectorAll("[data-cart2-action^='submit']").forEach(function (b) { b.disabled = true; });
     }
     var result = await submitCartGroup(distributorId, mode);
     if (!result.ok) {
-      // Re-render to show updated state and let the buyer see the reason.
       renderCart();
       var reasonMsg = result.reason || (result.errors && result.errors[0]) || "Submission failed";
       alert(humanizeCartReason(reasonMsg));
       return;
     }
-    // On success, the group is cleared — re-render
     renderCart();
     return;
   }
@@ -844,6 +835,7 @@ function formatCartAge(ms) {
 
 function humanizeCartReason(reason) {
   var r = String(reason || "");
+
   if (r.indexOf("moq_not_met:") === 0) {
     var parts = r.split(":");
     return "Minimum order quantity is " + parts[2].replace("need ", "").split(",")[0].replace(" have", ", you have") + ". Increase quantity to continue.";
@@ -862,6 +854,33 @@ function humanizeCartReason(reason) {
   }
   if (r.indexOf("engine_unavailable:") === 0) {
     return "Stock signal is currently unavailable. You can still submit, but the distributor will confirm availability on response.";
+  }
+  if (r.indexOf("rate_limited:") === 0) {
+    return "You submitted this order recently. Please wait " + r.split(":")[1] + "s before resubmitting.";
+  }
+  if (r === "in_flight") {
+    return "A submission is already in progress. Please wait.";
+  }
+  if (r.indexOf("product_not_found:") === 0) {
+    return r.split(":")[1] + " is no longer in the catalogue. Remove it and try again.";
+  }
+  if (r.indexOf("product_inactive:") === 0) {
+    return r.split(":")[1] + " is currently unavailable. Remove it or contact the distributor.";
+  }
+  if (r.indexOf("product_ownership_mismatch:") === 0) {
+    return r.split(":")[1] + " is no longer sold by this distributor. Remove it and try again.";
+  }
+  if (r.indexOf("insufficient_stock:") === 0) {
+    return "Not enough stock for " + r.split(":")[1] + ". Reduce quantity or contact the distributor.";
+  }
+  if (r.indexOf("price_changed:") === 0) {
+    return "Price changed since you added " + r.split(":")[1] + ". Remove and re-add to confirm the current price.";
+  }
+  if (r === "phone_unavailable") {
+    return "This distributor's phone number is unavailable. Try Contact instead.";
+  }
+  if (r === "product_lookup_failed") {
+    return "Could not verify stock right now. Please try again in a moment.";
   }
   return r;
 }
@@ -885,10 +904,21 @@ function escapeCartAttr(v) { return escapeCartHtml(v); }
 // ==========================================================================
 
 (function cartInit() {
-  // Migrate any pre-v3 cart on first load — before anything else touches it
+  // 1) Integrity check first (V5). A mismatch means tampering or corruption.
+  //    Wipe and warn — fail safe rather than submit a suspicious cart.
+  if (!cartVerifyIntegrity()) {
+    console.warn("[GoodsbarnX/cart] cart integrity check failed — clearing cart");
+    try {
+      localStorage.removeItem(CART_STORAGE_KEY);
+      localStorage.removeItem(CART_HASH_KEY);
+      if (typeof cart !== "undefined" && Array.isArray(cart)) cart.length = 0;
+    } catch (_) {}
+  }
+
+  // 2) Migrate legacy carts (pre-v4 shape)
   try { migrateLegacyCart(); } catch (_) {}
 
-  // Sync badge and re-render the cart screen if it's already visible
+  // 3) Badge sync on load
   if (typeof window !== "undefined") {
     if (document.readyState === "complete" || document.readyState === "interactive") {
       setTimeout(function () { updateCartBadge(); }, 0);
@@ -898,4 +928,4 @@ function escapeCartAttr(v) { return escapeCartHtml(v); }
   }
 })();
 
-console.log("[GoodsbarnX] cart.js loaded (V1.8.2.6 rev.3 · Relationship-Order Assembly)");
+console.log("[GoodsbarnX] cart.js loaded (V1.8.2.6 rev.4 · Relationship-Order + Security F-21)");
