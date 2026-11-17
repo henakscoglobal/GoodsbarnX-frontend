@@ -2955,3 +2955,260 @@
   opacity: 0.55;
   cursor: not-allowed !important;
    }
+
+/* ==========================================================================
+   ORDERS — F-19-B read surfaces
+   Order rows inside relationship cards · order detail sheet
+   ========================================================================== */
+
+.relationship-orders-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-dark);
+}
+
+.orders-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.orders-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.orders-section-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--gbx-green);
+  background: rgba(85, 217, 150, 0.10);
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+
+.orders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.order-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+  font-family: var(--font-sans);
+}
+.order-row:hover {
+  border-color: rgba(85, 217, 150, 0.28);
+  background: rgba(8, 116, 67, 0.04);
+}
+.order-row:active { transform: scale(0.995); }
+
+.order-row-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.order-row-status {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.order-row-status[data-tone="submitted"] {
+  background: rgba(214, 168, 58, 0.12);
+  color: var(--accent);
+}
+.order-row-status[data-tone="acknowledged"] {
+  background: rgba(85, 217, 150, 0.10);
+  color: var(--gbx-green);
+}
+.order-row-status[data-tone="fulfilled"] {
+  background: rgba(8, 116, 67, 0.16);
+  color: #79E3AF;
+}
+.order-row-status[data-tone="declined"] {
+  background: rgba(217, 92, 92, 0.10);
+  color: var(--danger);
+}
+.order-row-status[data-tone="cancelled"] {
+  background: rgba(245, 243, 236, 0.05);
+  color: var(--text-muted);
+}
+.order-row-subtotal {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+.order-row-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+.order-row-date {
+  font-size: 10px;
+}
+.order-row-arrow {
+  font-size: 15px;
+  color: var(--text-muted);
+  font-weight: 300;
+}
+
+.orders-more {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.orders-empty {
+  padding: 12px 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.45;
+}
+
+/* ---- Order detail sheet ---------------------------------------------- */
+
+.order-detail-status {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 10px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.order-detail-status[data-tone="submitted"]    { background: rgba(214, 168, 58, 0.12); color: var(--accent); }
+.order-detail-status[data-tone="acknowledged"] { background: rgba(85, 217, 150, 0.10); color: var(--gbx-green); }
+.order-detail-status[data-tone="fulfilled"]    { background: rgba(8, 116, 67, 0.16); color: #79E3AF; }
+.order-detail-status[data-tone="declined"]     { background: rgba(217, 92, 92, 0.10); color: var(--danger); }
+.order-detail-status[data-tone="cancelled"]    { background: rgba(245, 243, 236, 0.05); color: var(--text-muted); }
+
+.order-detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.order-detail-item:last-child { border-bottom: 0; }
+.order-detail-item-main { min-width: 0; flex: 1; }
+.order-detail-item-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+.order-detail-item-meta {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.order-detail-item-right {
+  flex: 0 0 auto;
+  text-align: right;
+}
+.order-detail-item-total {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.order-detail-item-unit {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.order-detail-subtotal {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  margin-top: 6px;
+  border-top: 1px solid var(--border-dark);
+  font-size: 13px;
+}
+.order-detail-subtotal strong {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.order-detail-evidence {
+  padding: 8px 0;
+}
+.order-evidence-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 11px;
+  border-bottom: 1px dashed var(--border);
+}
+.order-evidence-row:last-child { border-bottom: 0; }
+.order-evidence-row span { color: var(--text-muted); }
+.order-evidence-row strong { color: var(--text-primary); font-weight: 600; }
+
+.order-detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+.order-action {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+.order-action:active { transform: scale(0.98); }
+.order-action-primary {
+  background: var(--gbx-emerald);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(8, 116, 67, 0.22);
+}
+.order-action-primary:hover { background: #0A8C52; }
+.order-action-danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid rgba(217, 92, 92, 0.28);
+}
+.order-action-danger:hover {
+  background: rgba(217, 92, 92, 0.06);
+  border-color: rgba(217, 92, 92, 0.45);
+                                        }
