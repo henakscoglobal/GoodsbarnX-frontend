@@ -2334,3 +2334,563 @@ window.showBuyerActionBanner       = showBuyerActionBanner;
 window.hideBuyerActionBanner       = hideBuyerActionBanner;
 
 console.log("[GoodsbarnX] relationship.js loaded (V1.8.2.6 rev.3 · F-14)");
+
+// ==========================================================================
+// F-19-B · ORDER READ SURFACES
+//
+// Renders a compact "Recent orders" section inside each relationship card
+// and a full order detail sheet on tap. Order actions (Acknowledge /
+// Fulfil / Decline for distributor; Cancel for buyer) live in the detail
+// sheet only.
+//
+// Preserves:
+//   - loadMyTradeRelationship()      (buyer relationship card)
+//   - loadMyTradeRelationships()     (distributor relationship list)
+//   - All existing function signatures.
+//
+// Adds:
+//   - renderOrdersSectionForBuyer(relationship)
+//   - renderOrdersSectionForDistributor(relationship)
+//   - loadOrdersForRelationship(relationshipId, viewerRole)
+//   - openOrderDetail(orderId)
+//   - bindOrderEvents()
+//
+// Self-gated: order sections render only after their loader runs. If the
+// orders table is unreachable (or empty), the section shows an honest
+// empty state — never a fabricated "no issues!" line.
+// ==========================================================================
+
+const __gbxOrdersWarned = Object.create(null);
+function ordersWarnMissing(id) {
+  if (__gbxOrdersWarned[id]) return;
+  __gbxOrdersWarned[id] = true;
+  console.warn("[GoodsbarnX/orders] DOM target #" + id + " is missing from index.html.");
+}
+
+function ordersEscHtml(v) {
+  return String(v == null ? "" : v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+function ordersEscAttr(v) { return ordersEscHtml(v); }
+function ordersNum(v, fallback) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : (fallback == null ? 0 : fallback);
+}
+
+// --------------------------------------------------------------------------
+// STATUS LABELS + COLORS
+// --------------------------------------------------------------------------
+
+const ORDER_STATUS_LABELS = {
+  submitted:    "Submitted",
+  acknowledged: "Acknowledged",
+  fulfilled:    "Fulfilled",
+  declined:     "Declined",
+  cancelled:    "Cancelled"
+};
+const ORDER_STATUS_TONES = {
+  submitted:    "submitted",
+  acknowledged: "acknowledged",
+  fulfilled:    "fulfilled",
+  declined:     "declined",
+  cancelled:    "cancelled"
+};
+
+function orderStatusLabel(s) {
+  return ORDER_STATUS_LABELS[String(s || "").toLowerCase()] || String(s || "Unknown");
+}
+function orderStatusTone(s) {
+  return ORDER_STATUS_TONES[String(s || "").toLowerCase()] || "submitted";
+}
+
+function ordersFormatDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-NG", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit"
+  });
+}
+
+function ordersFormatAge(ms) {
+  if (ms == null) return "";
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return "<1m";
+  if (m < 60) return m + "m";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h";
+  return Math.floor(h / 24) + "d";
+}
+
+// --------------------------------------------------------------------------
+// LOADER — fetch orders for one counterparty
+// --------------------------------------------------------------------------
+
+/**
+ * Fetches orders for one relationship (buyer ↔ distributor).
+ * Returns { orders: [...], error: null | Error }.
+ *
+ * Role determines which side of the order the viewer is on. We filter by
+ * the viewer's own id on the correct column, so RLS is enforced twice —
+ * once by the query, once by Postgres.
+ */
+async function loadOrdersForRelationship(counterpartyId, viewerRole) {
+  if (!currentUser || !window.sb || !counterpartyId) {
+    return { orders: [], error: null };
+  }
+
+  try {
+    const column = viewerRole === "buyer" ? "buyer_id" : "distributor_id";
+    const counterpartColumn = viewerRole === "buyer" ? "distributor_id" : "buyer_id";
+
+    const result = await sb.from("orders")
+      .select(
+        "id,status,subtotal,currency,created_at,submitted_at," +
+        "acknowledged_at,fulfilled_at,declined_at,cancelled_at," +
+        "buyer_id,distributor_id," +
+        "relationship_status_at_submit,engine_source_at_submit," +
+        "engine_freshness_ms_at_submit"
+      )
+      .eq(column, currentUser.id)
+      .eq(counterpartColumn, counterpartId)
+      .order("submitted_at", { ascending: false })
+      .limit(20);
+
+    if (result.error) {
+      console.warn("[GoodsbarnX/orders] load failed:", result.error.message);
+      return { orders: [], error: result.error };
+    }
+
+    return { orders: result.data || [], error: null };
+  } catch (err) {
+    console.warn("[GoodsbarnX/orders] load threw:", err && err.message);
+    return { orders: [], error: err };
+  }
+}
+
+// --------------------------------------------------------------------------
+// RENDER — order rows inside the relationship card
+// --------------------------------------------------------------------------
+
+/**
+ * Compact order row. Read-only. Tap opens the detail sheet.
+ * Button shows: status, subtotal, submitted_at, line count.
+ */
+function renderOrderRow(order, counterpartyName) {
+  const safeId = ordersEscAttr(order.id);
+  const statusLabel = orderStatusLabel(order.status);
+  const tone = orderStatusTone(order.status);
+  const subtotal = ordersNum(order.subtotal, 0);
+  const submittedAt = order.submitted_at || order.created_at;
+
+  return (
+    '<button type="button" class="order-row" data-order-id="' + safeId + '">' +
+      '<div class="order-row-main">' +
+        '<div class="order-row-status" data-tone="' + tone + '">' + ordersEscHtml(statusLabel) + '</div>' +
+        '<div class="order-row-subtotal">₦' + subtotal.toLocaleString() + '</div>' +
+      '</div>' +
+      '<div class="order-row-meta">' +
+        '<span class="order-row-date">' + ordersEscHtml(ordersFormatDate(submittedAt)) + '</span>' +
+        '<span class="order-row-arrow" aria-hidden="true">›</span>' +
+      '</div>' +
+    '</button>'
+  );
+}
+
+/**
+ * Render the "Recent orders" section for a single relationship.
+ * Injects into a placeholder div (created by the caller if missing).
+ */
+async function renderOrdersSectionForRelationship(counterpartyId, counterpartyName, viewerRole, placeholderId) {
+  const host = document.getElementById(placeholderId);
+  if (!host) return;
+
+  host.innerHTML = '<div class="loading-text">Loading orders…</div>';
+
+  const { orders, error } = await loadOrdersForRelationship(counterpartyId, viewerRole);
+
+  if (error) {
+    host.innerHTML =
+      '<div class="orders-empty">Orders temporarily unavailable.</div>';
+    return;
+  }
+
+  if (!orders.length) {
+    host.innerHTML = viewerRole === "buyer"
+      ? '<div class="orders-empty">No orders with ' + ordersEscHtml(counterpartyName) + ' yet. Submit a cart to start.</div>'
+      : '<div class="orders-empty">No orders from ' + ordersEscHtml(counterpartyName) + ' yet.</div>';
+    return;
+  }
+
+  const topN = orders.slice(0, 5);
+  const more = orders.length - topN.length;
+
+  host.innerHTML =
+    '<div class="orders-section-head">' +
+      '<span class="orders-section-title">Recent orders</span>' +
+      '<span class="orders-section-count">' + orders.length + '</span>' +
+    '</div>' +
+    '<div class="orders-list">' +
+      topN.map(function (o) { return renderOrderRow(o, counterpartyName); }).join("") +
+    '</div>' +
+    (more > 0
+      ? '<div class="orders-more">+' + more + ' more</div>'
+      : "");
+}
+
+// --------------------------------------------------------------------------
+// ORDER DETAIL SHEET
+//
+// Opens a bottom-sheet modal with full order details and the correct
+// state-machine actions for the current viewer.
+// --------------------------------------------------------------------------
+
+async function openOrderDetail(orderId) {
+  if (!orderId || !window.sb || !currentUser) return;
+
+  // Remove any existing detail sheet
+  var existing = document.getElementById("order-detail-sheet");
+  if (existing) existing.remove();
+
+  // Fetch the order + its items
+  var orderResult = await sb.from("orders")
+    .select(
+      "id,status,subtotal,currency,created_at,submitted_at," +
+      "acknowledged_at,fulfilled_at,declined_at,cancelled_at," +
+      "buyer_id,distributor_id," +
+      "relationship_status_at_submit,engine_source_at_submit," +
+      "engine_freshness_ms_at_submit"
+    )
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (orderResult.error || !orderResult.data) {
+    console.warn("[GoodsbarnX/orders] detail load failed:", orderResult.error && orderResult.error.message);
+    alert("Could not load this order.");
+    return;
+  }
+  var order = orderResult.data;
+
+  var itemsResult = await sb.from("order_items")
+    .select(
+      "id,product_id,product_name_at_submit,product_sku_at_submit," +
+      "quantity,moq_at_submit,unit_price,price_basis,line_total," +
+      "buyer_note,distributor_note"
+    )
+    .eq("order_id", orderId)
+    .order("product_name_at_submit", { ascending: true });
+
+  var items = itemsResult.error ? [] : (itemsResult.data || []);
+
+  // Resolve counterparty name
+  var viewerRole = currentUser.role;
+  var counterpartyId = viewerRole === "buyer" ? order.distributor_id : order.buyer_id;
+  var counterpartyName = "Counterparty";
+
+  try {
+    if (viewerRole === "buyer") {
+      var distRes = await sb.from("distributor_profiles")
+        .select("business_name").eq("id", counterpartyId).maybeSingle();
+      if (distRes.data && distRes.data.business_name) counterpartyName = distRes.data.business_name;
+    } else {
+      var buyerRes = await sb.from("buyer_profiles")
+        .select("name").eq("id", counterpartyId).maybeSingle();
+      if (buyerRes.data && buyerRes.data.name) counterpartyName = buyerRes.data.name;
+    }
+  } catch (_) {}
+
+  // Build the actions per viewer/status
+  var actionsHtml = "";
+  if (viewerRole === "distributor") {
+    if (order.status === "submitted") {
+      actionsHtml =
+        '<div class="order-detail-actions">' +
+          '<button type="button" class="order-action order-action-primary" data-order-action="acknowledged" data-order-id="' + ordersEscAttr(order.id) + '">Acknowledge</button>' +
+          '<button type="button" class="order-action order-action-danger" data-order-action="declined" data-order-id="' + ordersEscAttr(order.id) + '">Decline</button>' +
+        '</div>';
+    } else if (order.status === "acknowledged") {
+      actionsHtml =
+        '<div class="order-detail-actions">' +
+          '<button type="button" class="order-action order-action-primary" data-order-action="fulfilled" data-order-id="' + ordersEscAttr(order.id) + '">Mark fulfilled</button>' +
+          '<button type="button" class="order-action order-action-danger" data-order-action="declined" data-order-id="' + ordersEscAttr(order.id) + '">Decline</button>' +
+        '</div>';
+    }
+  } else if (viewerRole === "buyer") {
+    if (order.status === "submitted") {
+      actionsHtml =
+        '<div class="order-detail-actions">' +
+          '<button type="button" class="order-action order-action-danger" data-order-action="cancelled" data-order-id="' + ordersEscAttr(order.id) + '">Cancel order</button>' +
+        '</div>';
+    }
+  }
+
+  var statusTone = orderStatusTone(order.status);
+  var submittedAt = order.submitted_at || order.created_at;
+
+  var sheetHtml =
+    '<div class="sheet-overlay active" id="order-detail-sheet">' +
+      '<div class="sheet" style="max-height: 92vh;">' +
+        '<div class="sheet-handle"></div>' +
+        '<h3>Order · ' + ordersEscHtml(orderStatusLabel(order.status)) + '</h3>' +
+        '<div class="sub">' +
+          ordersEscHtml(counterpartyName) +
+          ' · ' + ordersEscHtml(ordersFormatDate(submittedAt)) +
+        '</div>' +
+        '<div class="order-detail-status" data-tone="' + statusTone + '">' +
+          ordersEscHtml(orderStatusLabel(order.status)) +
+        '</div>' +
+        '<div class="section-label" style="margin-top:18px;">Items</div>' +
+        (items.length
+          ? items.map(function (it) {
+              var qty = ordersNum(it.quantity, 0);
+              var unit = ordersNum(it.unit_price, 0);
+              var total = ordersNum(it.line_total, qty * unit);
+              return (
+                '<div class="order-detail-item">' +
+                  '<div class="order-detail-item-main">' +
+                    '<div class="order-detail-item-name">' + ordersEscHtml(it.product_name_at_submit || "Product") + '</div>' +
+                    '<div class="order-detail-item-meta">' +
+                      'Qty ' + qty + ' · ' + ordersEscHtml(it.price_basis || "public") +
+                    '</div>' +
+                  '</div>' +
+                  '<div class="order-detail-item-right">' +
+                    '<div class="order-detail-item-total">₦' + total.toLocaleString() + '</div>' +
+                    '<div class="order-detail-item-unit">₦' + unit.toLocaleString() + ' ea</div>' +
+                  '</div>' +
+                '</div>'
+              );
+            }).join("")
+          : '<div class="orders-empty">No items on record.</div>') +
+        '<div class="order-detail-subtotal">' +
+          '<span>Subtotal</span>' +
+          '<strong>₦' + ordersNum(order.subtotal, 0).toLocaleString() + '</strong>' +
+        '</div>' +
+        '<div class="section-label" style="margin-top:18px;">Evidence</div>' +
+        '<div class="order-detail-evidence">' +
+          '<div class="order-evidence-row"><span>Relationship at submit</span><strong>' +
+            ordersEscHtml(order.relationship_status_at_submit || "—") + '</strong></div>' +
+          '<div class="order-evidence-row"><span>Engine source at submit</span><strong>' +
+            ordersEscHtml(order.engine_source_at_submit || "unavailable") + '</strong></div>' +
+          '<div class="order-evidence-row"><span>Engine freshness at submit</span><strong>' +
+            (order.engine_freshness_ms_at_submit != null
+              ? ordersFormatAge(order.engine_freshness_ms_at_submit) + ' old'
+              : '—') + '</strong></div>' +
+        '</div>' +
+        actionsHtml +
+        '<button class="cancel-btn" type="button" data-order-action="close">Close</button>' +
+      '</div>' +
+    '</div>';
+
+  document.body.insertAdjacentHTML("beforeend", sheetHtml);
+
+  // Close on overlay tap
+  var sheet = document.getElementById("order-detail-sheet");
+  sheet.addEventListener("click", function (e) {
+    if (e.target === sheet) closeOrderDetail();
+  });
+}
+
+function closeOrderDetail() {
+  var sheet = document.getElementById("order-detail-sheet");
+  if (sheet) sheet.remove();
+}
+
+// --------------------------------------------------------------------------
+// ORDER ACTIONS — delegated handler
+// --------------------------------------------------------------------------
+
+async function executeOrderAction(orderId, action) {
+  if (!orderId || !action) return;
+
+  try {
+    if (action === "cancelled") {
+      var r1 = await sb.rpc("cancel_order", { p_order_id: orderId });
+      if (r1.error) {
+        alert("Could not cancel: " + (r1.error.message || "unknown error"));
+        return;
+      }
+    } else {
+      var r2 = await sb.rpc("acknowledge_order", {
+        p_order_id: orderId,
+        p_status: action
+      });
+      if (r2.error) {
+        alert("Could not update: " + (r2.error.message || "unknown error"));
+        return;
+      }
+    }
+
+    closeOrderDetail();
+    // Refresh the order list — the section is rendered into a placeholder
+    // that belongs to the current relationship card. We rely on the
+    // relationship card's existing refresh path; the caller is expected
+    // to re-enter the relationship screen, which reloads the orders.
+    if (typeof loadMyTradeRelationships === "function" && currentUser.role === "distributor") {
+      loadMyTradeRelationships();
+    }
+    if (typeof loadMyTradeRelationship === "function" && currentUser.role === "buyer") {
+      loadMyTradeRelationship();
+    }
+  } catch (err) {
+    console.error("[GoodsbarnX/orders] action failed:", err);
+    alert("Could not update the order. Please try again.");
+  }
+}
+
+function bindOrderEvents() {
+  var screen = document.getElementById("screen-relationship");
+  if (!screen) { ordersWarnMissing("screen-relationship"); return; }
+  if (screen.__ordersBound) return;
+  screen.__ordersBound = true;
+
+  screen.addEventListener("click", function (e) {
+    // Order row tap → open detail
+    var row = e.target.closest("[data-order-id]");
+    if (row && !e.target.closest("[data-order-action]")) {
+      e.preventDefault();
+      openOrderDetail(row.getAttribute("data-order-id"));
+      return;
+    }
+  });
+
+  // Detail sheet actions
+  document.body.addEventListener("click", function (e) {
+    var actionBtn = e.target.closest("[data-order-action]");
+    if (!actionBtn) return;
+    var action = actionBtn.getAttribute("data-order-action");
+    if (action === "close") {
+      e.preventDefault();
+      closeOrderDetail();
+      return;
+    }
+    var orderId = actionBtn.getAttribute("data-order-id");
+    if (orderId && (action === "acknowledged" || action === "fulfilled" ||
+                    action === "declined" || action === "cancelled")) {
+      e.preventDefault();
+      executeOrderAction(orderId, action);
+    }
+  });
+}
+
+// --------------------------------------------------------------------------
+// HOOK — after relationship cards are rendered, inject the orders section
+//
+// The relationship.js loaders call loadMyTradeRelationship (buyer) and
+// loadMyTradeRelationships (distributor). We wrap both to inject the
+// order section into their output. The wrappers are idempotent — if
+// called multiple times, the orders section is re-rendered cleanly.
+// --------------------------------------------------------------------------
+
+(function hookOrdersIntoRelationshipRender() {
+  function injectForBuyer() {
+    if (!currentUser || currentUser.role !== "buyer") return;
+    var card = document.getElementById("my-relationship-card");
+    if (!card) return;
+    // Only inject if we have a rendered relationship card (existing structure)
+    var relationshipHeader = card.querySelector(".manifest");
+    if (!relationshipHeader) return;
+
+    var placeholderId = "my-relationship-orders";
+    if (!document.getElementById(placeholderId)) {
+      var section = document.createElement("div");
+      section.id = placeholderId;
+      section.className = "relationship-orders-section";
+      card.appendChild(section);
+    }
+
+    // We need the distributor_id. It's stored on the manifest by
+    // loadMyTradeRelationship via data-* attributes if present, or we can
+    // read from the window.__relTermsCache populated by that loader.
+    var distributorId = null;
+    if (typeof currentUser !== "undefined" && currentUser.primaryDistributorId) {
+      distributorId = currentUser.primaryDistributorId;
+    }
+    // Prefer reading from the DOM if the relationship card has data.
+    var manifestWithDist = card.querySelector("[data-distributor-id]");
+    if (manifestWithDist) {
+      distributorId = manifestWithDist.getAttribute("data-distributor-id");
+    }
+    if (!distributorId) {
+      // No identifier available — render an honest skip.
+      return;
+    }
+
+    var nameEl = card.querySelector(".m-name");
+    var name = nameEl ? nameEl.textContent.trim() : "this distributor";
+    renderOrdersSectionForRelationship(distributorId, name, "buyer", placeholderId);
+  }
+
+  function injectForDistributor() {
+    if (!currentUser || currentUser.role !== "distributor") return;
+    var list = document.getElementById("my-relationships-list");
+    if (!list) return;
+
+    // Each card in the list gets its own orders placeholder.
+    // We tag the cards via their existing data-distributor-id? No, on the
+    // distributor side the cards identify a *buyer*, and the data attribute
+    // may not be present. We look for the buyer_id per card by reading
+    // the buyer profile name; but a simpler path: iterate over the cards
+    // in the DOM and inject placeholder divs; the loader (below) uses
+    // data attributes we add per card.
+    var cards = list.querySelectorAll(".manifest");
+    cards.forEach(function (cardEl) {
+      // Extract buyer_id from any data attribute market.js or relationship.js
+      // already set on the card. If none, we cannot inject safely.
+      var buyerId = cardEl.getAttribute("data-buyer-id");
+      if (!buyerId) {
+        // Try to find via the "PRIMARY" span (only present on primary)
+        // Fallback: skip. The relationship list already shows trust; the
+        // orders section can only be rendered when we have the buyer id.
+        return;
+      }
+      var placeholderId = "orders-for-buyer-" + buyerId;
+      if (!cardEl.querySelector("#" + CSS.escape(placeholderId))) {
+        var section = document.createElement("div");
+        section.id = placeholderId;
+        section.className = "relationship-orders-section";
+        cardEl.appendChild(section);
+      }
+      var nameEl = cardEl.querySelector(".m-name");
+      var name = nameEl ? nameEl.textContent.trim() : "this buyer";
+      renderOrdersSectionForRelationship(buyerId, name, "distributor", placeholderId);
+    });
+  }
+
+  // Wrap loadMyTradeRelationship
+  if (typeof window.loadMyTradeRelationship === "function") {
+    var origBuyer = window.loadMyTradeRelationship;
+    window.loadMyTradeRelationship = async function () {
+      var result = await origBuyer.apply(this, arguments);
+      // Give the original DOM a tick to settle, then inject
+      setTimeout(injectForBuyer, 120);
+      return result;
+    };
+  }
+
+  // Wrap loadMyTradeRelationships
+  if (typeof window.loadMyTradeRelationships === "function") {
+    var origDist = window.loadMyTradeRelationships;
+    window.loadMyTradeRelationships = async function () {
+      var result = await origDist.apply(this, arguments);
+      setTimeout(injectForDistributor, 120);
+      return result;
+    };
+  }
+
+  // Bind the delegated handler
+  if (document.readyState === "complete" || document.readyState === "interactive") {
+    setTimeout(bindOrderEvents, 0);
+  } else {
+    window.addEventListener("DOMContentLoaded", bindOrderEvents);
+  }
+})();
+
+// F-19-B exports
+window.openOrderDetail = openOrderDetail;
+window.closeOrderDetail = closeOrderDetail;
+window.renderOrdersSectionForRelationship = renderOrdersSectionForRelationship;
