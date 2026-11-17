@@ -2736,3 +2736,34 @@
   .market-network-pill  { padding: 7px 10px; }
   .market-network-pill-name { font-size: 10.5px; }
 }
+
+/* ==========================================================================
+   TRUST — Elite trust distributor cards
+   ========================================================================== */
+
+.trust-distributor-card .m-meta {
+  justify-content: flex-start;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.trust-distributor-card .btn-primary {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 12px;
+}
+
+.trust-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border: 1.5px solid var(--gbx-line);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
