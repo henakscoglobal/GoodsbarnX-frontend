@@ -1,5 +1,5 @@
 // ==========================================================================
-// GoodsbarnX — cart.js  (rev. 5 · Relationship-Order + Security + Refined V1)
+// GoodsbarnX — cart.js  (rev. 6 · Relationship-Order + Security + F-19 orders)
 // Plain global script. Depends on the global `cart` array (loaded from
 // localStorage in the main inline script in index.html).
 //
@@ -14,7 +14,7 @@
 //   L3 · GUARDRAILS   MOQ, relationship-active, price-fresh, engine,
 //                     no-dark-patterns
 //   L4 · COMMITMENT   one primary action per ready group:
-//                     submit inquiry | WhatsApp handoff | contact
+//                     submit order | WhatsApp handoff | contact
 //   L5 · EVIDENCE     every submission records price basis, terms ref,
 //                     relationship status, engine freshness
 //
@@ -33,22 +33,26 @@
 //   products.price. Legitimate discounts applied at add time (relationship
 //   discount, negotiated price, per-product override) surface as a lower
 //   snapshot value than products.price — blocking them was a false positive.
-//   The check now blocks only two classes:
-//     (a) snapshot HIGHER than DB public price  → buyer inflated price
-//     (b) snapshot LOWER than 40% of DB price with "public" basis
-//         → implausible discount, probable localStorage tampering
-//   Between 40% and 100% of DB price, with "public" basis, the snapshot
-//   is accepted with a console warning — it is almost always an untagged
-//   storefront discount (Part B in storefront.js will tag it properly).
+//
+// rev.6 (F-19 · server-authoritative orders):
+//   submitCartGroupInquiry → submitCartGroupOrder
+//   - Single RPC call into submit_cart_group(uuid, jsonb, text)
+//   - Server re-derives every price. Client price is intent evidence only.
+//   - Idempotency key from cart content — same cart, same distributor,
+//     seconds apart returns the existing order rather than duplicating.
+//   - Server exceptions mapped to cart-level reasons
+//     (price_changed / relationship_inactive / insufficient_stock / moq_not_met).
+//   - Client-side pre-flight guardrails remain as a UX layer; the RPC is
+//     the authoritative validator.
 //
 // Backward compatibility (do not break):
 //   - addToCart(productId, name, price, distributorId, distributorName,
 //     qty?, opts?) — exact signature preserved.
 //   - removeFromCart(productId), updateCartBadge(), renderCart() unchanged
 //     signatures, richer behaviour.
-//   - localStorage key "goodsbarnx_cart" preserved. Existing carts survive
-//     via migrateLegacyCart() on first load.
+//   - localStorage key "goodsbarnx_cart" preserved.
 //   - document "goodsbarnx:cart-added" custom event still fires.
+//   - WhatsApp and Contact submission paths unchanged.
 // ==========================================================================
 
 // ==========================================================================
@@ -57,7 +61,7 @@
 
 const CART_STORAGE_KEY   = "goodsbarnx_cart";
 const CART_HASH_KEY      = "goodsbarnx_cart:hash";
-const CART_SCHEMA_VERSION = 5;
+const CART_SCHEMA_VERSION = 6;
 
 const CART_STALE_AFTER_MS       = 5  * 60 * 1000;
 const CART_UNAVAILABLE_AFTER_MS = 30 * 60 * 1000;
@@ -482,6 +486,10 @@ async function submitCartGroup(distributorId, mode) {
     // Everything else passes. Untagged discounts in the 40%–100% band are
     // accepted with a console warning; storefront.js part B will tag them
     // properly in a future revision so the warning goes away.
+    //
+    // NOTE (F-19): this client-side check is now a UX layer. The server
+    // (submit_cart_group RPC) re-derives every price and rejects any
+    // mismatch. Even if this check were bypassed, the server is authoritative.
     var priceChanges = [];
     for (var j = 0; j < group.items.length; j++) {
       var it = group.items[j];
@@ -559,13 +567,143 @@ async function submitCartGroup(distributorId, mode) {
     var result;
     if (mode === "whatsapp")     result = submitCartGroupWhatsApp(group);
     else if (mode === "contact") result = submitCartGroupContact(group);
-    else                         result = await submitCartGroupInquiry(group);
+    else                         result = await submitCartGroupOrder(group);
 
     if (result.ok) __cartLastSubmitByDist[distributorId] = Date.now();
     return result;
   } finally {
     __cartSubmitInFlight = false;
   }
+}
+
+// -------------------------------------------------------------------------
+// F-19 · idempotency key derivation
+//
+// Same cart content for the same distributor within the cooldown window
+// returns the same order. The key is deterministic — no nonce — so a
+// double-tap or a slow-network retry resolves to the existing order,
+// never a duplicate.
+//
+// Determinism requires sorting. Two carts with the same items but different
+// iteration order must produce the same key. We sort by product_id.
+// -------------------------------------------------------------------------
+function deriveCartIdempotencyKey(group) {
+  if (!group || !Array.isArray(group.items) || !group.items.length) return null;
+  var parts = group.items.map(function (it) {
+    var pid = String(it.productId || "");
+    var qty = String(Number(it.qty) || 0);
+    var basis = (it.price_snapshot && it.price_snapshot.basis) || "public";
+    return pid + ":" + qty + ":" + basis;
+  });
+  parts.sort();
+  return "cart:" + String(group.distributorId || "") + "|" + parts.join(";");
+}
+
+// -------------------------------------------------------------------------
+// F-19 · price basis mapping
+//
+// The cart's price_snapshot.basis uses strings like "public",
+// "relationship_discount", "negotiated", "negotiable". The RPC accepts
+// exactly these. We defensively normalise unexpected values to 'public'
+// so an unknown basis from a future code path fails at the RPC with
+// PRICE_MISMATCH rather than an obscure SQL error.
+// -------------------------------------------------------------------------
+function deriveCartPriceBasis(item) {
+  var basis = (item.price_snapshot && item.price_snapshot.basis) || "public";
+  if (basis === "public" || basis === "relationship_discount" ||
+      basis === "negotiated" || basis === "negotiable") {
+    return basis;
+  }
+  return "public";
+}
+
+// -------------------------------------------------------------------------
+// F-19 · submitCartGroupOrder
+//
+// Replaces the previous submitCartGroupInquiry. Instead of N inserts into
+// `inquiries`, this is ONE RPC call into `submit_cart_group`. The server
+// re-derives every price and enforces every constraint authoritatively.
+//
+// Error code mapping:
+//   PRICE_MISMATCH        → price_changed:<names>  (buyer re-adds)
+//   RELATIONSHIP_INACTIVE → relationship_inactive  (buyer reconnects)
+//   OUT_OF_STOCK          → insufficient_stock:<name>
+//   MOQ                   → moq_not_met:<name>
+//   other                 → submit_failed:<message>
+// -------------------------------------------------------------------------
+async function submitCartGroupOrder(group) {
+  if (!currentUser || !window.sb) return { ok: false, reason: "not_authenticated" };
+  if (!group || !Array.isArray(group.items) || !group.items.length) {
+    return { ok: false, reason: "empty_group" };
+  }
+
+  // Build the RPC payload
+  var items = group.items.map(function (it) {
+    var snap = it.price_snapshot || {};
+    return {
+      product_id: String(it.productId),
+      quantity:   Number(it.qty) || 1,
+      unit_price: Number(snap.value) || 0,
+      price_basis: deriveCartPriceBasis(it),
+      buyer_note: null // reserved — no UI yet, but the schema accepts it
+    };
+  });
+
+  var idempotencyKey = deriveCartIdempotencyKey(group);
+
+  var result;
+  try {
+    result = await sb.rpc("submit_cart_group", {
+      p_distributor_id: group.distributorId,
+      p_items: items,
+      p_idempotency_key: idempotencyKey
+    });
+  } catch (err) {
+    console.error("[GoodsbarnX/cart] submit_cart_group threw:", err && err.message);
+    return { ok: false, reason: "submit_failed:" + (err && err.message || "network") };
+  }
+
+  if (result.error) {
+    var msg = String(result.error.message || "");
+    var code = String(result.error.code || "");
+
+    // Map RPC-raised exceptions to cart-level reasons
+    if (/price mismatch/i.test(msg)) {
+      var match = msg.match(/Price mismatch for (.+?) \(/);
+      var productName = match && match[1] ? match[1] : "an item";
+      return { ok: false, reason: "price_changed:" + productName };
+    }
+    if (/relationship with distributor is not active/i.test(msg)) {
+      return { ok: false, reason: "relationship_inactive:" + (group.distributorName || "this distributor") };
+    }
+    if (/insufficient stock for (.+?) \(/i.test(msg)) {
+      var sMatch = msg.match(/Insufficient stock for (.+?) \(/);
+      return { ok: false, reason: "insufficient_stock:" + (sMatch && sMatch[1] || "an item") };
+    }
+    if (/quantity below moq for (.+?) \(/i.test(msg)) {
+      var qMatch = msg.match(/Quantity below MOQ for (.+?) \(/);
+      return { ok: false, reason: "moq_not_met:" + (qMatch && qMatch[1] || "an item") + ":server-verified" };
+    }
+    if (/not your order/i.test(msg) || code === "42501") {
+      return { ok: false, reason: "submit_failed:permission" };
+    }
+    console.warn("[GoodsbarnX/cart] submit_cart_group error:", code, msg);
+    return { ok: false, reason: "submit_failed:" + (msg || "unknown") };
+  }
+
+  // Success
+  var data = result.data || {};
+
+  // Clear the group locally. The server has the authoritative record.
+  clearCartGroup(group.distributorId);
+
+  return {
+    ok: true,
+    mode: "order",
+    order_id: data.order_id,
+    status: data.status || "submitted",
+    submitted: data.item_count || group.items.length
+  };
 }
 
 function submitCartGroupWhatsApp(group) {
@@ -613,57 +751,6 @@ function submitCartGroupContact(group) {
     return { ok: true, mode: "contact", submitted: lineCount };
   }
   return { ok: false, reason: "contact_modal_unavailable" };
-}
-
-async function submitCartGroupInquiry(group) {
-  if (!currentUser || !window.sb) return { ok: false, reason: "not_authenticated" };
-
-  var created = 0;
-  var errors = [];
-
-  for (var i = 0; i < group.items.length; i++) {
-    var item = group.items[i];
-    var snap = item.price_snapshot || {};
-    var qty  = Number(item.qty) || 1;
-    var unit = Number(snap.value) || 0;
-
-    var evidenceBits = [];
-    evidenceBits.push("cart:qty=" + qty);
-    if (snap.basis) evidenceBits.push("basis=" + snap.basis);
-    if (snap.capturedAt) evidenceBits.push("captured=" + snap.capturedAt);
-    if (group.engineContext && group.engineContext.source) evidenceBits.push("engine=" + group.engineContext.source);
-    if (group.relationship && group.relationship.status) evidenceBits.push("relationship=" + group.relationship.status);
-
-    var payload = {
-      inquirer_name:  (currentUser.full_name || currentUser.business_name || "Buyer"),
-      inquirer_phone: currentUser.phone || "",
-      inquirer_email: currentUser.email || null,
-      item:           (item.name || "Product") + (item.sku ? " [" + item.sku + "]" : ""),
-      order_scale:    "cart",
-      quantity:       qty + " × ₦" + unit.toLocaleString() + " (" + evidenceBits.join("; ") + ")",
-      distributor_id: group.distributorId,
-      buyer_id:       currentUser.id,
-      contact_type:   "distributor",
-      inquirer_id:    currentUser.id
-    };
-
-    try {
-      var r = await sb.from("inquiries").insert(payload);
-      if (r.error) errors.push((item.name || item.productId) + ": " + r.error.message);
-      else created++;
-    } catch (err) {
-      errors.push((item.name || item.productId) + ": " + (err && err.message || "network"));
-    }
-  }
-
-  if (created > 0) clearCartGroup(group.distributorId);
-
-  return {
-    ok: created > 0 && errors.length === 0,
-    mode: "inquiry",
-    submitted: created,
-    errors: errors
-  };
 }
 
 // ==========================================================================
@@ -747,7 +834,7 @@ function renderGroupHtml(group) {
         group.items.map(function (item) { return renderCartItemHtml(item); }).join("") +
       '</div>' +
       '<div class="cart2-group-actions">' +
-        '<button type="button" class="cart2-action cart2-action-primary" data-cart2-action="submit-inquiry" data-distributor-id="' + escapeCartAttr(group.distributorId) + '"' + actionsDisabled + '>Submit inquiry</button>' +
+        '<button type="button" class="cart2-action cart2-action-primary" data-cart2-action="submit-inquiry" data-distributor-id="' + escapeCartAttr(group.distributorId) + '"' + actionsDisabled + '>Submit order</button>' +
         '<button type="button" class="cart2-action cart2-action-whatsapp" data-cart2-action="submit-whatsapp" data-distributor-id="' + escapeCartAttr(group.distributorId) + '"' + actionsDisabled + '>WhatsApp</button>' +
         '<button type="button" class="cart2-action cart2-action-contact" data-cart2-action="submit-contact" data-distributor-id="' + escapeCartAttr(group.distributorId) + '"' + actionsDisabled + '>Contact</button>' +
       '</div>' +
@@ -861,6 +948,9 @@ function humanizeCartReason(reason) {
 
   if (r.indexOf("moq_not_met:") === 0) {
     var parts = r.split(":");
+    if (parts[2] === "server-verified") {
+      return "The minimum order quantity for " + parts[1] + " has changed. Remove and re-add this item.";
+    }
     return "Minimum order quantity is " + parts[2].replace("need ", "").split(",")[0].replace(" have", ", you have") + ". Increase quantity to continue.";
   }
   if (r.indexOf("price_stale:") === 0) {
@@ -912,6 +1002,14 @@ function humanizeCartReason(reason) {
   if (r === "product_lookup_failed") {
     return "Could not verify stock right now. Please try again in a moment.";
   }
+  if (r.indexOf("submit_failed:") === 0) {
+    var detail2 = r.split(":")[1] || "";
+    if (detail2 === "permission") return "You don't have permission to submit this order.";
+    return "Could not submit order: " + (detail2 || "please try again.");
+  }
+  if (r === "empty_group") {
+    return "This cart group has no items.";
+  }
   return r;
 }
 
@@ -954,4 +1052,4 @@ function escapeCartAttr(v) { return escapeCartHtml(v); }
   }
 })();
 
-console.log("[GoodsbarnX] cart.js loaded (V1.8.2.6 rev.5 · Relationship-Order + Security + Refined V1)");
+console.log("[GoodsbarnX] cart.js loaded (V1.8.2.6 rev.6 · F-19 server-authoritative orders)");
