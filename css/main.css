@@ -868,35 +868,49 @@ nav.bottom {
 
 /* ==========================================================================
    PROFESSIONAL ICON UTILITIES
-   Replaces emoji in chrome surfaces where an emoji looks unprofessional
-   (nav bar, empty states). Every icon is a stroked SVG that inherits
-   currentColor and matches the ~1.4px stroke weight of the app's other
-   glyphs (shield, phone, cart).
+   Hand-drawn SVG stroke icons replacing emoji across all chrome surfaces.
+   Every icon inherits currentColor; every icon uses 1.4px stroke; every
+   icon is designed at 20px and scales without losing weight (via
+   vector-effect: non-scaling-stroke).
    ========================================================================== */
 
-.gbx-icon-market {
+/* Shared base class — every icon uses this */
+.gbx-icon {
   display: inline-block;
-  vertical-align: -3px;
   width: 20px;
   height: 20px;
+  vertical-align: -3px;
   flex-shrink: 0;
+  color: inherit;
 }
-.gbx-icon-market path,
-.gbx-icon-market circle {
+.gbx-icon path,
+.gbx-icon circle,
+.gbx-icon rect,
+.gbx-icon line,
+.gbx-icon polygon,
+.gbx-icon polyline {
   vector-effect: non-scaling-stroke;
 }
 
-/* Nav-icon variant: sized for the bottom nav slot; inherits nav colour */
-.nav-item .ic .gbx-icon-market {
+/* Nav-icon variant — sized to match the 22px label weight in nav.bottom */
+.nav-item .ic .gbx-icon {
   width: 22px;
   height: 22px;
   vertical-align: 0;
 }
 
-/* Empty-state variant: larger, inherits the muted colour of the empty state */
-.empty-state-illustration .icon .gbx-icon-market {
+/* Empty-state variant — sized for the empty state block */
+.empty-state-illustration .icon .gbx-icon {
   width: 44px;
   height: 44px;
   vertical-align: 0;
   opacity: 0.85;
+}
+
+/* Category-card variant — categories use emoji still; if you ever swap them
+   to icons, this variant sizes them to match the current 28px emoji weight. */
+.category-card .gbx-icon {
+  width: 28px;
+  height: 28px;
+  vertical-align: 0;
 }
