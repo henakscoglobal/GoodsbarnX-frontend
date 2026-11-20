@@ -1,29 +1,14 @@
 // ==========================================================================
-// GoodsbarnX — storefront.js  (rev. 6 · architecture Phase 1 + interaction + media)
+// GoodsbarnX — storefront.js  (rev. 7 · F-19 patched + delegated clicks)
 // Plain global script. Loads sixth (Canon §10).
 //
-// rev.6 changes:
-//   - Patched `sfRenderFeaturedCard` and `sfRenderCatalogueRow` to pass the
-//     7th argument (opts) to `addToCart`. This carries `price_basis` and `moq`,
-//     allowing the F-19 server-authoritative order system to correctly
-//     validate discounted/negotiated prices.
-//
-// rev.5 changes (retained):
-//   - Scroll FABs on storefront body when it overflows.
-//   - Image viewer: full-screen, pinch-zoom, swipe between images.
-//   - Reads product.image_urls (array) if present, else product.image_url.
-//   - Featured / detail images use object-contain (no crop); catalogue thumb
-//     is bigger (56px) and still crops.
-//
-// rev.4 changes (retained):
-//   - Delegated click handler via data-sf-action (iOS momentum-scroll fix).
-//   - Topbar with close × and handle, always visible.
-//   - Tappable product cards, quantity stepper.
-//   - Merchant header → Trust screen; transparency line → Depletor.
-//
-// rev.3 changes (retained):
-//   - 5-slot shell (header / hero / transparency / curation / commitment).
-//   - Engine context projection, 3 guardrails.
+// rev.7 changes:
+//   - Replaced all inline `onclick="addToCart(...)"` calls with
+//     `data-sf-action="add-to-cart"` and delegated handling. This fixes the
+//     bug where the card's delegated handler intercepted the click before
+//     the inline button handler could fire.
+//   - Passes `opts` (moq, price_basis) via `data-sf-opts` so the cart
+//     correctly tags discounted prices.
 // ==========================================================================
 
 const __gbxStorefrontWarned = Object.create(null);
@@ -342,20 +327,11 @@ function sfRenderFeaturedCard(p, dist, price) {
     ? ' · <span style="color:var(--gbx-gold);font-weight:700;">★</span>'
     : "";
 
-  // F-19 Patch: Include the 7th argument (opts) for price_basis and moq.
-  const onClick =
-    "addToCart('" + safeId + "', " +
-    JSON.stringify(String(p.name || "Product")) + ", " +
-    sfNum(price.finalPrice || 0, 0) + ", '" +
-    safeDistId + "', " +
-    JSON.stringify(String(dist.business_name || "Distributor")) + ", " +
-    qty + ", " +
-    JSON.stringify({
-      moq: step,
-      price_basis: price.advantageLabel || "public",
-      sku: p.sku || null
-    }) +
-    ")";
+  const safeOpts = sfEscAttr(JSON.stringify({
+    moq: step,
+    price_basis: price.advantageLabel || "public",
+    sku: p.sku || null
+  }));
 
   return (
     '<div class="sf-featured-card" data-sf-action="open-product-detail" ' +
@@ -380,7 +356,15 @@ function sfRenderFeaturedCard(p, dist, price) {
         '<button type="button" class="sf-qty-btn" data-sf-action="qty-dec" data-sf-product-id="' + safeId + '" aria-label="Decrease quantity">−</button>' +
         '<span class="sf-qty-value" data-sf-qty-for="' + safeId + '">' + qty + '</span>' +
         '<button type="button" class="sf-qty-btn" data-sf-action="qty-inc" data-sf-product-id="' + safeId + '" data-sf-step="' + step + '" aria-label="Increase quantity">+</button>' +
-        '<button type="button" class="sf-featured-add" onclick="' + onClick + '">' +
+        '<button type="button" class="sf-featured-add" ' +
+          'data-sf-action="add-to-cart" ' +
+          'data-sf-product-id="' + safeId + '" ' +
+          'data-sf-product-name="' + safeName + '" ' +
+          'data-sf-price="' + sfNum(price.finalPrice || 0, 0) + '" ' +
+          'data-sf-distributor-id="' + safeDistId + '" ' +
+          'data-sf-distributor-name="' + safeDistName + '" ' +
+          'data-sf-qty="' + qty + '" ' +
+          'data-sf-opts="' + safeOpts + '">' +
           'Add · ₦' + sfNum((price.finalPrice || 0) * qty, 0).toLocaleString() +
         '</button>' +
       '</div>' +
@@ -391,26 +375,18 @@ function sfRenderCatalogueRow(p, dist, price) {
   const qty = __sfQtyByProductId[p.id] || 1;
   const step = p.moq || 1;
   const safeId   = sfEscAttr(p.id);
+  const safeName = sfEscAttr(p.name || "Product");
   const safeDistId   = sfEscAttr(dist.id);
   const safeDistName = sfEscAttr(dist.business_name || "Distributor");
   const brand = p.brand ? sfEscHtml(p.brand) + " · " : "";
   const sku   = sfEscHtml(p.sku || "No SKU");
   const imageStyle = p.image_url ? "background-image:url('" + sfEscAttr(p.image_url) + "');" : "";
 
-  // F-19 Patch: Include the 7th argument (opts) for price_basis and moq.
-  const onClick =
-    "addToCart('" + safeId + "', " +
-    JSON.stringify(String(p.name || "Product")) + ", " +
-    sfNum(price.finalPrice || 0, 0) + ", '" +
-    safeDistId + "', " +
-    JSON.stringify(String(dist.business_name || "Distributor")) + ", " +
-    "1, " + // Default qty for compact row
-    JSON.stringify({
-      moq: step,
-      price_basis: price.advantageLabel || "public",
-      sku: p.sku || null
-    }) +
-    ")";
+  const safeOpts = sfEscAttr(JSON.stringify({
+    moq: step,
+    price_basis: price.advantageLabel || "public",
+    sku: p.sku || null
+  }));
 
   return (
     '<div class="sf-catalogue-row" data-sf-action="open-product-detail" ' +
@@ -430,7 +406,15 @@ function sfRenderCatalogueRow(p, dist, price) {
           original:  "sf-catalogue-price-original",
           advantage: "sf-catalogue-advantage"
         }) +
-        '<button type="button" class="sf-catalogue-add" onclick="' + onClick + '">Add</button>' +
+        '<button type="button" class="sf-catalogue-add" ' +
+          'data-sf-action="add-to-cart" ' +
+          'data-sf-product-id="' + safeId + '" ' +
+          'data-sf-product-name="' + safeName + '" ' +
+          'data-sf-price="' + sfNum(price.finalPrice || 0, 0) + '" ' +
+          'data-sf-distributor-id="' + safeDistId + '" ' +
+          'data-sf-distributor-name="' + safeDistName + '" ' +
+          'data-sf-qty="1" ' +
+          'data-sf-opts="' + safeOpts + '">Add</button>' +
       '</div>' +
     '</div>'
   );
@@ -464,9 +448,9 @@ function sfOpenProductDetail(productId, distributorId, distributorName) {
   const qty = __sfQtyByProductId[p.id] || 1;
   const step = p.moq || 1;
   const safeId   = sfEscAttr(p.id);
+  const safeName = sfEscAttr(p.name || "Product");
   const safeDistId   = sfEscAttr(distributorId);
   const safeDistName = sfEscAttr(distributorName || "Distributor");
-  const safeProductName = sfEscAttr(p.name || "Product");
   const imageStyle = p.image_url ? "background-image:url('" + sfEscAttr(p.image_url) + "');" : "";
 
   const rows = [
@@ -478,20 +462,11 @@ function sfOpenProductDetail(productId, distributorId, distributorName) {
     ["Lead time", p.lead_time || "—"]
   ];
 
-  // F-19 Patch for the detail sheet button
-  const onClick =
-    "addToCart('" + safeId + "', " +
-    JSON.stringify(String(p.name || "Product")) + ", " +
-    sfNum(price.finalPrice || 0, 0) + ", '" +
-    safeDistId + "', " +
-    JSON.stringify(String(distributorName || "Distributor")) + ", " +
-    qty + ", " +
-    JSON.stringify({
-      moq: step,
-      price_basis: price.advantageLabel || "public",
-      sku: p.sku || null
-    }) +
-    ")";
+  const safeOpts = sfEscAttr(JSON.stringify({
+    moq: step,
+    price_basis: price.advantageLabel || "public",
+    sku: p.sku || null
+  }));
 
   const detailHtml =
     '<div class="sf-detail" role="dialog" aria-modal="true" aria-label="Product detail">' +
@@ -522,7 +497,15 @@ function sfOpenProductDetail(productId, distributorId, distributorName) {
             '<span class="sf-qty-value" data-sf-qty-for="' + safeId + '">' + qty + '</span>' +
             '<button type="button" class="sf-qty-btn" data-sf-action="qty-inc" data-sf-product-id="' + safeId + '" data-sf-step="' + step + '" aria-label="Increase quantity">+</button>' +
           '</div>' +
-          '<button type="button" class="sf-detail-add" onclick="' + onClick + '">' +
+          '<button type="button" class="sf-detail-add" ' +
+            'data-sf-action="add-to-cart" ' +
+            'data-sf-product-id="' + safeId + '" ' +
+            'data-sf-product-name="' + safeName + '" ' +
+            'data-sf-price="' + sfNum(price.finalPrice || 0, 0) + '" ' +
+            'data-sf-distributor-id="' + safeDistId + '" ' +
+            'data-sf-distributor-name="' + safeDistName + '" ' +
+            'data-sf-qty="' + qty + '" ' +
+            'data-sf-opts="' + safeOpts + '">' +
             'Add to cart · ₦' + sfNum((price.finalPrice || 0) * qty, 0).toLocaleString() +
           '</button>' +
           '<button type="button" class="sf-detail-contact" ' +
@@ -750,6 +733,19 @@ function sfHandleDelegatedClick(e) {
     sfSyncQty(id);
     return;
   }
+  if (action === "add-to-cart") {
+    e.preventDefault(); e.stopPropagation();
+    var pid = t.dataset.sfProductId;
+    var pname = t.dataset.sfProductName;
+    var pprice = parseFloat(t.dataset.sfPrice) || 0;
+    var distId = t.dataset.sfDistributorId;
+    var distName = t.dataset.sfDistributorName;
+    var qty = parseInt(t.dataset.sfQty, 10) || 1;
+    var opts = t.dataset.sfOpts ? JSON.parse(t.dataset.sfOpts) : {};
+
+    addToCart(pid, pname, pprice, distId, distName, qty, opts);
+    return;
+  }
   if (action === "contact") {
     e.preventDefault(); e.stopPropagation();
     closeStorefrontModal();
@@ -800,7 +796,7 @@ function sfSyncQty(productId) {
   const entry = cur.priced.find(x => x.p.id === productId);
   if (!entry) return;
   const finalPrice = sfNum(entry.price.finalPrice, 0);
-  document.querySelectorAll('[data-sf-action="add-to-cart"][data-sf-product-id="' + productId + '"], .sf-featured-add, .sf-detail-add').forEach(btn => {
+  document.querySelectorAll('[data-sf-action="add-to-cart"]').forEach(btn => {
     if (btn.getAttribute("data-sf-product-id") === productId) {
       const prefix = btn.classList.contains("sf-detail-add") ? "Add to cart · " : "Add · ";
       btn.textContent = prefix + "₦" + (finalPrice * qty).toLocaleString();
@@ -973,4 +969,4 @@ async function openStorefrontModal(distId) {
   sfEnsureScrollButtons();
 }
 
-console.log("[GoodsbarnX] storefront.js loaded (V1.8.2.6 rev.6 · F-19 patched)");
+console.log("[GoodsbarnX] storefront.js loaded (V1.8.2.6 rev.7 · F-19 patched)");
