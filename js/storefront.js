@@ -1,14 +1,28 @@
 // ==========================================================================
-// GoodsbarnX — storefront.js  (rev. 7 · F-19 patched + delegated clicks)
+// GoodsbarnX — storefront.js  (rev. 8 · bug-fix pass)
 // Plain global script. Loads sixth (Canon §10).
 //
-// rev.7 changes:
-//   - Replaced all inline `onclick="addToCart(...)"` calls with
-//     `data-sf-action="add-to-cart"` and delegated handling. This fixes the
-//     bug where the card's delegated handler intercepted the click before
-//     the inline button handler could fire.
-//   - Passes `opts` (moq, price_basis) via `data-sf-opts` so the cart
-//     correctly tags discounted prices.
+// rev.8 changes (on top of rev.7):
+//   1. QTY: add-to-cart now reads the live quantity at click time
+//      (was stuck at the render-time value, so "+" changed the label but
+//      not what was added). data-sf-qty is also kept in sync.
+//   2. MOQ: quantity starts at the product MOQ, "+" and "-" both step by MOQ,
+//      and "-" never goes below MOQ.
+//   3. VERIFIED badge: driven by verification_tier. Unverified distributors
+//      are labelled "Unverified" (data-verified="false"), never "Verified".
+//   4. PREFERRED: relationship_product_preferences.preferred is now used.
+//      Preferred items, then negotiated-price items, are shown first.
+//   5. GUARDRAILS fail closed: urgency claims are suppressed when the engine
+//      is unavailable; dark-pattern hits block the storefront;
+//      guardPersonalizationVisible is enforced per price.
+//   6. RACE: stale async results from a previous open are discarded.
+//   7. SERVER PRICE: cart opts now carry quoted_price + price_basis so the
+//      backend can recompute and verify. The server MUST still recompute
+//      relationship pricing at inquiry/order time (client price is a quote).
+//   Cleanups: one shared add-button builder, safe JSON.parse, parallel
+//   queries, sanitized image URLs, keyboard support for role="button",
+//   viewer key-handler leak fixed, "Negotiable" items get "Ask for price"
+//   instead of adding a ₦0 line to the cart.
 // ==========================================================================
 
 const __gbxStorefrontWarned = Object.create(null);
@@ -31,6 +45,25 @@ function sfNum(v, fallback) {
   const n = Number(v);
   return Number.isFinite(n) ? n : (fallback == null ? 0 : fallback);
 }
+function sfSafeJsonParse(str, fallback) {
+  try { return str ? JSON.parse(str) : fallback; }
+  catch (err) { console.warn("[GoodsbarnX/storefront] bad JSON in data attribute", err); return fallback; }
+}
+
+// Image URLs end up inside inline CSS. Allow only http(s) / root-relative
+// URLs and percent-encode characters that could break out of url('...').
+function sfSafeUrl(url) {
+  const u = String(url == null ? "" : url).trim();
+  if (!u) return "";
+  if (!/^(https?:)?\/\//i.test(u) && u.charAt(0) !== "/") return "";
+  return u.replace(/[\s'"()\\<>]/g, function (c) {
+    return "%" + c.charCodeAt(0).toString(16).toUpperCase();
+  });
+}
+function sfBgStyle(url) {
+  const safe = sfSafeUrl(url);
+  return safe ? "background-image:url('" + sfEscAttr(safe) + "');" : "";
+}
 
 // ----- D35 product_view emission -----
 const SF_VIEW_EMISSION_BOUND = 3;
@@ -41,12 +74,12 @@ function sfEmitProductViews(distributorId, products) {
   }
   if (!Array.isArray(products) || !products.length) return;
   const top = products.slice(0, SF_VIEW_EMISSION_BOUND);
-  top.forEach(p => {
+  top.forEach((p, position) => {
     if (!p || !p.id) return;
     window.goodsbarnxBehaviourTrack(
       "product_view",
       { product_id: p.id, distributor_id: distributorId || null },
-      { source: "storefront", position: top.indexOf(p) },
+      { source: "storefront", position: position },
       "storefront"
     );
   });
@@ -83,7 +116,7 @@ function getStorefrontEngineContext(distributorId) {
 }
 
 // ==========================================================================
-// L2 · GUARDRAILS
+// L2 · GUARDRAILS  (rev.8: enforced, not just logged)
 // ==========================================================================
 function guardNoDarkPatterns(renderPlan) {
   const reasons = [];
@@ -168,11 +201,77 @@ function sfPriceBlockHtml(price, classes) {
   );
 }
 
+// ----- MOQ / quantity helpers (rev.8) -----
+function sfMoq(p) {
+  const m = sfNum(p && p.moq, 1);
+  return m >= 1 ? m : 1;
+}
+function sfQtyFor(p) {
+  const q = __sfQtyByProductId[p.id];
+  return q != null ? q : sfMoq(p);
+}
+
+// ----- One shared add-to-cart / ask-for-price button builder (rev.8) -----
+function sfAddButtonHtml(p, dist, price, cssClass, labelPrefix, qty) {
+  const safeId       = sfEscAttr(p.id);
+  const safeDistId   = sfEscAttr(dist.id);
+  const safeDistName = sfEscAttr(dist.business_name || "Distributor");
+
+  // Negotiable items have no price to put in a cart: route to the distributor.
+  if (price.isNegotiable) {
+    return (
+      '<button type="button" class="' + cssClass + '" ' +
+        'data-sf-action="contact" ' +
+        'data-sf-distributor-id="' + safeDistId + '" ' +
+        'data-sf-distributor-name="' + safeDistName + '">' +
+        'Ask for price' +
+      '</button>'
+    );
+  }
+
+  const finalPrice = sfNum(price.finalPrice, 0);
+  const safeOpts = sfEscAttr(JSON.stringify({
+    moq: sfMoq(p),
+    price_basis: price.advantageLabel || "public",
+    quoted_price: finalPrice,   // quote only: the server must recompute
+    sku: p.sku || null
+  }));
+  const label = labelPrefix === null
+    ? "Add"
+    : labelPrefix + "₦" + (finalPrice * qty).toLocaleString();
+
+  return (
+    '<button type="button" class="' + cssClass + '" ' +
+      'data-sf-action="add-to-cart" ' +
+      'data-sf-product-id="' + safeId + '" ' +
+      'data-sf-product-name="' + sfEscAttr(p.name || "Product") + '" ' +
+      'data-sf-price="' + finalPrice + '" ' +
+      'data-sf-distributor-id="' + safeDistId + '" ' +
+      'data-sf-distributor-name="' + safeDistName + '" ' +
+      'data-sf-qty="' + qty + '" ' +
+      'data-sf-opts="' + safeOpts + '">' +
+      label +
+    '</button>'
+  );
+}
+
+function sfQtyControlsHtml(p, qty) {
+  const safeId = sfEscAttr(p.id);
+  const step = sfMoq(p);
+  return (
+    '<button type="button" class="sf-qty-btn" data-sf-action="qty-dec" data-sf-product-id="' + safeId + '" data-sf-step="' + step + '" aria-label="Decrease quantity">−</button>' +
+    '<span class="sf-qty-value" data-sf-qty-for="' + safeId + '">' + qty + '</span>' +
+    '<button type="button" class="sf-qty-btn" data-sf-action="qty-inc" data-sf-product-id="' + safeId + '" data-sf-step="' + step + '" aria-label="Increase quantity">+</button>'
+  );
+}
+
 // ==========================================================================
 // INTERACTION STATE
 // ==========================================================================
 let __sfQtyByProductId = Object.create(null);
 let __sfCurrentStorefront = null;
+let __sfOpenToken = 0;               // rev.8: discards stale async results
+let __sfViewerKeyHandler = null;     // rev.8: single, always-cleaned handler
 
 // ==========================================================================
 // L3 · SLOT RENDERERS
@@ -189,13 +288,17 @@ function renderTopbar() {
 function renderHeaderRelationship(ctx) {
   const { dist } = ctx;
   const hasPhone = !!(dist.profiles && dist.profiles.phone);
-  const evidenceBits = [];
   const tierLabel = sfTierLabel(dist.verification_tier);
-  if (tierLabel && tierLabel !== "Unverified") evidenceBits.push(tierLabel);
+  const isVerified = tierLabel !== "Unverified" && tierLabel !== "Self-Attested";
+  const evidenceBits = [];
+  if (tierLabel !== "Unverified") evidenceBits.push(tierLabel);
   if (ctx.productCount > 0) {
     evidenceBits.push(ctx.productCount + (ctx.productCount === 1 ? " product" : " products") + " in stock");
   }
   if (hasPhone) evidenceBits.push("Contact available");
+
+  // rev.8: the badge reflects the real tier instead of always saying "Verified".
+  const badgeText = isVerified ? "Verified" : (tierLabel === "Self-Attested" ? "Self-attested" : "Unverified");
 
   return (
     '<div class="sf-merchant" data-slot="header.relationship" ' +
@@ -209,7 +312,9 @@ function renderHeaderRelationship(ctx) {
             (dist.market ? ' · ' + sfEscHtml(dist.market) : "") +
           '</div>' +
         '</div>' +
-        '<span class="sf-merchant-verified">Verified</span>' +
+        '<span class="sf-merchant-verified" data-verified="' + (isVerified ? "true" : "false") + '">' +
+          sfEscHtml(badgeText) +
+        '</span>' +
       '</div>' +
       (evidenceBits.length
         ? '<div class="sf-merchant-evidence">' + evidenceBits.map(sfEscHtml).join(" · ") + '</div>'
@@ -231,7 +336,7 @@ function renderHeroPrimary(ctx) {
       '<div class="sf-relationship-strip" data-variant="engine_unavailable" data-slot="hero.primary">' +
         '<div class="sf-relationship-strip-copy">Stock signal unavailable · last catalogue state shown</div>' +
       '</div>';
-  } else if (engineCtx.stockState === "depleting") {
+  } else if (engineCtx.stockState === "depleting" && !ctx.suppressUrgency) {
     stripHtml =
       '<div class="sf-relationship-strip" data-variant="depleting" data-urgency="depleting" data-slot="hero.primary">' +
         '<div class="sf-relationship-strip-copy">Restock recommended · ' +
@@ -314,36 +419,28 @@ function renderCommitmentPath(ctx) {
   );
 }
 function sfRenderFeaturedCard(p, dist, price) {
-  const qty = __sfQtyByProductId[p.id] || 1;
-  const step = p.moq || 1;
-  const safeId   = sfEscAttr(p.id);
-  const safeName = sfEscAttr(p.name || "Product");
+  const qty = sfQtyFor(p);
+  const safeId       = sfEscAttr(p.id);
   const safeDistId   = sfEscAttr(dist.id);
   const safeDistName = sfEscAttr(dist.business_name || "Distributor");
-  const imageStyle = p.image_url ? "background-image:url('" + sfEscAttr(p.image_url) + "');" : "";
   const brand = p.brand ? sfEscHtml(p.brand) + " · " : "";
   const sku   = sfEscHtml(p.sku || "No SKU");
+  const moqBit = sfMoq(p) > 1 ? " · MOQ " + sfMoq(p) : "";
   const preferredMark = (p.__preferred || price.advantage === "Your price")
-    ? ' · <span style="color:var(--gbx-gold);font-weight:700;">★</span>'
+    ? ' · <span style="color:var(--gbx-gold);font-weight:700;" aria-label="Your usual">★</span>'
     : "";
-
-  const safeOpts = sfEscAttr(JSON.stringify({
-    moq: step,
-    price_basis: price.advantageLabel || "public",
-    sku: p.sku || null
-  }));
 
   return (
     '<div class="sf-featured-card" data-sf-action="open-product-detail" ' +
         'data-sf-product-id="' + safeId + '" ' +
         'data-sf-distributor-id="' + safeDistId + '" ' +
         'data-sf-distributor-name="' + safeDistName + '">' +
-      '<div class="sf-featured-image" style="' + imageStyle + '" ' +
+      '<div class="sf-featured-image" style="' + sfBgStyle(p.image_url) + '" ' +
         'data-sf-action="open-viewer" data-sf-product-id="' + safeId + '" data-sf-image-index="0" ' +
-        'role="button" aria-label="View image"></div>' +
+        'role="button" tabindex="0" aria-label="View image"></div>' +
       '<div class="sf-featured-copy">' +
         '<div class="sf-featured-name">' + sfEscHtml(p.name || "Product") + preferredMark + '</div>' +
-        '<div class="sf-featured-meta">' + brand + sku + '</div>' +
+        '<div class="sf-featured-meta">' + brand + sku + sfEscHtml(moqBit) + '</div>' +
       '</div>' +
       '<div class="sf-featured-price">' +
         sfPriceBlockHtml(price, {
@@ -353,52 +450,35 @@ function sfRenderFeaturedCard(p, dist, price) {
         }) +
       '</div>' +
       '<div class="sf-qty-row">' +
-        '<button type="button" class="sf-qty-btn" data-sf-action="qty-dec" data-sf-product-id="' + safeId + '" aria-label="Decrease quantity">−</button>' +
-        '<span class="sf-qty-value" data-sf-qty-for="' + safeId + '">' + qty + '</span>' +
-        '<button type="button" class="sf-qty-btn" data-sf-action="qty-inc" data-sf-product-id="' + safeId + '" data-sf-step="' + step + '" aria-label="Increase quantity">+</button>' +
-        '<button type="button" class="sf-featured-add" ' +
-          'data-sf-action="add-to-cart" ' +
-          'data-sf-product-id="' + safeId + '" ' +
-          'data-sf-product-name="' + safeName + '" ' +
-          'data-sf-price="' + sfNum(price.finalPrice || 0, 0) + '" ' +
-          'data-sf-distributor-id="' + safeDistId + '" ' +
-          'data-sf-distributor-name="' + safeDistName + '" ' +
-          'data-sf-qty="' + qty + '" ' +
-          'data-sf-opts="' + safeOpts + '">' +
-          'Add · ₦' + sfNum((price.finalPrice || 0) * qty, 0).toLocaleString() +
-        '</button>' +
+        (price.isNegotiable ? "" : sfQtyControlsHtml(p, qty)) +
+        sfAddButtonHtml(p, dist, price, "sf-featured-add", "Add · ", qty) +
       '</div>' +
     '</div>'
   );
 }
 function sfRenderCatalogueRow(p, dist, price) {
-  const qty = __sfQtyByProductId[p.id] || 1;
-  const step = p.moq || 1;
-  const safeId   = sfEscAttr(p.id);
-  const safeName = sfEscAttr(p.name || "Product");
+  const qty = sfQtyFor(p);
+  const safeId       = sfEscAttr(p.id);
   const safeDistId   = sfEscAttr(dist.id);
   const safeDistName = sfEscAttr(dist.business_name || "Distributor");
   const brand = p.brand ? sfEscHtml(p.brand) + " · " : "";
   const sku   = sfEscHtml(p.sku || "No SKU");
-  const imageStyle = p.image_url ? "background-image:url('" + sfEscAttr(p.image_url) + "');" : "";
-
-  const safeOpts = sfEscAttr(JSON.stringify({
-    moq: step,
-    price_basis: price.advantageLabel || "public",
-    sku: p.sku || null
-  }));
+  const moqBit = sfMoq(p) > 1 ? " · MOQ " + sfMoq(p) : "";
+  const preferredMark = (p.__preferred || price.advantage === "Your price")
+    ? ' <span style="color:var(--gbx-gold);font-weight:700;" aria-label="Your usual">★</span>'
+    : "";
 
   return (
     '<div class="sf-catalogue-row" data-sf-action="open-product-detail" ' +
         'data-sf-product-id="' + safeId + '" ' +
         'data-sf-distributor-id="' + safeDistId + '" ' +
         'data-sf-distributor-name="' + safeDistName + '">' +
-      '<div class="sf-catalogue-thumb" style="' + imageStyle + '" ' +
+      '<div class="sf-catalogue-thumb" style="' + sfBgStyle(p.image_url) + '" ' +
         'data-sf-action="open-viewer" data-sf-product-id="' + safeId + '" data-sf-image-index="0" ' +
-        'role="button" aria-label="View image"></div>' +
+        'role="button" tabindex="0" aria-label="View image"></div>' +
       '<div class="sf-catalogue-copy">' +
-        '<div class="sf-catalogue-name">' + sfEscHtml(p.name || "Product") + '</div>' +
-        '<div class="sf-catalogue-meta">' + brand + sku + '</div>' +
+        '<div class="sf-catalogue-name">' + sfEscHtml(p.name || "Product") + preferredMark + '</div>' +
+        '<div class="sf-catalogue-meta">' + brand + sku + sfEscHtml(moqBit) + '</div>' +
       '</div>' +
       '<div class="sf-catalogue-right">' +
         sfPriceBlockHtml(price, {
@@ -406,15 +486,7 @@ function sfRenderCatalogueRow(p, dist, price) {
           original:  "sf-catalogue-price-original",
           advantage: "sf-catalogue-advantage"
         }) +
-        '<button type="button" class="sf-catalogue-add" ' +
-          'data-sf-action="add-to-cart" ' +
-          'data-sf-product-id="' + safeId + '" ' +
-          'data-sf-product-name="' + safeName + '" ' +
-          'data-sf-price="' + sfNum(price.finalPrice || 0, 0) + '" ' +
-          'data-sf-distributor-id="' + safeDistId + '" ' +
-          'data-sf-distributor-name="' + safeDistName + '" ' +
-          'data-sf-qty="1" ' +
-          'data-sf-opts="' + safeOpts + '">Add</button>' +
+        sfAddButtonHtml(p, dist, price, "sf-catalogue-add", null, qty) +
       '</div>' +
     '</div>'
   );
@@ -445,28 +517,17 @@ function sfOpenProductDetail(productId, distributorId, distributorName) {
   if (!entry) { console.warn("[GoodsbarnX/storefront] product not in current storefront:", productId); return; }
 
   const { p, price } = entry;
-  const qty = __sfQtyByProductId[p.id] || 1;
-  const step = p.moq || 1;
-  const safeId   = sfEscAttr(p.id);
-  const safeName = sfEscAttr(p.name || "Product");
-  const safeDistId   = sfEscAttr(distributorId);
-  const safeDistName = sfEscAttr(distributorName || "Distributor");
-  const imageStyle = p.image_url ? "background-image:url('" + sfEscAttr(p.image_url) + "');" : "";
+  const qty = sfQtyFor(p);
+  const safeId = sfEscAttr(p.id);
 
   const rows = [
     ["SKU", p.sku || "—"],
     ["Brand", p.brand || "—"],
     ["Category", p.category || "—"],
-    ["MOQ", p.moq != null ? String(p.moq) : "1"],
+    ["MOQ", String(sfMoq(p))],
     ["In stock", p.stock_quantity != null ? String(p.stock_quantity) : "—"],
     ["Lead time", p.lead_time || "—"]
   ];
-
-  const safeOpts = sfEscAttr(JSON.stringify({
-    moq: step,
-    price_basis: price.advantageLabel || "public",
-    sku: p.sku || null
-  }));
 
   const detailHtml =
     '<div class="sf-detail" role="dialog" aria-modal="true" aria-label="Product detail">' +
@@ -475,9 +536,9 @@ function sfOpenProductDetail(productId, distributorId, distributorName) {
         '<div class="sf-detail-topbar">' +
           '<button type="button" class="sf-detail-close" data-sf-action="close-product-detail" aria-label="Close">×</button>' +
         '</div>' +
-        '<div class="sf-detail-image" style="' + imageStyle + '" ' +
+        '<div class="sf-detail-image" style="' + sfBgStyle(p.image_url) + '" ' +
           'data-sf-action="open-viewer" data-sf-product-id="' + safeId + '" data-sf-image-index="0" ' +
-          'role="button" aria-label="View image"></div>' +
+          'role="button" tabindex="0" aria-label="View image"></div>' +
         '<div class="sf-detail-body">' +
           '<div class="sf-detail-name">' + sfEscHtml(p.name || "Product") + '</div>' +
           '<div class="sf-detail-price">' +
@@ -492,26 +553,14 @@ function sfOpenProductDetail(productId, distributorId, distributorName) {
               '<div class="sf-detail-row"><span>' + sfEscHtml(k) + '</span><strong>' + sfEscHtml(v) + '</strong></div>'
             ).join("") +
           '</div>' +
-          '<div class="sf-qty-row sf-qty-row-detail">' +
-            '<button type="button" class="sf-qty-btn" data-sf-action="qty-dec" data-sf-product-id="' + safeId + '" aria-label="Decrease quantity">−</button>' +
-            '<span class="sf-qty-value" data-sf-qty-for="' + safeId + '">' + qty + '</span>' +
-            '<button type="button" class="sf-qty-btn" data-sf-action="qty-inc" data-sf-product-id="' + safeId + '" data-sf-step="' + step + '" aria-label="Increase quantity">+</button>' +
-          '</div>' +
-          '<button type="button" class="sf-detail-add" ' +
-            'data-sf-action="add-to-cart" ' +
-            'data-sf-product-id="' + safeId + '" ' +
-            'data-sf-product-name="' + safeName + '" ' +
-            'data-sf-price="' + sfNum(price.finalPrice || 0, 0) + '" ' +
-            'data-sf-distributor-id="' + safeDistId + '" ' +
-            'data-sf-distributor-name="' + safeDistName + '" ' +
-            'data-sf-qty="' + qty + '" ' +
-            'data-sf-opts="' + safeOpts + '">' +
-            'Add to cart · ₦' + sfNum((price.finalPrice || 0) * qty, 0).toLocaleString() +
-          '</button>' +
+          (price.isNegotiable
+            ? ""
+            : '<div class="sf-qty-row sf-qty-row-detail">' + sfQtyControlsHtml(p, qty) + '</div>') +
+          sfAddButtonHtml(p, dist_forDetail(cur), price, "sf-detail-add", "Add to cart · ", qty) +
           '<button type="button" class="sf-detail-contact" ' +
             'data-sf-action="contact" ' +
-            'data-sf-distributor-id="' + safeDistId + '" ' +
-            'data-sf-distributor-name="' + safeDistName + '">' +
+            'data-sf-distributor-id="' + sfEscAttr(distributorId) + '" ' +
+            'data-sf-distributor-name="' + sfEscAttr(distributorName || "Distributor") + '">' +
             'Ask about bulk pricing' +
           '</button>' +
         '</div>' +
@@ -524,6 +573,7 @@ function sfOpenProductDetail(productId, distributorId, distributorName) {
   if (old) old.remove();
   host.insertAdjacentHTML("beforeend", detailHtml);
 }
+function dist_forDetail(cur) { return cur.dist; }
 function sfCloseProductDetail() {
   const host = document.getElementById("storefront-content");
   if (!host) return;
@@ -535,16 +585,16 @@ function sfCloseProductDetail() {
 // IMAGE VIEWER
 // ==========================================================================
 function sfOpenImageViewer(product, startIndex) {
-  const urls = Array.isArray(product.image_urls) && product.image_urls.length
-    ? product.image_urls.filter(Boolean)
+  const rawUrls = Array.isArray(product.image_urls) && product.image_urls.length
+    ? product.image_urls
     : (product.image_url ? [product.image_url] : []);
+  const urls = rawUrls.map(sfSafeUrl).filter(Boolean);
   if (!urls.length) return;
 
   const idx = Math.max(0, Math.min(startIndex || 0, urls.length - 1));
   const host = document.getElementById("storefront-content");
   if (!host) return;
-  const old = host.querySelector(".sf-viewer");
-  if (old) old.remove();
+  sfCloseViewer();
 
   const dots = urls.length > 1
     ? '<div class="sf-viewer-dots">' +
@@ -573,8 +623,9 @@ function sfOpenImageViewer(product, startIndex) {
 }
 function sfWireViewer(host, count, startIndex) {
   const viewer = host.querySelector(".sf-viewer");
-  const track  = viewer.querySelector("[data-sf-track]");
-  if (!viewer || !track) return;
+  if (!viewer) return;
+  const track = viewer.querySelector("[data-sf-track]");
+  if (!track) return;
 
   let index = startIndex;
   const setIndex = (i) => {
@@ -631,16 +682,18 @@ function sfWireViewer(host, count, startIndex) {
     else if (e.key === "ArrowRight" && index < count - 1) setIndex(index + 1);
     else if (e.key === "ArrowLeft" && index > 0) setIndex(index - 1);
   };
-  document.addEventListener("keydown", onKey, { once: false });
-  viewer.__sfKeyHandler = onKey;
+  __sfViewerKeyHandler = onKey;
+  document.addEventListener("keydown", onKey);
 }
 function sfCloseViewer() {
+  if (__sfViewerKeyHandler) {
+    document.removeEventListener("keydown", __sfViewerKeyHandler);
+    __sfViewerKeyHandler = null;
+  }
   const host = document.getElementById("storefront-content");
   if (!host) return;
   const v = host.querySelector(".sf-viewer");
-  if (!v) return;
-  if (v.__sfKeyHandler) document.removeEventListener("keydown", v.__sfKeyHandler);
-  v.remove();
+  if (v) v.remove();
 }
 
 // ==========================================================================
@@ -681,7 +734,7 @@ function sfEnsureScrollButtons() {
 }
 
 // ==========================================================================
-// DELEGATED CLICK HANDLER
+// DELEGATED CLICK + KEYBOARD HANDLERS
 // ==========================================================================
 function sfHandleDelegatedClick(e) {
   const t = e.target.closest("[data-sf-action]");
@@ -690,6 +743,7 @@ function sfHandleDelegatedClick(e) {
 
   if (action === "close-storefront") {
     e.preventDefault(); e.stopPropagation();
+    sfCloseViewer();
     closeStorefrontModal();
     return;
   }
@@ -721,28 +775,37 @@ function sfHandleDelegatedClick(e) {
   if (action === "qty-inc") {
     e.preventDefault(); e.stopPropagation();
     const id = t.dataset.sfProductId;
-    const step = parseFloat(t.dataset.sfStep) || 1;
-    __sfQtyByProductId[id] = (__sfQtyByProductId[id] || 1) + step;
+    const step = sfNum(t.dataset.sfStep, 1) || 1;
+    const current = __sfQtyByProductId[id] != null ? __sfQtyByProductId[id] : step;
+    __sfQtyByProductId[id] = current + step;
     sfSyncQty(id);
     return;
   }
   if (action === "qty-dec") {
     e.preventDefault(); e.stopPropagation();
     const id = t.dataset.sfProductId;
-    __sfQtyByProductId[id] = Math.max(1, (__sfQtyByProductId[id] || 1) - 1);
+    const step = sfNum(t.dataset.sfStep, 1) || 1;
+    const current = __sfQtyByProductId[id] != null ? __sfQtyByProductId[id] : step;
+    __sfQtyByProductId[id] = Math.max(step, current - step);   // never below MOQ
     sfSyncQty(id);
     return;
   }
   if (action === "add-to-cart") {
     e.preventDefault(); e.stopPropagation();
-    var pid = t.dataset.sfProductId;
-    var pname = t.dataset.sfProductName;
-    var pprice = parseFloat(t.dataset.sfPrice) || 0;
-    var distId = t.dataset.sfDistributorId;
-    var distName = t.dataset.sfDistributorName;
-    var qty = parseInt(t.dataset.sfQty, 10) || 1;
-    var opts = t.dataset.sfOpts ? JSON.parse(t.dataset.sfOpts) : {};
+    const pid = t.dataset.sfProductId;
+    const pname = t.dataset.sfProductName;
+    const pprice = parseFloat(t.dataset.sfPrice) || 0;
+    const distId = t.dataset.sfDistributorId;
+    const distName = t.dataset.sfDistributorName;
+    const opts = sfSafeJsonParse(t.dataset.sfOpts, {});
+    // rev.8: read the live quantity, not the render-time attribute.
+    const live = __sfQtyByProductId[pid];
+    const qty = live != null ? live : (parseInt(t.dataset.sfQty, 10) || sfNum(opts.moq, 1) || 1);
 
+    if (typeof addToCart !== "function") {
+      console.warn("[GoodsbarnX/storefront] addToCart is not available.");
+      return;
+    }
     addToCart(pid, pname, pprice, distId, distName, qty, opts);
     return;
   }
@@ -786,21 +849,41 @@ function sfHandleDelegatedClick(e) {
     return;
   }
 }
+
+// rev.8: keyboard support for role="button" elements, plus Escape to back out.
+function sfHandleDelegatedKey(e) {
+  if (e.key === "Escape") {
+    const host = document.getElementById("storefront-content");
+    if (!host) return;
+    if (host.querySelector(".sf-viewer")) return;   // the viewer has its own handler
+    if (host.querySelector(".sf-detail")) { sfCloseProductDetail(); e.stopPropagation(); }
+    return;
+  }
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const t = e.target;
+  if (t && t.matches && t.matches('[role="button"][data-sf-action]')) {
+    e.preventDefault();
+    t.click();
+  }
+}
+
 function sfSyncQty(productId) {
-  const qty = __sfQtyByProductId[productId] || 1;
-  document.querySelectorAll('[data-sf-qty-for="' + productId + '"]').forEach(el => {
-    el.textContent = String(qty);
-  });
   const cur = __sfCurrentStorefront;
   if (!cur) return;
   const entry = cur.priced.find(x => x.p.id === productId);
   if (!entry) return;
+  const qty = sfQtyFor(entry.p);
   const finalPrice = sfNum(entry.price.finalPrice, 0);
+
+  document.querySelectorAll("[data-sf-qty-for]").forEach(el => {
+    if (el.getAttribute("data-sf-qty-for") === productId) el.textContent = String(qty);
+  });
   document.querySelectorAll('[data-sf-action="add-to-cart"]').forEach(btn => {
-    if (btn.getAttribute("data-sf-product-id") === productId) {
-      const prefix = btn.classList.contains("sf-detail-add") ? "Add to cart · " : "Add · ";
-      btn.textContent = prefix + "₦" + (finalPrice * qty).toLocaleString();
-    }
+    if (btn.getAttribute("data-sf-product-id") !== productId) return;
+    btn.setAttribute("data-sf-qty", String(qty));   // rev.8: keep the attribute honest
+    if (btn.classList.contains("sf-catalogue-add")) return;   // row button keeps its short label
+    const prefix = btn.classList.contains("sf-detail-add") ? "Add to cart · " : "Add · ";
+    btn.textContent = prefix + "₦" + (finalPrice * qty).toLocaleString();
   });
 }
 
@@ -829,6 +912,26 @@ function sfRelationshipStripCopy(discountPercent, negotiatedCount) {
   return "Relationship advantage: " + bits.join(" · ");
 }
 
+// rev.8: "your usual" ordering. Preferred first, then negotiated, then the
+// original (newest-first) order. Array.sort is stable in modern engines.
+function sfSortPriced(priced) {
+  const rank = (x) => (x.p.__preferred ? 0 : (x.price.advantageLabel === "your_negotiated_price" ? 1 : 2));
+  return priced.map((x, i) => ({ x, i }))
+    .sort((a, b) => (rank(a.x) - rank(b.x)) || (a.i - b.i))
+    .map(o => o.x);
+}
+
+// Chrome = system-generated parts of the storefront. Guardrails run on this,
+// not on distributor-written product text, to avoid false positives.
+function sfBuildChromeHtml(ctx) {
+  return (
+    renderHeaderRelationship(ctx) +
+    renderHeroPrimary(ctx) +
+    renderEngineTransparency(ctx) +
+    renderCommitmentPath(ctx)
+  );
+}
+
 // ==========================================================================
 // OPEN STOREFRONT MODAL
 // ==========================================================================
@@ -838,11 +941,16 @@ async function openStorefrontModal(distId) {
   if (!contentEl) { sfWarnMissing("storefront-content"); return; }
   if (!modalEl)   { sfWarnMissing("storefront-modal"); return; }
 
+  const token = ++__sfOpenToken;
+  const isStale = () => token !== __sfOpenToken || !modalEl.classList.contains("active");
+
   __sfQtyByProductId = Object.create(null);
   __sfCurrentStorefront = null;
+  sfCloseViewer();
 
   if (!contentEl.dataset.sfDelegated) {
     contentEl.addEventListener("click", sfHandleDelegatedClick);
+    contentEl.addEventListener("keydown", sfHandleDelegatedKey);
     contentEl.dataset.sfDelegated = "1";
   }
 
@@ -855,118 +963,137 @@ async function openStorefrontModal(distId) {
   contentEl.innerHTML = '<div class="loading-text">Loading…</div>';
   modalEl.classList.add("active");
 
-  const { data: dist, error: distError } = await sb.from("distributor_profiles")
-    .select("*, profiles(phone)")
-    .eq("id", distId)
-    .single();
+  try {
+    // Distributor and products are independent: fetch together.
+    const [distRes, productsRes] = await Promise.all([
+      sb.from("distributor_profiles").select("*, profiles(phone)").eq("id", distId).single(),
+      sb.from("products").select("*").eq("distributor_id", distId).eq("status", "active")
+        .order("created_at", { ascending: false })
+    ]);
+    if (isStale()) return;
 
-  if (distError) {
-    console.error("[GoodsbarnX/storefront] distributor lookup failed:", distError.message);
-    contentEl.innerHTML = '<div class="loading-text">Could not load this storefront.</div>';
-    return;
-  }
+    if (distRes.error) {
+      console.error("[GoodsbarnX/storefront] distributor lookup failed:", distRes.error.message);
+      contentEl.innerHTML = '<div class="loading-text">Could not load this storefront.</div>';
+      return;
+    }
+    if (productsRes.error) {
+      console.error("[GoodsbarnX/storefront] product lookup failed:", productsRes.error.message);
+      contentEl.innerHTML = '<div class="loading-text">Could not load products.</div>';
+      return;
+    }
+    const dist = distRes.data;
+    if (!dist) {
+      contentEl.innerHTML = '<div class="loading-text">Not found.</div>';
+      return;
+    }
+    const products = productsRes.data || [];
 
-  const { data: products, error: productsError } = await sb.from("products")
-    .select("*")
-    .eq("distributor_id", distId)
-    .eq("status", "active")
-    .order("created_at", { ascending: false });
+    let discountPercent = null;
+    const productPreferences = {};
 
-  if (productsError) {
-    console.error("[GoodsbarnX/storefront] product lookup failed:", productsError.message);
-    contentEl.innerHTML = '<div class="loading-text">Could not load products.</div>';
-    return;
-  }
+    if (currentUser && currentUser.role === "buyer") {
+      const [termsRes, relRes] = await Promise.all([
+        sb.from("current_relationship_trade_terms")
+          .select("default_discount_percent, relationship_status")
+          .eq("buyer_id", currentUser.id).eq("distributor_id", distId).maybeSingle(),
+        sb.from("trade_relationships")
+          .select("id")
+          .eq("buyer_id", currentUser.id).eq("distributor_id", distId)
+          .eq("is_primary", true).maybeSingle()
+      ]);
+      if (isStale()) return;
 
-  let discountPercent = null;
-  const productPreferences = {};
+      if (termsRes.error) console.warn("[GoodsbarnX/storefront] trade terms lookup failed:", termsRes.error.message);
+      if (relRes.error)   console.warn("[GoodsbarnX/storefront] relationship lookup failed:", relRes.error.message);
 
-  if (currentUser && currentUser.role === "buyer") {
-    const { data: terms } = await sb
-      .from("current_relationship_trade_terms")
-      .select("default_discount_percent, relationship_status")
-      .eq("buyer_id", currentUser.id)
-      .eq("distributor_id", distId)
-      .maybeSingle();
+      const terms = termsRes.data;
+      if (terms && terms.relationship_status === "active" && sfNum(terms.default_discount_percent, 0) > 0) {
+        discountPercent = terms.default_discount_percent;
+      }
 
-    if (terms && terms.relationship_status === "active" && sfNum(terms.default_discount_percent, 0) > 0) {
-      discountPercent = terms.default_discount_percent;
+      const relationship = relRes.data;
+      if (relationship) {
+        const prefsRes = await sb.from("relationship_product_preferences")
+          .select("product_id, negotiated_unit_price, preferred")
+          .eq("relationship_id", relationship.id);
+        if (isStale()) return;
+        if (prefsRes.error) console.warn("[GoodsbarnX/storefront] preferences lookup failed:", prefsRes.error.message);
+        (prefsRes.data || []).forEach(pref => { productPreferences[pref.product_id] = pref; });
+      }
     }
 
-    const { data: relationship } = await sb
-      .from("trade_relationships")
-      .select("id")
-      .eq("buyer_id", currentUser.id)
-      .eq("distributor_id", distId)
-      .eq("is_primary", true)
-      .maybeSingle();
+    const availableProducts = products
+      .filter(p => sfNum(p.stock_quantity, 0) > 0)
+      .map(p => {
+        const pref = productPreferences[p.id];
+        return Object.assign({}, p, { __preferred: !!(pref && pref.preferred) });
+      });
+    sfEmitProductViews(dist.id, availableProducts);
 
-    if (relationship) {
-      const { data: prefs } = await sb
-        .from("relationship_product_preferences")
-        .select("product_id, negotiated_unit_price, preferred")
-        .eq("relationship_id", relationship.id);
-      (prefs || []).forEach(pref => { productPreferences[pref.product_id] = pref; });
+    // Price every product; enforce the personalization-visible guardrail.
+    let priced = availableProducts.map(p => {
+      const pref = productPreferences[p.id];
+      let price = sfComputePrice(p, pref, discountPercent);
+      const g = guardPersonalizationVisible(price);
+      if (!g.ok) {
+        console.warn("[GoodsbarnX/storefront] guardrail: personalization not labelled, falling back to public price", p.id, g.reasons);
+        price = sfComputePrice(p, null, null);
+      }
+      return { p, price };
+    });
+    priced = sfSortPriced(priced);
+
+    const tempo = sfCategoryTempo(availableProducts);
+    const engineCtx = getStorefrontEngineContext(dist.id);
+    const negotiatedCount = priced.filter(x => x.price.advantageLabel === "your_negotiated_price").length;
+    const stripCopy = sfRelationshipStripCopy(discountPercent, negotiatedCount);
+
+    const slotCtx = {
+      dist, engineCtx, stripCopy,
+      productCount: availableProducts.length,
+      availableProducts, priced, tempo,
+      suppressUrgency: false
+    };
+
+    // Guardrails fail closed.
+    let chrome = sfBuildChromeHtml(slotCtx);
+    let urgency = guardUrgencyIsEngineBound({ html: chrome }, engineCtx);
+    if (!urgency.ok) {
+      console.warn("[GoodsbarnX/storefront] guardrail: urgency unbound from engine; suppressing urgency claims", urgency.reasons);
+      slotCtx.suppressUrgency = true;
+      chrome = sfBuildChromeHtml(slotCtx);
+      urgency = guardUrgencyIsEngineBound({ html: chrome }, engineCtx);
+    }
+    const dark = guardNoDarkPatterns({ html: chrome });
+    if (!urgency.ok || !dark.ok) {
+      console.error("[GoodsbarnX/storefront] guardrail blocked render", { urgency: urgency.reasons, dark: dark.reasons });
+      contentEl.innerHTML = '<div class="loading-text">This storefront could not be displayed safely.</div>';
+      return;
+    }
+
+    if (isStale()) return;
+    __sfCurrentStorefront = { dist, priced, engineCtx, tempo };
+
+    contentEl.innerHTML =
+      '<div class="sf-shell">' +
+        renderTopbar() +
+        '<div class="sf-body">' +
+          renderHeaderRelationship(slotCtx) +
+          renderHeroPrimary(slotCtx) +
+          renderEngineTransparency(slotCtx) +
+          renderCurationMain(slotCtx) +
+        '</div>' +
+        renderCommitmentPath(slotCtx) +
+      '</div>';
+
+    sfEnsureScrollButtons();
+  } catch (err) {
+    console.error("[GoodsbarnX/storefront] unexpected error opening storefront:", err);
+    if (!isStale()) {
+      contentEl.innerHTML = '<div class="loading-text">Could not load this storefront.</div>';
     }
   }
-
-  if (!dist) {
-    contentEl.innerHTML = '<div class="loading-text">Not found.</div>';
-    return;
-  }
-
-  const availableProducts = (products || []).filter(p => sfNum(p.stock_quantity, 0) > 0);
-  sfEmitProductViews(dist.id, availableProducts);
-
-  const priced = availableProducts.map(p => {
-    const pref = productPreferences[p.id];
-    const price = sfComputePrice(p, pref, discountPercent);
-    return { p, price };
-  });
-
-  const tempo = sfCategoryTempo(availableProducts);
-  const engineCtx = getStorefrontEngineContext(dist.id);
-
-  const negotiatedCount = priced.filter(x => x.price.advantageLabel === "your_negotiated_price").length;
-  const stripCopy = sfRelationshipStripCopy(discountPercent, negotiatedCount);
-
-  const slotCtx = {
-    dist, engineCtx, stripCopy,
-    productCount: availableProducts.length,
-    availableProducts, priced, tempo
-  };
-
-  const plan = {
-    html:
-      renderTopbar() +
-      renderHeaderRelationship(slotCtx) +
-      renderHeroPrimary(slotCtx) +
-      renderEngineTransparency(slotCtx) +
-      renderCurationMain(slotCtx) +
-      renderCommitmentPath(slotCtx)
-  };
-  const gr = {
-    dark:    guardNoDarkPatterns(plan),
-    urgency: guardUrgencyIsEngineBound(plan, engineCtx)
-  };
-  if (!gr.dark.ok)    console.warn("[GoodsbarnX/storefront] guardrail: dark patterns detected", gr.dark.reasons);
-  if (!gr.urgency.ok) console.warn("[GoodsbarnX/storefront] guardrail: urgency unbound from engine", gr.urgency.reasons);
-
-  __sfCurrentStorefront = { dist, priced, engineCtx, tempo };
-
-  contentEl.innerHTML =
-    '<div class="sf-shell">' +
-      renderTopbar() +
-      '<div class="sf-body">' +
-        renderHeaderRelationship(slotCtx) +
-        renderHeroPrimary(slotCtx) +
-        renderEngineTransparency(slotCtx) +
-        renderCurationMain(slotCtx) +
-      '</div>' +
-      renderCommitmentPath(slotCtx) +
-    '</div>';
-
-  sfEnsureScrollButtons();
 }
 
-console.log("[GoodsbarnX] storefront.js loaded (V1.8.2.6 rev.7 · F-19 patched)");
+console.log("[GoodsbarnX] storefront.js loaded (V1.8.2.6 rev.8 · bug-fix pass)");
