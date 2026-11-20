@@ -1,21 +1,29 @@
 // ==========================================================================
-// GoodsbarnX — storefront.js  (rev. 4 · architecture Phase 1 + interaction)
-// Distributor storefront modal, 5-slot shell, delegated interaction.
-//
+// GoodsbarnX — storefront.js  (rev. 6 · architecture Phase 1 + interaction + media)
 // Plain global script. Loads sixth (Canon §10).
 //
-// rev.4 changes:
-//   - All buttons use data-sf-action and a single delegated click handler.
-//     Inline onclick inside momentum-scrolling containers is unreliable on
-//     iOS Safari; delegation is the fix.
-//   - Topbar slot added: sticky handle + close button, always visible.
-//   - Product cards are tappable; tap opens a product detail sub-sheet
-//     within the same storefront modal. No dead zones.
-//   - Featured cards carry a quantity stepper (1..N) persisted in memory.
-//   - Merchant header tap → Trust screen filtered to this distributor.
-//   - Transparency line tap → Master Stock Depletor panel.
-//   - All §31 pricing logic, D35 emission, engine projection and the three
-//     guardrails are unchanged from rev.3.
+// rev.6 changes:
+//   - Patched `sfRenderFeaturedCard` and `sfRenderCatalogueRow` to pass the
+//     7th argument (opts) to `addToCart`. This carries `price_basis` and `moq`,
+//     allowing the F-19 server-authoritative order system to correctly
+//     validate discounted/negotiated prices.
+//
+// rev.5 changes (retained):
+//   - Scroll FABs on storefront body when it overflows.
+//   - Image viewer: full-screen, pinch-zoom, swipe between images.
+//   - Reads product.image_urls (array) if present, else product.image_url.
+//   - Featured / detail images use object-contain (no crop); catalogue thumb
+//     is bigger (56px) and still crops.
+//
+// rev.4 changes (retained):
+//   - Delegated click handler via data-sf-action (iOS momentum-scroll fix).
+//   - Topbar with close × and handle, always visible.
+//   - Tappable product cards, quantity stepper.
+//   - Merchant header → Trust screen; transparency line → Depletor.
+//
+// rev.3 changes (retained):
+//   - 5-slot shell (header / hero / transparency / curation / commitment).
+//   - Engine context projection, 3 guardrails.
 // ==========================================================================
 
 const __gbxStorefrontWarned = Object.create(null);
@@ -34,15 +42,13 @@ function sfEscHtml(v) {
     .replace(/'/g, "&#039;");
 }
 function sfEscAttr(v) { return sfEscHtml(v); }
-
 function sfNum(v, fallback) {
   const n = Number(v);
   return Number.isFinite(n) ? n : (fallback == null ? 0 : fallback);
 }
 
-// ----- D35 product_view emission (unchanged) -----
+// ----- D35 product_view emission -----
 const SF_VIEW_EMISSION_BOUND = 3;
-
 function sfEmitProductViews(distributorId, products) {
   if (typeof window.goodsbarnxBehaviourTrack !== "function") {
     console.warn("[GoodsbarnX/storefront] goodsbarnxBehaviourTrack unavailable; product_view not emitted.");
@@ -64,7 +70,6 @@ function sfEmitProductViews(distributorId, products) {
 // ==========================================================================
 // L4 · ENGINE INTERFACE (projection)
 // ==========================================================================
-
 function getStorefrontEngineContext(distributorId) {
   const snapshot = window.goodsbarnxLastReplenishmentSnapshot || null;
   if (!snapshot || !Array.isArray(snapshot.rows)) {
@@ -95,7 +100,6 @@ function getStorefrontEngineContext(distributorId) {
 // ==========================================================================
 // L2 · GUARDRAILS
 // ==========================================================================
-
 function guardNoDarkPatterns(renderPlan) {
   const reasons = [];
   const html = String(renderPlan?.html || "");
@@ -122,7 +126,6 @@ function guardPersonalizationVisible(price) {
 // ==========================================================================
 // PRESENTATION HELPERS
 // ==========================================================================
-
 function sfTierLabel(tier) {
   if (tier === "association") return "Association Verified";
   if (tier === "market board") return "Market Board Verified";
@@ -138,12 +141,10 @@ function sfFormatFreshness(freshnessMs) {
   if (hrs < 24) return hrs + "h ago";
   return Math.floor(hrs / 24) + "d ago";
 }
-
 function sfComputePrice(product, pref, discountPercent) {
   const publicPrice = sfNum(product.price, 0);
   const hasNegotiated = pref && pref.negotiated_unit_price != null;
   const hasDiscount   = !hasNegotiated && discountPercent && publicPrice > 0;
-
   let finalPrice = publicPrice;
   let advantage = "";
   let advantageLabel = "";
@@ -165,7 +166,6 @@ function sfComputePrice(product, pref, discountPercent) {
   }
   return { finalPrice, original, advantage, advantageLabel, isNegotiable: false };
 }
-
 function sfPriceBlockHtml(price, classes) {
   if (price.isNegotiable) {
     return '<div class="' + classes.value + '">Negotiable</div>';
@@ -179,25 +179,19 @@ function sfPriceBlockHtml(price, classes) {
     : "";
   return (
     '<div class="' + classes.value + '">₦' + sfNum(price.finalPrice, 0).toLocaleString() + '</div>' +
-    originalHtml +
-    advantageHtml
+    originalHtml + advantageHtml
   );
 }
 
 // ==========================================================================
 // INTERACTION STATE
 // ==========================================================================
-
-// qtyByProductId: product_id → quantity user picked in this session.
-// Reset when storefront opens fresh. Survives sub-sheet open/close so the
-// buyer doesn't lose their choice if they tap into detail and back.
 let __sfQtyByProductId = Object.create(null);
-let __sfCurrentStorefront = null; // { dist, priced, engineCtx, tempo, slotCtx }
+let __sfCurrentStorefront = null;
 
 // ==========================================================================
 // L3 · SLOT RENDERERS
 // ==========================================================================
-
 function renderTopbar() {
   return (
     '<div class="sf-topbar" data-slot="shell.topbar">' +
@@ -207,11 +201,9 @@ function renderTopbar() {
     '</div>'
   );
 }
-
 function renderHeaderRelationship(ctx) {
   const { dist } = ctx;
   const hasPhone = !!(dist.profiles && dist.profiles.phone);
-
   const evidenceBits = [];
   const tierLabel = sfTierLabel(dist.verification_tier);
   if (tierLabel && tierLabel !== "Unverified") evidenceBits.push(tierLabel);
@@ -241,11 +233,9 @@ function renderHeaderRelationship(ctx) {
     '</div>'
   );
 }
-
 function renderHeroPrimary(ctx) {
   const { engineCtx, stripCopy } = ctx;
   let stripHtml = "";
-
   if (stripCopy) {
     stripHtml =
       '<div class="sf-relationship-strip" data-variant="advantage" data-slot="hero.primary">' +
@@ -266,7 +256,6 @@ function renderHeroPrimary(ctx) {
   }
   return stripHtml;
 }
-
 function renderEngineTransparency(ctx) {
   const { engineCtx } = ctx;
   const src = engineCtx.source;
@@ -289,11 +278,9 @@ function renderEngineTransparency(ctx) {
     '</div>'
   );
 }
-
 function renderCurationMain(ctx) {
   const { priced, dist, tempo } = ctx;
   if (!priced.length) return sfRenderEmptyState(dist);
-
   const featuredCount = tempo === "slow" ? 3 : tempo === "regulated" ? 1 : 2;
   const featured = priced.slice(0, featuredCount);
   const rest     = priced.slice(featuredCount);
@@ -317,7 +304,6 @@ function renderCurationMain(ctx) {
 
   return featuredHtml + catalogueHtml;
 }
-
 function renderCommitmentPath(ctx) {
   const { dist, availableProducts } = ctx;
   if (!availableProducts.length) return "";
@@ -342,7 +328,6 @@ function renderCommitmentPath(ctx) {
     '</div>'
   );
 }
-
 function sfRenderFeaturedCard(p, dist, price) {
   const qty = __sfQtyByProductId[p.id] || 1;
   const step = p.moq || 1;
@@ -357,12 +342,29 @@ function sfRenderFeaturedCard(p, dist, price) {
     ? ' · <span style="color:var(--gbx-gold);font-weight:700;">★</span>'
     : "";
 
+  // F-19 Patch: Include the 7th argument (opts) for price_basis and moq.
+  const onClick =
+    "addToCart('" + safeId + "', " +
+    JSON.stringify(String(p.name || "Product")) + ", " +
+    sfNum(price.finalPrice || 0, 0) + ", '" +
+    safeDistId + "', " +
+    JSON.stringify(String(dist.business_name || "Distributor")) + ", " +
+    qty + ", " +
+    JSON.stringify({
+      moq: step,
+      price_basis: price.advantageLabel || "public",
+      sku: p.sku || null
+    }) +
+    ")";
+
   return (
     '<div class="sf-featured-card" data-sf-action="open-product-detail" ' +
         'data-sf-product-id="' + safeId + '" ' +
         'data-sf-distributor-id="' + safeDistId + '" ' +
         'data-sf-distributor-name="' + safeDistName + '">' +
-      '<div class="sf-featured-image" style="' + imageStyle + '"></div>' +
+      '<div class="sf-featured-image" style="' + imageStyle + '" ' +
+        'data-sf-action="open-viewer" data-sf-product-id="' + safeId + '" data-sf-image-index="0" ' +
+        'role="button" aria-label="View image"></div>' +
       '<div class="sf-featured-copy">' +
         '<div class="sf-featured-name">' + sfEscHtml(p.name || "Product") + preferredMark + '</div>' +
         '<div class="sf-featured-meta">' + brand + sku + '</div>' +
@@ -378,21 +380,16 @@ function sfRenderFeaturedCard(p, dist, price) {
         '<button type="button" class="sf-qty-btn" data-sf-action="qty-dec" data-sf-product-id="' + safeId + '" aria-label="Decrease quantity">−</button>' +
         '<span class="sf-qty-value" data-sf-qty-for="' + safeId + '">' + qty + '</span>' +
         '<button type="button" class="sf-qty-btn" data-sf-action="qty-inc" data-sf-product-id="' + safeId + '" data-sf-step="' + step + '" aria-label="Increase quantity">+</button>' +
-        '<button type="button" class="sf-featured-add" ' +
-          'data-sf-action="add-to-cart" ' +
-          'data-sf-product-id="' + safeId + '" ' +
-          'data-sf-product-name="' + safeName + '" ' +
-          'data-sf-price="' + sfNum(price.finalPrice || 0, 0) + '" ' +
-          'data-sf-distributor-id="' + safeDistId + '" ' +
-          'data-sf-distributor-name="' + safeDistName + '">' +
+        '<button type="button" class="sf-featured-add" onclick="' + onClick + '">' +
           'Add · ₦' + sfNum((price.finalPrice || 0) * qty, 0).toLocaleString() +
         '</button>' +
       '</div>' +
     '</div>'
   );
 }
-
 function sfRenderCatalogueRow(p, dist, price) {
+  const qty = __sfQtyByProductId[p.id] || 1;
+  const step = p.moq || 1;
   const safeId   = sfEscAttr(p.id);
   const safeDistId   = sfEscAttr(dist.id);
   const safeDistName = sfEscAttr(dist.business_name || "Distributor");
@@ -400,12 +397,29 @@ function sfRenderCatalogueRow(p, dist, price) {
   const sku   = sfEscHtml(p.sku || "No SKU");
   const imageStyle = p.image_url ? "background-image:url('" + sfEscAttr(p.image_url) + "');" : "";
 
+  // F-19 Patch: Include the 7th argument (opts) for price_basis and moq.
+  const onClick =
+    "addToCart('" + safeId + "', " +
+    JSON.stringify(String(p.name || "Product")) + ", " +
+    sfNum(price.finalPrice || 0, 0) + ", '" +
+    safeDistId + "', " +
+    JSON.stringify(String(dist.business_name || "Distributor")) + ", " +
+    "1, " + // Default qty for compact row
+    JSON.stringify({
+      moq: step,
+      price_basis: price.advantageLabel || "public",
+      sku: p.sku || null
+    }) +
+    ")";
+
   return (
     '<div class="sf-catalogue-row" data-sf-action="open-product-detail" ' +
         'data-sf-product-id="' + safeId + '" ' +
         'data-sf-distributor-id="' + safeDistId + '" ' +
         'data-sf-distributor-name="' + safeDistName + '">' +
-      '<div class="sf-catalogue-thumb" style="' + imageStyle + '"></div>' +
+      '<div class="sf-catalogue-thumb" style="' + imageStyle + '" ' +
+        'data-sf-action="open-viewer" data-sf-product-id="' + safeId + '" data-sf-image-index="0" ' +
+        'role="button" aria-label="View image"></div>' +
       '<div class="sf-catalogue-copy">' +
         '<div class="sf-catalogue-name">' + sfEscHtml(p.name || "Product") + '</div>' +
         '<div class="sf-catalogue-meta">' + brand + sku + '</div>' +
@@ -416,18 +430,11 @@ function sfRenderCatalogueRow(p, dist, price) {
           original:  "sf-catalogue-price-original",
           advantage: "sf-catalogue-advantage"
         }) +
-        '<button type="button" class="sf-catalogue-add" ' +
-          'data-sf-action="add-to-cart" ' +
-          'data-sf-product-id="' + safeId + '" ' +
-          'data-sf-product-name="' + sfEscAttr(p.name || "Product") + '" ' +
-          'data-sf-price="' + sfNum(price.finalPrice || 0, 0) + '" ' +
-          'data-sf-distributor-id="' + safeDistId + '" ' +
-          'data-sf-distributor-name="' + safeDistName + '">Add</button>' +
+        '<button type="button" class="sf-catalogue-add" onclick="' + onClick + '">Add</button>' +
       '</div>' +
     '</div>'
   );
 }
-
 function sfRenderEmptyState(dist) {
   return (
     '<div class="sf-empty" data-slot="curation.main">' +
@@ -447,7 +454,6 @@ function sfRenderEmptyState(dist) {
 // ==========================================================================
 // PRODUCT DETAIL SUB-SHEET
 // ==========================================================================
-
 function sfOpenProductDetail(productId, distributorId, distributorName) {
   const cur = __sfCurrentStorefront;
   if (!cur) return;
@@ -461,7 +467,6 @@ function sfOpenProductDetail(productId, distributorId, distributorName) {
   const safeDistId   = sfEscAttr(distributorId);
   const safeDistName = sfEscAttr(distributorName || "Distributor");
   const safeProductName = sfEscAttr(p.name || "Product");
-
   const imageStyle = p.image_url ? "background-image:url('" + sfEscAttr(p.image_url) + "');" : "";
 
   const rows = [
@@ -473,6 +478,21 @@ function sfOpenProductDetail(productId, distributorId, distributorName) {
     ["Lead time", p.lead_time || "—"]
   ];
 
+  // F-19 Patch for the detail sheet button
+  const onClick =
+    "addToCart('" + safeId + "', " +
+    JSON.stringify(String(p.name || "Product")) + ", " +
+    sfNum(price.finalPrice || 0, 0) + ", '" +
+    safeDistId + "', " +
+    JSON.stringify(String(distributorName || "Distributor")) + ", " +
+    qty + ", " +
+    JSON.stringify({
+      moq: step,
+      price_basis: price.advantageLabel || "public",
+      sku: p.sku || null
+    }) +
+    ")";
+
   const detailHtml =
     '<div class="sf-detail" role="dialog" aria-modal="true" aria-label="Product detail">' +
       '<div class="sf-detail-backdrop" data-sf-action="close-product-detail"></div>' +
@@ -480,7 +500,9 @@ function sfOpenProductDetail(productId, distributorId, distributorName) {
         '<div class="sf-detail-topbar">' +
           '<button type="button" class="sf-detail-close" data-sf-action="close-product-detail" aria-label="Close">×</button>' +
         '</div>' +
-        '<div class="sf-detail-image" style="' + imageStyle + '"></div>' +
+        '<div class="sf-detail-image" style="' + imageStyle + '" ' +
+          'data-sf-action="open-viewer" data-sf-product-id="' + safeId + '" data-sf-image-index="0" ' +
+          'role="button" aria-label="View image"></div>' +
         '<div class="sf-detail-body">' +
           '<div class="sf-detail-name">' + sfEscHtml(p.name || "Product") + '</div>' +
           '<div class="sf-detail-price">' +
@@ -500,13 +522,7 @@ function sfOpenProductDetail(productId, distributorId, distributorName) {
             '<span class="sf-qty-value" data-sf-qty-for="' + safeId + '">' + qty + '</span>' +
             '<button type="button" class="sf-qty-btn" data-sf-action="qty-inc" data-sf-product-id="' + safeId + '" data-sf-step="' + step + '" aria-label="Increase quantity">+</button>' +
           '</div>' +
-          '<button type="button" class="sf-detail-add" ' +
-            'data-sf-action="add-to-cart" ' +
-            'data-sf-product-id="' + safeId + '" ' +
-            'data-sf-product-name="' + safeProductName + '" ' +
-            'data-sf-price="' + sfNum(price.finalPrice || 0, 0) + '" ' +
-            'data-sf-distributor-id="' + safeDistId + '" ' +
-            'data-sf-distributor-name="' + safeDistName + '">' +
+          '<button type="button" class="sf-detail-add" onclick="' + onClick + '">' +
             'Add to cart · ₦' + sfNum((price.finalPrice || 0) * qty, 0).toLocaleString() +
           '</button>' +
           '<button type="button" class="sf-detail-contact" ' +
@@ -521,12 +537,10 @@ function sfOpenProductDetail(productId, distributorId, distributorName) {
 
   const host = document.getElementById("storefront-content");
   if (!host) return;
-  // Remove existing detail if any
   const old = host.querySelector(".sf-detail");
   if (old) old.remove();
   host.insertAdjacentHTML("beforeend", detailHtml);
 }
-
 function sfCloseProductDetail() {
   const host = document.getElementById("storefront-content");
   if (!host) return;
@@ -535,9 +549,157 @@ function sfCloseProductDetail() {
 }
 
 // ==========================================================================
+// IMAGE VIEWER
+// ==========================================================================
+function sfOpenImageViewer(product, startIndex) {
+  const urls = Array.isArray(product.image_urls) && product.image_urls.length
+    ? product.image_urls.filter(Boolean)
+    : (product.image_url ? [product.image_url] : []);
+  if (!urls.length) return;
+
+  const idx = Math.max(0, Math.min(startIndex || 0, urls.length - 1));
+  const host = document.getElementById("storefront-content");
+  if (!host) return;
+  const old = host.querySelector(".sf-viewer");
+  if (old) old.remove();
+
+  const dots = urls.length > 1
+    ? '<div class="sf-viewer-dots">' +
+        urls.map((_, i) =>
+          '<span class="sf-viewer-dot' + (i === idx ? ' active' : '') + '" data-sf-index="' + i + '"></span>'
+        ).join("") +
+      '</div>'
+    : "";
+
+  const html =
+    '<div class="sf-viewer" role="dialog" aria-modal="true" aria-label="Product image">' +
+      '<div class="sf-viewer-backdrop" data-sf-action="close-viewer"></div>' +
+      '<button type="button" class="sf-viewer-close" data-sf-action="close-viewer" aria-label="Close">×</button>' +
+      '<div class="sf-viewer-track" data-sf-track>' +
+        urls.map((url, i) =>
+          '<div class="sf-viewer-slide" data-sf-slide="' + i + '">' +
+            '<div class="sf-viewer-img" style="background-image:url(\'' + sfEscAttr(url) + '\');"></div>' +
+          '</div>'
+        ).join("") +
+      '</div>' +
+      dots +
+    '</div>';
+
+  host.insertAdjacentHTML("beforeend", html);
+  sfWireViewer(host, urls.length, idx);
+}
+function sfWireViewer(host, count, startIndex) {
+  const viewer = host.querySelector(".sf-viewer");
+  const track  = viewer.querySelector("[data-sf-track]");
+  if (!viewer || !track) return;
+
+  let index = startIndex;
+  const setIndex = (i) => {
+    index = Math.max(0, Math.min(i, count - 1));
+    track.style.transform = "translateX(" + (-index * 100) + "%)";
+    viewer.querySelectorAll(".sf-viewer-dot").forEach((d, k) => {
+      d.classList.toggle("active", k === index);
+    });
+  };
+  setIndex(startIndex);
+
+  let startX = 0, startY = 0, dragging = false;
+  track.addEventListener("touchstart", (e) => {
+    if (!e.touches[0]) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    dragging = true;
+  }, { passive: true });
+  track.addEventListener("touchend", (e) => {
+    if (!dragging) return;
+    dragging = false;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    if (Math.abs(dx) < 40) return;
+    if (Math.abs(dx) < Math.abs(dy)) return;
+    if (dx < 0 && index < count - 1) setIndex(index + 1);
+    else if (dx > 0 && index > 0) setIndex(index - 1);
+  }, { passive: true });
+
+  let mDown = false, mStartX = 0, mStartY = 0;
+  track.addEventListener("mousedown", (e) => { mDown = true; mStartX = e.clientX; mStartY = e.clientY; });
+  track.addEventListener("mouseup", (e) => {
+    if (!mDown) return;
+    mDown = false;
+    const dx = e.clientX - mStartX;
+    const dy = e.clientY - mStartY;
+    if (Math.abs(dx) < 60) return;
+    if (Math.abs(dx) < Math.abs(dy)) return;
+    if (dx < 0 && index < count - 1) setIndex(index + 1);
+    else if (dx > 0 && index > 0) setIndex(index - 1);
+  });
+
+  viewer.querySelectorAll(".sf-viewer-dot").forEach((dot) => {
+    dot.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setIndex(parseInt(dot.dataset.sfIndex, 10) || 0);
+    });
+  });
+
+  const onKey = (e) => {
+    if (e.key === "Escape") { sfCloseViewer(); }
+    else if (e.key === "ArrowRight" && index < count - 1) setIndex(index + 1);
+    else if (e.key === "ArrowLeft" && index > 0) setIndex(index - 1);
+  };
+  document.addEventListener("keydown", onKey, { once: false });
+  viewer.__sfKeyHandler = onKey;
+}
+function sfCloseViewer() {
+  const host = document.getElementById("storefront-content");
+  if (!host) return;
+  const v = host.querySelector(".sf-viewer");
+  if (!v) return;
+  if (v.__sfKeyHandler) document.removeEventListener("keydown", v.__sfKeyHandler);
+  v.remove();
+}
+
+// ==========================================================================
+// SCROLL CONTROLLER
+// ==========================================================================
+function sfEnsureScrollButtons() {
+  const shell = document.querySelector(".sf-shell");
+  if (!shell) return;
+  const body = shell.querySelector(".sf-body");
+  if (!body) return;
+
+  if (!shell.querySelector(".sf-scroll-fabs")) {
+    const fabs = document.createElement("div");
+    fabs.className = "sf-scroll-fabs";
+    fabs.innerHTML =
+      '<button type="button" class="sf-fab sf-fab-up" data-sf-action="scroll-up" aria-label="Scroll up">▲</button>' +
+      '<button type="button" class="sf-fab sf-fab-down" data-sf-action="scroll-down" aria-label="Scroll down">▼</button>';
+    shell.appendChild(fabs);
+
+    const update = () => {
+      const canScroll = body.scrollHeight > body.clientHeight + 8;
+      const atTop     = body.scrollTop < 40;
+      const atBottom  = body.scrollTop + body.clientHeight >= body.scrollHeight - 40;
+      fabs.style.display = canScroll ? "flex" : "none";
+      const up = fabs.querySelector(".sf-fab-up");
+      const dn = fabs.querySelector(".sf-fab-down");
+      if (up) { up.style.opacity = atTop ? "0" : "1"; up.style.pointerEvents = atTop ? "none" : "auto"; }
+      if (dn) { dn.style.opacity = atBottom ? "0" : "1"; dn.style.pointerEvents = atBottom ? "none" : "auto"; }
+    };
+
+    body.addEventListener("scroll", update, { passive: true });
+    setTimeout(update, 60);
+    setTimeout(update, 300);
+
+    const mo = new MutationObserver(() => update());
+    mo.observe(body, { childList: true, subtree: true });
+  }
+}
+
+// ==========================================================================
 // DELEGATED CLICK HANDLER
 // ==========================================================================
-
 function sfHandleDelegatedClick(e) {
   const t = e.target.closest("[data-sf-action]");
   if (!t) return;
@@ -558,6 +720,21 @@ function sfHandleDelegatedClick(e) {
     sfCloseProductDetail();
     return;
   }
+  if (action === "open-viewer") {
+    e.preventDefault(); e.stopPropagation();
+    const cur = __sfCurrentStorefront;
+    if (!cur) return;
+    const entry = cur.priced.find(x => x.p.id === t.dataset.sfProductId);
+    if (!entry) return;
+    const startIdx = parseInt(t.dataset.sfImageIndex || "0", 10) || 0;
+    sfOpenImageViewer(entry.p, startIdx);
+    return;
+  }
+  if (action === "close-viewer") {
+    e.preventDefault(); e.stopPropagation();
+    sfCloseViewer();
+    return;
+  }
   if (action === "qty-inc") {
     e.preventDefault(); e.stopPropagation();
     const id = t.dataset.sfProductId;
@@ -569,27 +746,8 @@ function sfHandleDelegatedClick(e) {
   if (action === "qty-dec") {
     e.preventDefault(); e.stopPropagation();
     const id = t.dataset.sfProductId;
-    const step = parseFloat(t.querySelector("[data-sf-step]")?.dataset?.sfStep) || 1;
-    // dec uses step=1 minimum from current
     __sfQtyByProductId[id] = Math.max(1, (__sfQtyByProductId[id] || 1) - 1);
     sfSyncQty(id);
-    return;
-  }
-  if (action === "add-to-cart") {
-    e.preventDefault(); e.stopPropagation();
-    const id = t.dataset.sfProductId;
-    const name = t.dataset.sfProductName;
-    const price = parseFloat(t.dataset.sfPrice) || 0;
-    const qty = __sfQtyByProductId[id] || 1;
-    addToCart(id, name, price, t.dataset.sfDistributorId, t.dataset.sfDistributorName, qty);
-    // Feedback: change label briefly
-    const original = t.textContent;
-    t.textContent = "Added ✓";
-    t.classList.add("sf-added");
-    setTimeout(() => {
-      t.textContent = original;
-      t.classList.remove("sf-added");
-    }, 900);
     return;
   }
   if (action === "contact") {
@@ -619,30 +777,40 @@ function sfHandleDelegatedClick(e) {
     }, 80);
     return;
   }
+  if (action === "scroll-up") {
+    e.preventDefault(); e.stopPropagation();
+    const body = document.querySelector(".sf-shell .sf-body");
+    if (body) body.scrollBy({ top: -Math.round(body.clientHeight * 0.7), behavior: "smooth" });
+    return;
+  }
+  if (action === "scroll-down") {
+    e.preventDefault(); e.stopPropagation();
+    const body = document.querySelector(".sf-shell .sf-body");
+    if (body) body.scrollBy({ top: Math.round(body.clientHeight * 0.7), behavior: "smooth" });
+    return;
+  }
 }
-
-// Recompute visible qty for every element bound to this product id.
 function sfSyncQty(productId) {
   const qty = __sfQtyByProductId[productId] || 1;
   document.querySelectorAll('[data-sf-qty-for="' + productId + '"]').forEach(el => {
     el.textContent = String(qty);
   });
-  // Recompute price label on Add button
   const cur = __sfCurrentStorefront;
   if (!cur) return;
   const entry = cur.priced.find(x => x.p.id === productId);
   if (!entry) return;
   const finalPrice = sfNum(entry.price.finalPrice, 0);
-  document.querySelectorAll('[data-sf-action="add-to-cart"][data-sf-product-id="' + productId + '"]').forEach(btn => {
-    const prefix = btn.classList.contains("sf-detail-add") ? "Add to cart · " : "Add · ";
-    btn.textContent = prefix + "₦" + (finalPrice * qty).toLocaleString();
+  document.querySelectorAll('[data-sf-action="add-to-cart"][data-sf-product-id="' + productId + '"], .sf-featured-add, .sf-detail-add').forEach(btn => {
+    if (btn.getAttribute("data-sf-product-id") === productId) {
+      const prefix = btn.classList.contains("sf-detail-add") ? "Add to cart · " : "Add · ";
+      btn.textContent = prefix + "₦" + (finalPrice * qty).toLocaleString();
+    }
   });
 }
 
 // ==========================================================================
 // L1 · CONTEXT
 // ==========================================================================
-
 function sfCategoryTempo(products) {
   const counts = Object.create(null);
   (products || []).forEach(p => {
@@ -651,26 +819,16 @@ function sfCategoryTempo(products) {
   });
   const keys = Object.keys(counts);
   if (!keys.length) return "fast";
-
   const regulatedCats = ["pharma", "baby products", "baby"];
   const slowCats      = ["furniture", "building materials", "home appliances", "raw materials"];
-  for (const c of keys) {
-    if (regulatedCats.some(r => c.includes(r))) return "regulated";
-  }
-  for (const c of keys) {
-    if (slowCats.some(r => c.includes(r))) return "slow";
-  }
+  for (const c of keys) if (regulatedCats.some(r => c.includes(r))) return "regulated";
+  for (const c of keys) if (slowCats.some(r => c.includes(r))) return "slow";
   return "fast";
 }
-
 function sfRelationshipStripCopy(discountPercent, negotiatedCount) {
   const bits = [];
-  if (discountPercent && discountPercent > 0) {
-    bits.push("<strong>" + sfEscHtml(String(discountPercent)) + "% off</strong>");
-  }
-  if (negotiatedCount > 0) {
-    bits.push("<strong>" + negotiatedCount + "</strong> negotiated price" + (negotiatedCount === 1 ? "" : "s"));
-  }
+  if (discountPercent && discountPercent > 0) bits.push("<strong>" + sfEscHtml(String(discountPercent)) + "% off</strong>");
+  if (negotiatedCount > 0) bits.push("<strong>" + negotiatedCount + "</strong> negotiated price" + (negotiatedCount === 1 ? "" : "s"));
   if (!bits.length) return "";
   return "Relationship advantage: " + bits.join(" · ");
 }
@@ -678,18 +836,15 @@ function sfRelationshipStripCopy(discountPercent, negotiatedCount) {
 // ==========================================================================
 // OPEN STOREFRONT MODAL
 // ==========================================================================
-
 async function openStorefrontModal(distId) {
   const contentEl = document.getElementById("storefront-content");
   const modalEl   = document.getElementById("storefront-modal");
   if (!contentEl) { sfWarnMissing("storefront-content"); return; }
   if (!modalEl)   { sfWarnMissing("storefront-modal"); return; }
 
-  // Reset per-open state
   __sfQtyByProductId = Object.create(null);
   __sfCurrentStorefront = null;
 
-  // Ensure delegated handler installed exactly once
   if (!contentEl.dataset.sfDelegated) {
     contentEl.addEventListener("click", sfHandleDelegatedClick);
     contentEl.dataset.sfDelegated = "1";
@@ -785,15 +940,15 @@ async function openStorefrontModal(distId) {
     availableProducts, priced, tempo
   };
 
-  const bodyHtml =
-    renderTopbar() +
-    renderHeaderRelationship(slotCtx) +
-    renderHeroPrimary(slotCtx) +
-    renderEngineTransparency(slotCtx) +
-    renderCurationMain(slotCtx) +
-    renderCommitmentPath(slotCtx);
-
-  const plan = { html: bodyHtml };
+  const plan = {
+    html:
+      renderTopbar() +
+      renderHeaderRelationship(slotCtx) +
+      renderHeroPrimary(slotCtx) +
+      renderEngineTransparency(slotCtx) +
+      renderCurationMain(slotCtx) +
+      renderCommitmentPath(slotCtx)
+  };
   const gr = {
     dark:    guardNoDarkPatterns(plan),
     urgency: guardUrgencyIsEngineBound(plan, engineCtx)
@@ -814,6 +969,8 @@ async function openStorefrontModal(distId) {
       '</div>' +
       renderCommitmentPath(slotCtx) +
     '</div>';
+
+  sfEnsureScrollButtons();
 }
 
-console.log("[GoodsbarnX] storefront.js loaded (V1.8.2.6 rev.4 · interaction)");
+console.log("[GoodsbarnX] storefront.js loaded (V1.8.2.6 rev.6 · F-19 patched)");
