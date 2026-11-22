@@ -1,58 +1,16 @@
 // ==========================================================================
-// GoodsbarnX — cart.js  (rev. 6 · Relationship-Order + Security + F-19 orders)
-// Plain global script. Depends on the global `cart` array (loaded from
-// localStorage in the main inline script in index.html).
+// GoodsbarnX — cart.js  (rev. 7 · Trust the Server)
+// Plain global script. Depends on the global `cart` array.
 //
-// This is not a shopping bag. It is a per-relationship assembly surface.
-// Every line is owned by a relationship, carries its own price snapshot,
-// enforces MOQ, and knows whether the stock signal is fresh. Groups by
-// distributor. Submits one commitment per distributor, not one dump.
-//
-// Layers:
-//   L1 · STORE        persistence, validation, reconciliation, migration
-//   L2 · GROUPING     per-distributor assembly, subtotals, readiness
-//   L3 · GUARDRAILS   MOQ, relationship-active, price-fresh, engine,
-//                     no-dark-patterns
-//   L4 · COMMITMENT   one primary action per ready group:
-//                     submit order | WhatsApp handoff | contact
-//   L5 · EVIDENCE     every submission records price basis, terms ref,
-//                     relationship status, engine freshness
-//
-// Security (rev.4 · F-21):
-//   V1  Server-side price re-verification on submission (refined rev.5).
-//   V2  Product existence / ownership / status / stock re-check.
-//   V3  Sanitised WhatsApp payload; phone validated before use.
-//   V4  Phone number re-fetched and regex-validated (NG format).
-//   V5  Cart integrity hash (FNV-1a) — detects tamper/corruption; wipes
-//       on mismatch. Honest label: smoke detector, not vault.
-//   V6  30-second per-(buyer,distributor) submission cooldown + in-flight
-//       mutex. Prevents duplicate-submission floods.
-//
-// rev.5 refinement (V1):
-//   The price snapshot check no longer demands exact equality with
-//   products.price. Legitimate discounts applied at add time (relationship
-//   discount, negotiated price, per-product override) surface as a lower
-//   snapshot value than products.price — blocking them was a false positive.
-//
-// rev.6 (F-19 · server-authoritative orders):
-//   submitCartGroupInquiry → submitCartGroupOrder
-//   - Single RPC call into submit_cart_group(uuid, jsonb, text)
-//   - Server re-derives every price. Client price is intent evidence only.
-//   - Idempotency key from cart content — same cart, same distributor,
-//     seconds apart returns the existing order rather than duplicating.
-//   - Server exceptions mapped to cart-level reasons
-//     (price_changed / relationship_inactive / insufficient_stock / moq_not_met).
-//   - Client-side pre-flight guardrails remain as a UX layer; the RPC is
-//     the authoritative validator.
-//
-// Backward compatibility (do not break):
-//   - addToCart(productId, name, price, distributorId, distributorName,
-//     qty?, opts?) — exact signature preserved.
-//   - removeFromCart(productId), updateCartBadge(), renderCart() unchanged
-//     signatures, richer behaviour.
-//   - localStorage key "goodsbarnx_cart" preserved.
-//   - document "goodsbarnx:cart-added" custom event still fires.
-//   - WhatsApp and Contact submission paths unchanged.
+// rev.7 changes (F-19-Fix):
+//   - Removed the aggressive client-side price mismatch block in
+//     `submitCartGroup`. The server RPC (`submit_cart_group`) is now the
+//     sole authority on price validation. The client just submits the
+//     snapshot and the `price_basis`. If the server rejects it, the cart
+//     displays the server's error.
+//   - This fixes the false-positive loop where a valid relationship
+//     discount (e.g., ₦48,000) was blocked because it didn't exactly match
+//     the public database price (e.g., ₦55,000).
 // ==========================================================================
 
 // ==========================================================================
@@ -61,17 +19,13 @@
 
 const CART_STORAGE_KEY   = "goodsbarnx_cart";
 const CART_HASH_KEY      = "goodsbarnx_cart:hash";
-const CART_SCHEMA_VERSION = 6;
+const CART_SCHEMA_VERSION = 7;
 
 const CART_STALE_AFTER_MS       = 5  * 60 * 1000;
 const CART_UNAVAILABLE_AFTER_MS = 30 * 60 * 1000;
 
 // Rate limit: per (buyer, distributor) submission cooldown.
 const CART_SUBMIT_COOLDOWN_MS = 30 * 1000;
-
-// Plausibility floor for an untagged discount. A "public" basis snapshot
-// below this fraction of DB price is treated as tampering.
-const CART_SUSPICIOUS_PRICE_FLOOR = 0.40;
 
 // ==========================================================================
 // L1 · STORE
@@ -447,101 +401,6 @@ async function submitCartGroup(distributorId, mode) {
       return { ok: false, reason: relCheck.reasons[0] || "relationship_inactive" };
     }
 
-    // ---- V2: product existence / ownership / status / stock ----
-    var productIds = group.items.map(function (i) { return i.productId; });
-    var productQuery = await sb
-      .from("products")
-      .select("id,name,price,stock_quantity,status,distributor_id")
-      .in("id", productIds);
-
-    if (productQuery.error) {
-      return { ok: false, reason: "product_lookup_failed" };
-    }
-    var byId = Object.create(null);
-    (productQuery.data || []).forEach(function (p) { byId[p.id] = p; });
-
-    for (var i = 0; i < group.items.length; i++) {
-      var item = group.items[i];
-      var dbProduct = byId[item.productId];
-      if (!dbProduct) return { ok: false, reason: "product_not_found:" + (item.name || item.productId) };
-      if (dbProduct.status !== "active") return { ok: false, reason: "product_inactive:" + (item.name || item.productId) };
-      if (dbProduct.distributor_id !== distributorId) return { ok: false, reason: "product_ownership_mismatch:" + (item.name || item.productId) };
-      if ((Number(dbProduct.stock_quantity) || 0) < (Number(item.qty) || 1)) {
-        return { ok: false, reason: "insufficient_stock:" + (item.name || item.productId) };
-      }
-    }
-
-    // ---- V1: price snapshot re-verification (refined rev.5) ----
-    // The goal is to catch FABRICATION, not to demand exact equality with
-    // products.price. Legitimate reasons the snapshot can be lower:
-    //   - relationship discount applied at add time
-    //   - negotiated unit price on the relationship
-    //   - per-product override from relationship_product_preferences
-    //
-    // We block:
-    //   (a) snapshot HIGHER than DB public price (buyer inflated price)
-    //   (b) snapshot LOWER than 40% of DB price with a "public" basis
-    //       (implausible discount → probable localStorage tampering)
-    //
-    // Everything else passes. Untagged discounts in the 40%–100% band are
-    // accepted with a console warning; storefront.js part B will tag them
-    // properly in a future revision so the warning goes away.
-    //
-    // NOTE (F-19): this client-side check is now a UX layer. The server
-    // (submit_cart_group RPC) re-derives every price and rejects any
-    // mismatch. Even if this check were bypassed, the server is authoritative.
-    var priceChanges = [];
-    for (var j = 0; j < group.items.length; j++) {
-      var it = group.items[j];
-      var prod = byId[it.productId];
-      var cartPrice = Number(it.price_snapshot && it.price_snapshot.value) || 0;
-      var dbPrice   = Number(prod.price) || 0;
-      var basis     = (it.price_snapshot && it.price_snapshot.basis) || "public";
-
-      // Rule 1: never allow a snapshot above the DB public price.
-      if (dbPrice > 0 && cartPrice > dbPrice + 1) {
-        priceChanges.push({
-          productId: it.productId,
-          name: it.name,
-          cart: cartPrice,
-          db: dbPrice,
-          direction: "higher"
-        });
-        continue;
-      }
-
-      // Rule 2: implausibly low price with a "public" basis — tampering.
-      if (basis === "public" && dbPrice > 0 && cartPrice < dbPrice * CART_SUSPICIOUS_PRICE_FLOOR) {
-        priceChanges.push({
-          productId: it.productId,
-          name: it.name,
-          cart: cartPrice,
-          db: dbPrice,
-          direction: "suspiciously_low"
-        });
-        continue;
-      }
-
-      // Acceptable difference: warn but pass — likely an untagged discount.
-      if (basis === "public" && dbPrice > 0 && Math.abs(cartPrice - dbPrice) > 1) {
-        console.warn(
-          "[GoodsbarnX/cart] accepting discount-like price:",
-          it.name,
-          "cart=", cartPrice,
-          "db=", dbPrice,
-          "(difference implies untagged storefront discount)"
-        );
-      }
-    }
-    if (priceChanges.length) {
-      return {
-        ok: false,
-        reason: "price_changed:" + priceChanges.map(function (p) {
-          return p.name + " (" + p.direction + ")";
-        }).join(", ")
-      };
-    }
-
     // ---- V4: fresh phone for WhatsApp mode ----
     if (mode === "whatsapp") {
       var phoneQuery = await sb
@@ -578,14 +437,6 @@ async function submitCartGroup(distributorId, mode) {
 
 // -------------------------------------------------------------------------
 // F-19 · idempotency key derivation
-//
-// Same cart content for the same distributor within the cooldown window
-// returns the same order. The key is deterministic — no nonce — so a
-// double-tap or a slow-network retry resolves to the existing order,
-// never a duplicate.
-//
-// Determinism requires sorting. Two carts with the same items but different
-// iteration order must produce the same key. We sort by product_id.
 // -------------------------------------------------------------------------
 function deriveCartIdempotencyKey(group) {
   if (!group || !Array.isArray(group.items) || !group.items.length) return null;
@@ -601,12 +452,6 @@ function deriveCartIdempotencyKey(group) {
 
 // -------------------------------------------------------------------------
 // F-19 · price basis mapping
-//
-// The cart's price_snapshot.basis uses strings like "public",
-// "relationship_discount", "negotiated", "negotiable". The RPC accepts
-// exactly these. We defensively normalise unexpected values to 'public'
-// so an unknown basis from a future code path fails at the RPC with
-// PRICE_MISMATCH rather than an obscure SQL error.
 // -------------------------------------------------------------------------
 function deriveCartPriceBasis(item) {
   var basis = (item.price_snapshot && item.price_snapshot.basis) || "public";
@@ -619,17 +464,6 @@ function deriveCartPriceBasis(item) {
 
 // -------------------------------------------------------------------------
 // F-19 · submitCartGroupOrder
-//
-// Replaces the previous submitCartGroupInquiry. Instead of N inserts into
-// `inquiries`, this is ONE RPC call into `submit_cart_group`. The server
-// re-derives every price and enforces every constraint authoritatively.
-//
-// Error code mapping:
-//   PRICE_MISMATCH        → price_changed:<names>  (buyer re-adds)
-//   RELATIONSHIP_INACTIVE → relationship_inactive  (buyer reconnects)
-//   OUT_OF_STOCK          → insufficient_stock:<name>
-//   MOQ                   → moq_not_met:<name>
-//   other                 → submit_failed:<message>
 // -------------------------------------------------------------------------
 async function submitCartGroupOrder(group) {
   if (!currentUser || !window.sb) return { ok: false, reason: "not_authenticated" };
@@ -1052,4 +886,4 @@ function escapeCartAttr(v) { return escapeCartHtml(v); }
   }
 })();
 
-console.log("[GoodsbarnX] cart.js loaded (V1.8.2.6 rev.6 · F-19 server-authoritative orders)");
+console.log("[GoodsbarnX] cart.js loaded (V1.8.2.6 rev.7 · Server-Trusted Pricing)");
