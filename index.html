@@ -9,13 +9,13 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
 
+  <!-- App Stylesheets -->
   <link rel="stylesheet" href="css/main.css?v=1.8.2.6" />
   <link rel="stylesheet" href="css/components.css?v=1.8.2.6" />
 
   <style>
     /* =====================================================================
        AUTHENTICATION REDESIGN — "Industrial Elegance"
-       Overrides and specific styling for the auth flow.
        ===================================================================== */
     
     :root {
@@ -33,7 +33,7 @@
       --font-ui: 'Plus Jakarta Sans', sans-serif;
     }
 
-    body {
+    body.auth-active {
       background-color: var(--auth-bg);
       color: var(--auth-text);
       font-family: var(--font-ui);
@@ -43,7 +43,7 @@
     }
 
     /* Subtle mesh background */
-    body::before {
+    body.auth-active::before {
       content: '';
       position: fixed;
       inset: 0;
@@ -358,10 +358,14 @@
       margin-top: 1rem;
       font-family: var(--font-ui);
     }
-    .btn-primary:hover {
+    .btn-primary:hover:not(:disabled) {
       background: var(--auth-accent-hover);
       transform: translateY(-1px);
       box-shadow: 0 4px 12px rgba(4, 120, 87, 0.3);
+    }
+    .btn-primary:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
     }
 
     .auth-footer {
@@ -419,11 +423,34 @@
     }
     .btn-social:hover { background: rgba(255,255,255,0.05); }
 
+    /* Error Toast */
+    .auth-error-toast {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #FCA5A5;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      text-align: center;
+      margin-top: 1rem;
+      display: none;
+    }
+    .auth-error-toast:not(:empty) {
+      display: block;
+      animation: shake 0.3s cubic-bezier(.36,.07,.19,.97) both;
+    }
+    @keyframes shake {
+      10%, 90% { transform: translate3d(-1px, 0, 0); }
+      20%, 80% { transform: translate3d(2px, 0, 0); }
+      30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+      40%, 60% { transform: translate3d(4px, 0, 0); }
+    }
+
   </style>
 </head>
-<body>
+<body class="auth-active">
 
-  <!-- Hidden by default, shown via JS -->
+  <!-- AUTH SHELL -->
   <div id="auth-shell" class="auth-container">
     
     <!-- Left Hero (Desktop) -->
@@ -544,7 +571,7 @@
             </div>
 
             <button type="submit" class="btn-primary" id="signup-btn">Create Account</button>
-            <div class="auth-error" id="auth-error" style="color:var(--auth-error); font-size:0.85rem; text-align:center; margin-top:1rem;"></div>
+            <div class="auth-error-toast" id="auth-error"></div>
           </form>
 
           <div class="auth-footer">
@@ -584,11 +611,11 @@
               <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.85rem; color:var(--auth-text-muted); cursor:pointer;">
                 <input type="checkbox" style="accent-color:var(--auth-accent);"> Remember me
               </label>
-              <a href="#" style="color:var(--auth-text-muted); font-size:0.85rem; text-decoration:none;">Forgot password?</a>
+              <a href="#" style="color:var(--auth-text-muted); font-size:0.85rem; text-decoration:none;" onclick="event.preventDefault(); if(typeof openForgotPasswordModal === 'function') openForgotPasswordModal();">Forgot password?</a>
             </div>
 
             <button type="submit" class="btn-primary" id="login-btn">Log in</button>
-            <div class="auth-error" id="login-error" style="color:var(--auth-error); font-size:0.85rem; text-align:center; margin-top:1rem;"></div>
+            <div class="auth-error-toast" id="login-error"></div>
           </form>
 
           <div class="social-divider">Or continue with</div>
@@ -619,7 +646,7 @@
 
   <!-- The main app (Hidden until login) -->
   <div id="app" style="display:none;">
-    <!-- App content goes here -->
+    <!-- App content goes here. -->
   </div>
 
   <!-- ====================================================================
@@ -627,6 +654,9 @@
        ==================================================================== -->
   <script>
     let selectedSignupRole = 'buyer';
+
+    // Ensure the body has the auth-active class when the auth shell is visible
+    document.body.classList.add('auth-active');
 
     // 1. Role Switcher Morphing
     function setAuthRole(role) {
@@ -740,45 +770,127 @@
       }
     }
 
-    // 4. Form Submission Hooks (Wired to your existing backend)
-    function handleSignup(e) {
+    // 4. REAL Authentication Hooks (Integrating with existing auth.js / app.js)
+
+    async function handleSignup(e) {
       e.preventDefault();
-      // Grab all values
-      const name = document.getElementById('auth-name').value;
-      const phone = document.getElementById('auth-phone').value;
-      const email = document.getElementById('auth-email').value;
-      const password = document.getElementById('auth-password').value;
       
-      // If your existing auth.js handles this, call it here.
-      // For now, simulate success.
       const err = document.getElementById('auth-error');
-      if (name && phone && email && password) {
-        // Simulate integration with your auth.js handleSignup logic
+      const btn = document.getElementById('signup-btn');
+      err.innerText = "";
+      
+      const name = document.getElementById('auth-name').value.trim();
+      const phone = document.getElementById('auth-phone').value.trim();
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value;
+      const confirm = document.getElementById('auth-password-confirm').value;
+      const business = document.getElementById('auth-business')?.value.trim() || "";
+
+      if (!name || !phone || !email || !password || !confirm) {
+        err.innerText = "Please fill in every field.";
+        return;
+      }
+      if (password !== confirm) {
+        err.innerText = "Passwords do not match.";
+        return;
+      }
+
+      btn.innerText = "Creating Account...";
+      btn.disabled = true;
+
+      try {
+        // 1. Supabase Sign Up
+        const { data, error } = await window.sb.auth.signUp({ email, password });
+        if (error) throw error;
+
+        const userId = data.user.id;
+
+        // 2. Insert into canonical profiles table
+        const profileInsert = await window.sb.from("profiles").insert({
+          id: userId,
+          full_name: name,
+          phone: phone,
+          role: selectedSignupRole
+        });
+        if (profileInsert.error) throw new Error("Profile save failed: " + profileInsert.error.message);
+
+        // 3. Insert into role-specific table
+        if (selectedSignupRole === "distributor") {
+          const dist = await window.sb.from("distributor_profiles").insert({
+            id: userId,
+            business_name: business || name
+          });
+          if (dist.error) throw new Error("Distributor save failed: " + dist.error.message);
+        } else if (selectedSignupRole === "buyer") {
+          const buyer = await window.sb.from("buyer_profiles").insert({ id: userId });
+          if (buyer.error) throw new Error("Buyer save failed: " + buyer.error.message);
+        } else if (selectedSignupRole === "agent") {
+          const agentCompany = document.getElementById('auth-company')?.value.trim() || name;
+          const agent = await window.sb.from("agent_profiles").insert({ 
+            id: userId, 
+            company_name: agentCompany 
+          });
+          if (agent.error) throw new Error("Agent save failed: " + agent.error.message);
+        }
+
+        // 4. Load the user into the global state and boot the app
+        await window.loadCurrentUser();
+        
+        // 5. Switch UI to the app
+        document.body.classList.remove('auth-active');
         document.getElementById('auth-shell').style.display = 'none';
         document.getElementById('app').style.display = 'block';
-      } else {
-        err.innerText = "Please fill in all required fields.";
+        if (typeof window.showScreen === 'function') window.showScreen('market');
+        
+      } catch (error) {
+        err.innerText = error.message || "Failed to create account.";
+        btn.innerText = "Create Account";
+        btn.disabled = false;
       }
     }
 
-    function handleLogin(e) {
+    async function handleLogin(e) {
       e.preventDefault();
-      const email = document.getElementById('login-email').value;
-      const password = document.getElementById('login-password').value;
       
       const err = document.getElementById('login-error');
-      if (email && password) {
-        // Simulate integration with your auth.js handleLogin logic
+      const btn = document.getElementById('login-btn');
+      err.innerText = "";
+      
+      const email = document.getElementById('login-email').value.trim();
+      const password = document.getElementById('login-password').value;
+
+      if (!email || !password) {
+        err.innerText = "Please enter your credentials.";
+        return;
+      }
+
+      btn.innerText = "Logging in...";
+      btn.disabled = true;
+
+      try {
+        // 1. Supabase Sign In
+        const { error } = await window.sb.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+
+        // 2. Load the user into the global state
+        await window.loadCurrentUser();
+        
+        // 3. Switch UI to the app
+        document.body.classList.remove('auth-active');
         document.getElementById('auth-shell').style.display = 'none';
         document.getElementById('app').style.display = 'block';
-      } else {
-        err.innerText = "Please enter your credentials.";
+        if (typeof window.showScreen === 'function') window.showScreen('market');
+
+      } catch (error) {
+        err.innerText = error.message || "Invalid credentials.";
+        btn.innerText = "Log in";
+        btn.disabled = false;
       }
     }
   </script>
 
   <!-- ====================================================================
-       EXISTING APP SCRIPTS (Loaded after the UI is ready)
+       EXISTING APP SCRIPTS
        ==================================================================== -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/config.js"></script>
