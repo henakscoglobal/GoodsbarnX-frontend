@@ -1,6 +1,19 @@
 // ==========================================================================
-// GoodsbarnX — storefront.js  (rev. 8 · F-19 patched + feedback restored)
+// GoodsbarnX — storefront.js  (rev. 9 · F-19-C server-authoritative pricing)
 // Plain global script. Loads sixth (Canon §10).
+//
+// rev.9 changes:
+//   - Replaced client-side pricing queries with a single RPC call to
+//     `get_relationship_pricing`. This guarantees the storefront's
+//     displayed prices exactly match the server's authoritative prices,
+//     preventing "price mismatch" rejections at order submission.
+//
+// rev.8 changes (retained):
+//   - Delegated `add-to-cart` action with "Added ✓" visual feedback.
+//
+// rev.7 changes (retained):
+//   - Pass `price_basis` and `moq` via `opts` to `addToCart` so the cart
+//     can correctly tag relationship discounts.
 // ==========================================================================
 
 const __gbxStorefrontWarned = Object.create(null);
@@ -877,31 +890,25 @@ async function openStorefrontModal(distId) {
   const productPreferences = {};
 
   if (currentUser && currentUser.role === "buyer") {
-    const { data: terms } = await sb
-      .from("current_relationship_trade_terms")
-      .select("default_discount_percent, relationship_status")
-      .eq("buyer_id", currentUser.id)
-      .eq("distributor_id", distId)
-      .maybeSingle();
+    // F-19-C: Call the authoritative server RPC for pricing
+    const { data: pricingData, error: pricingError } = await sb.rpc("get_relationship_pricing", {
+      p_buyer_id: currentUser.id,
+      p_distributor_id: distId
+    });
 
-    if (terms && terms.relationship_status === "active" && sfNum(terms.default_discount_percent, 0) > 0) {
-      discountPercent = terms.default_discount_percent;
-    }
+    if (!pricingError && pricingData) {
+      if (pricingData.status === "active" && sfNum(pricingData.discount_percent, 0) > 0) {
+        discountPercent = pricingData.discount_percent;
+      }
 
-    const { data: relationship } = await sb
-      .from("trade_relationships")
-      .select("id")
-      .eq("buyer_id", currentUser.id)
-      .eq("distributor_id", distId)
-      .eq("is_primary", true)
-      .maybeSingle();
-
-    if (relationship) {
-      const { data: prefs } = await sb
-        .from("relationship_product_preferences")
-        .select("product_id, negotiated_unit_price, preferred")
-        .eq("relationship_id", relationship.id);
-      (prefs || []).forEach(pref => { productPreferences[pref.product_id] = pref; });
+      const negotiated = pricingData.negotiated_prices || {};
+      Object.keys(negotiated).forEach(pid => {
+        productPreferences[pid] = {
+          product_id: pid,
+          negotiated_unit_price: negotiated[pid],
+          preferred: true
+        };
+      });
     }
   }
 
@@ -964,4 +971,4 @@ async function openStorefrontModal(distId) {
   sfEnsureScrollButtons();
 }
 
-console.log("[GoodsbarnX] storefront.js loaded (V1.8.2.6 rev.8 · F-19 patched + feedback)");
+console.log("[GoodsbarnX] storefront.js loaded (V1.8.2.6 rev.9 · F-19-C server-authoritative pricing)");
