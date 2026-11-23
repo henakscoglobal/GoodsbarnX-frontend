@@ -1413,5 +1413,47 @@
     })();
   </script>
 
+    <!-- ====================================================================
+       TRUST SCREEN BOOTSTRAPPER
+       Ensures trust.js binds its events and loads data when navigating
+       ==================================================================== -->
+  <script>
+    (function bootstrapTrustScreen() {
+      // 1. Wait for the DOM and all scripts to be fully loaded
+      window.addEventListener('load', function() {
+        
+        // 2. Grab the Trust navigation button and screen
+        const navTrust = document.getElementById('nav-trust');
+        const screenTrust = document.getElementById('screen-trust');
+
+        if (!navTrust || !screenTrust) {
+          console.warn('[GoodsbarnX] Trust nav or screen element missing from DOM.');
+          return;
+        }
+
+        // 3. Intercept the click on the Trust nav button
+        navTrust.addEventListener('click', function() {
+          // We delay by 50ms to let app.js finish its showScreen transition
+          setTimeout(function() {
+            if (typeof window.loadTrustData === 'function') {
+              // Load the trust data
+              window.loadTrustData();
+            } else {
+              console.warn('[GoodsbarnX] trust.js did not export loadTrustData.');
+            }
+          }, 50);
+        });
+
+        // 4. If the user is already on the trust screen on load (e.g., page refresh)
+        if (screenTrust.classList.contains('active')) {
+          setTimeout(function() {
+            if (typeof window.loadTrustData === 'function') {
+              window.loadTrustData();
+            }
+          }, 200);
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
