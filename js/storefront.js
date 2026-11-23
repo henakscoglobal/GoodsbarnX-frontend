@@ -1,8 +1,21 @@
 // ==========================================================================
-// GoodsbarnX — storefront.js  (rev. 9 · F-19-C server-authoritative pricing)
+// GoodsbarnX — storefront.js  (rev. 10 · canonical price basis)
 // Plain global script. Loads sixth (Canon §10).
 //
-// rev.9 changes:
+// rev.10 changes (F-19-D):
+//   - ROOT-CAUSE FIX: the cart received `price_basis` as display text
+//     ("your_negotiated_price", "relationship_discount_13"). cart.js only
+//     accepts the canonical vocabulary, so every discounted/negotiated line
+//     was downgraded to "public" and rejected by submit_cart_group as a
+//     price mismatch. The storefront now emits the canonical basis
+//     (public | relationship_discount | negotiated | negotiable) via
+//     sfCanonicalBasis(). `advantageLabel` remains display/analytics only.
+//   - The three duplicated safeOpts blocks now share sfCartOpts().
+//   - add-to-cart now reads the CURRENT quantity from the stepper state
+//     (it previously used the quantity captured at render time).
+//   - add-to-cart option parsing is guarded against malformed JSON.
+//
+// rev.9 changes (retained):
 //   - Replaced client-side pricing queries with a single RPC call to
 //     `get_relationship_pricing`. This guarantees the storefront's
 //     displayed prices exactly match the server's authoritative prices,
@@ -150,6 +163,30 @@ function sfComputePrice(product, pref, discountPercent) {
   }
   return { finalPrice, original, advantage, advantageLabel, isNegotiable: false };
 }
+
+// --------------------------------------------------------------------------
+// F-19-D · Canonical price basis.
+//
+// The ONLY values the cart and the submit_cart_group RPC understand:
+//   public | relationship_discount | negotiated | negotiable
+// `price.advantageLabel` is display/analytics text and must never be sent
+// to the cart as the basis.
+// --------------------------------------------------------------------------
+function sfCanonicalBasis(price) {
+  if (!price || price.isNegotiable) return "negotiable";
+  const label = String(price.advantageLabel || "");
+  if (label === "your_negotiated_price") return "negotiated";
+  if (label.indexOf("relationship_discount") === 0) return "relationship_discount";
+  return "public";
+}
+function sfCartOpts(p, price, step) {
+  return sfEscAttr(JSON.stringify({
+    moq: step,
+    price_basis: sfCanonicalBasis(price),
+    sku: p.sku || null
+  }));
+}
+
 function sfPriceBlockHtml(price, classes) {
   if (price.isNegotiable) {
     return '<div class="' + classes.value + '">Negotiable</div>';
@@ -326,11 +363,7 @@ function sfRenderFeaturedCard(p, dist, price) {
     ? ' · <span style="color:var(--gbx-gold);font-weight:700;">★</span>'
     : "";
 
-  const safeOpts = sfEscAttr(JSON.stringify({
-    moq: step,
-    price_basis: price.advantageLabel || "public",
-    sku: p.sku || null
-  }));
+  const safeOpts = sfCartOpts(p, price, step);
 
   return (
     '<div class="sf-featured-card" data-sf-action="open-product-detail" ' +
@@ -381,11 +414,7 @@ function sfRenderCatalogueRow(p, dist, price) {
   const sku   = sfEscHtml(p.sku || "No SKU");
   const imageStyle = p.image_url ? "background-image:url('" + sfEscAttr(p.image_url) + "');" : "";
 
-  const safeOpts = sfEscAttr(JSON.stringify({
-    moq: step,
-    price_basis: price.advantageLabel || "public",
-    sku: p.sku || null
-  }));
+  const safeOpts = sfCartOpts(p, price, step);
 
   return (
     '<div class="sf-catalogue-row" data-sf-action="open-product-detail" ' +
@@ -461,11 +490,7 @@ function sfOpenProductDetail(productId, distributorId, distributorName) {
     ["Lead time", p.lead_time || "—"]
   ];
 
-  const safeOpts = sfEscAttr(JSON.stringify({
-    moq: step,
-    price_basis: price.advantageLabel || "public",
-    sku: p.sku || null
-  }));
+  const safeOpts = sfCartOpts(p, price, step);
 
   const detailHtml =
     '<div class="sf-detail" role="dialog" aria-modal="true" aria-label="Product detail">' +
@@ -739,11 +764,18 @@ function sfHandleDelegatedClick(e) {
     var pprice = parseFloat(t.dataset.sfPrice) || 0;
     var distId = t.dataset.sfDistributorId;
     var distName = t.dataset.sfDistributorName;
-    var qty = parseInt(t.dataset.sfQty, 10) || 1;
-    var opts = t.dataset.sfOpts ? JSON.parse(t.dataset.sfOpts) : {};
+    // Current stepper quantity wins; the data attribute is only the render-time value.
+    var qty = __sfQtyByProductId[pid] || parseInt(t.dataset.sfQty, 10) || 1;
+    var opts = {};
+    try {
+      opts = t.dataset.sfOpts ? JSON.parse(t.dataset.sfOpts) : {};
+    } catch (parseError) {
+      console.warn("[GoodsbarnX/storefront] malformed cart opts; falling back to defaults.");
+      opts = {};
+    }
 
     addToCart(pid, pname, pprice, distId, distName, qty, opts);
-    
+
     // Visual feedback
     const originalText = t.textContent;
     t.textContent = "Added ✓";
@@ -971,4 +1003,4 @@ async function openStorefrontModal(distId) {
   sfEnsureScrollButtons();
 }
 
-console.log("[GoodsbarnX] storefront.js loaded (V1.8.2.6 rev.9 · F-19-C server-authoritative pricing)");
+console.log("[GoodsbarnX] storefront.js loaded (V1.8.2.7 rev.10 · canonical price basis)");
