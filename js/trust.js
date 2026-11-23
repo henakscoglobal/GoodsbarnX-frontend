@@ -1,5 +1,5 @@
 // ==========================================================================
-// GoodsbarnX — trust.js  (rev. 2 · Elite Trust · conversion-first)
+// GoodsbarnX — trust.js  (rev. 3 · elite trust surface)
 // Plain global script. Loads tenth (Canon §10).
 //
 // V1.8.2.6 remediation Phase 1+2 (retained):
@@ -8,32 +8,34 @@
 //   - Registered a "trust" screen loader.
 //   - DOM lookups null-safe with deduplicated named warnings.
 //
-// Elite rebuild (rev. 2):
-//   The Trust screen is not a data dump. It is the buyer's decision surface
-//   for "which distributor do I establish my first relationship with?"
+// Elite rebuild (rev. 3):
+//   Release-gate analysis identified five trust-surface defects in rev. 2:
+//     Gate 1 — Trust score shown without denominator (fabricated meaning)
+//     Gate 2 — Existing relationships not reflected on cards (commercial risk)
+//     Gate 3 — Aggregate query failure collapses every distributor to LISTED
+//     Gate 4 — Buyer view is an exhibit, not an instrument
+//     Gate 5 — No category-aware sort; buyer interest ignored
+//     Gate 6 — New distributor with real activity but no verification tier
+//              is invisible
 //
-//   Architecture (five layers):
-//     L1 Viewer Context    viewer role determines the one question the
-//                          screen answers.
-//     L2 Evidence Scoring  every distributor gets one honest composite
-//                          tier derived from three real numbers:
-//                          verification · activity · reliability.
-//     L3 Composition       per-viewer sections: buyer sees "start with",
-//                          distributor sees "your position", guest sees
-//                          "how we verify". Section headings differ; the
-//                          core card renderer is the same.
-//     L4 Conversion        exactly one primary CTA per card:
-//                          View storefront. No noise, no secondary stack.
-//     L5 Evidence §29      every rendered number traceable to a schema field.
-//                          Never a synthesized trust score. New
-//                          distributors are honestly "New to the network".
+//   Rev. 3 rebuilds the buyer surface around "who next" and preserves the
+//   distributor diagnostic surface unchanged.
 //
-// Preserved:
-//   - loadTrustData(), renderTrustScreen() signatures.
-//   - All DOM targets (#trust-summary, #trust-signals,
-//     #verified-distributors-list, #disputes-list).
-//   - Distributor self-view (8 §8 signals) unchanged.
-//   - registerScreenLoader("trust", ...) unchanged.
+//   Functional additions:
+//     - Trust score now carries its denominator: "78/100 (12 relationships)".
+//     - Card carries relationship state: active | paused | released |
+//       terminated | pending_in | none.
+//     - Query failure falls back honestly: verified stays verified, no
+//       fake zero, "Trust data limited" line appears.
+//     - Category-aware sort uses the buyer's `buyer_profiles.looking_for`.
+//     - ACTIVE tier distributors are surfaced even without verification.
+//
+//   Preserved:
+//     - loadTrustData(), renderTrustScreen() signatures.
+//     - All DOM targets (#trust-summary, #trust-signals,
+//       #verified-distributors-list, #disputes-list).
+//     - Distributor self-view (8 §8 signals) unchanged.
+//     - registerScreenLoader("trust", ...) unchanged.
 // ==========================================================================
 
 // --------------------------------------------------------------------------
@@ -41,23 +43,19 @@
 // --------------------------------------------------------------------------
 
 let trustSummaryState = {
-  distributors: [],           // [{ id, business_name, verification_tier }]
-  distributorsMeta: {},       // id → { reliability, activity, trustTier }
+  distributors: [],           // [{ id, business_name, verification_tier, category }]
+  distributorsMeta: {},       // id → { tier, verification, activity, reliability, reliabilityCount }
   relationships: [],          // viewer's trade_relationships
+  viewerRelationshipMap: {},  // distributor_id → status (buyer view only)
+  viewerLookingFor: null,     // buyer's looking_for category (for sort weight)
   trustRows: [],              // viewer's relationship_trust rows
   events: [],                 // viewer's relationship_events
   disputes: [],               // public approved disputes (distributor viewers only)
   relationshipDisputes: [],   // viewer's relationship_disputes
+  aggregateQueryFailed: false,
   loading: false,
   loadedAt: null,
   error: null
-};
-
-// In-memory: viewer's relationships for the current session (buyer's view
-// uses this to partition "start with" from "you already know").
-const __gbxTrustViewerGraph = {
-  distributorIdsWithRelationship: new Set(), // for buyer viewers: distributor IDs the buyer has a relationship with
-  loaded: false
 };
 
 const __gbxTrustWarned = Object.create(null);
@@ -83,7 +81,7 @@ function trustNum(v, fallback) {
 }
 
 // --------------------------------------------------------------------------
-// L1 · VIEWER CONTEXT
+// VIEWER ROLE
 // --------------------------------------------------------------------------
 
 function trustViewerRole() {
@@ -93,23 +91,29 @@ function trustViewerRole() {
 // --------------------------------------------------------------------------
 // L2 · EVIDENCE SCORING
 //
-// One distributor → three real numbers → one honest tier.
+// One distributor → one honest tier from three real numbers.
 //
-//   verification  (0 | 1)     from distributor_profiles.verification_tier
-//   activity      (0 .. 5)    min(5, count of relationship_events in last 30d)
-//   reliability   (0..100|null) avg trust_score across that distributor's
-//                             relationships, or null when no relationships
+//   verification       (0 | 1)   from distributor_profiles.verification_tier
+//   activity           (0 .. 5)  count of relationship_events in last 30 days
+//   reliability        (0..100|null) avg trust_score across relationships
+//   reliabilityCount   (int)     number of relationships with a trust_score
 //
 // Tiers (highest first):
 //   ESTABLISHED — verification AND activity≥1 AND reliability≥60
 //   VERIFIED    — verification only
-//   ACTIVE      — activity≥1, no verification
+//   ACTIVE      — activity≥1, no verification (Gate 6 — new distributor
+//                 with real trading, honestly labelled)
 //   LISTED      — neither
+//
+// Gate 3 fallback: if the aggregate query failed, `reliabilityCount` is 0
+// and `activity` is 0 for everyone. Verified distributors stay VERIFIED
+// (not collapsed to LISTED). The card shows "Trust data limited" instead
+// of a fake zero.
 // --------------------------------------------------------------------------
 
 const TRUST_TIER_ORDER = { ESTABLISHED: 0, VERIFIED: 1, ACTIVE: 2, LISTED: 3 };
 
-function scoreDistributor(dist, activity, reliability) {
+function scoreDistributor(dist, activity, reliability, reliabilityCount) {
   var isVerified = dist.verification_tier === "association" || dist.verification_tier === "market board";
   var isEstablished = isVerified && activity >= 1 && reliability != null && reliability >= 60;
 
@@ -122,32 +126,25 @@ function scoreDistributor(dist, activity, reliability) {
     tier: tier,
     verification: isVerified ? 1 : 0,
     activity: activity,
-    reliability: reliability
+    reliability: reliability,
+    reliabilityCount: reliabilityCount
   };
 }
 
-/**
- * Populate trustSummaryState.distributorsMeta for every distributor.
- * Requires that we have queried the platform's activity and reliability
- * aggregates. We do so in one batch (see loadTrustData step 2b) rather
- * than N+1 queries.
- */
-function computeDistributorMeta(activityByDistId, reliabilityByDistId) {
+function computeDistributorMeta(activityByDistId, reliabilityByDistId, countByDistId, aggFailed) {
   var meta = {};
   (trustSummaryState.distributors || []).forEach(function (d) {
     var activity = trustNum(activityByDistId[d.id], 0);
     var reliability = reliabilityByDistId[d.id];
-    meta[d.id] = scoreDistributor(d, activity, reliability);
+    var count = trustNum(countByDistId[d.id], 0);
+    meta[d.id] = scoreDistributor(d, activity, reliability, count);
+    meta[d.id].aggregateQueryFailed = !!aggFailed;
   });
   trustSummaryState.distributorsMeta = meta;
 }
 
 // --------------------------------------------------------------------------
-// §8 SIGNAL DERIVATION — retained for distributor self-view
-//
-// The eight Canon §8 signals are the distributor's diagnostic surface.
-// We keep them for distributors. Buyers do not need them; the buyer sees
-// the composite tier instead.
+// §8 SIGNAL DERIVATION — retained verbatim for distributor self-view
 // --------------------------------------------------------------------------
 
 function deriveTrustSignals(d) {
@@ -271,7 +268,9 @@ function deriveAggregateSignals() {
 // Retained steps:
 //   1 — distributor directory + approved disputes (public view).
 //   2 — authenticated-account-scoped relationship evidence.
-//   2b — NEW: platform-wide activity and reliability aggregates for scoring.
+//   2b — NEW: platform-wide activity and reliability aggregates.
+//   2c — NEW: viewer's own relationship map (buyer-only) for card state.
+//   2d — NEW: viewer's looking_for category (buyer-only) for sort weight.
 // --------------------------------------------------------------------------
 
 async function loadTrustData() {
@@ -281,11 +280,12 @@ async function loadTrustData() {
   }
   trustSummaryState.loading = true;
   trustSummaryState.error = null;
+  trustSummaryState.aggregateQueryFailed = false;
 
   try {
     // Step 1 — public view.
     const [dRes, dispRes] = await Promise.all([
-      sb.from("distributor_profiles").select("id, business_name, verification_tier"),
+      sb.from("distributor_profiles").select("id, business_name, verification_tier, category"),
       sb.from("disputes").select("id, distributor_id, description, status, created_at")
         .eq("status", "Approved")
         .order("created_at", { ascending: false })
@@ -345,27 +345,15 @@ async function loadTrustData() {
     }
 
     // Step 2b — platform-wide activity and reliability aggregates.
-    // Two batched queries. Not N+1.
-    //
-    // activity: count of relationship_events per distributor over the last
-    //           30 days. We approximate "per distributor" by way of the
-    //           distributor's relationships (a distributor's activity is
-    //           the events of relationships they are party to).
-    //
-    // reliability: avg trust_score per distributor. Same join.
-    //
-    // Both are computed from a single query: relationship_trust rows where
-    // the relationship belongs to a verified distributor. That table carries
-    // relationship_id; we join via trade_relationships to attribute to the
-    // distributor side. For V1.8.2.6 we do this in two queries and reduce
-    // in JS — simple, honest, and one round trip more than optimal.
+    // Two batched queries. Any failure is caught and degrades honestly:
+    // verified distributors stay VERIFIED, and the card shows
+    // "Trust data limited" instead of a fake zero.
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
     var activityByDistId = Object.create(null);
     var reliabilityByDistId = Object.create(null);
+    var countByDistId = Object.create(null);
 
     try {
-      // Get all relationships involving any distributor we're about to score.
       const distIds = trustSummaryState.distributors.map(function (d) { return d.id; }).filter(Boolean);
       if (distIds.length) {
         const relAll = await sb.from("trade_relationships")
@@ -377,7 +365,6 @@ async function loadTrustData() {
           var relIds = relAll.data.map(function (r) { return r.id; }).filter(Boolean);
 
           if (relIds.length) {
-            // Activity — events in last 30 days
             const evAgg = await sb.from("relationship_events")
               .select("relationship_id, created_at")
               .in("relationship_id", relIds)
@@ -390,7 +377,6 @@ async function loadTrustData() {
               });
             }
 
-            // Reliability — avg trust_score per distributor
             const trustAgg = await sb.from("relationship_trust")
               .select("relationship_id, trust_score")
               .in("relationship_id", relIds);
@@ -408,29 +394,49 @@ async function loadTrustData() {
                 var arr = scoresByDist[distId];
                 var avg = arr.reduce(function (a, b) { return a + b; }, 0) / arr.length;
                 reliabilityByDistId[distId] = Math.round(avg);
+                countByDistId[distId] = arr.length;
               });
             }
           }
         }
       }
     } catch (aggErr) {
-      // Non-fatal — scoring simply treats all distributors as LISTED /
-      // VERIFIED (activity=0, reliability=null). The screen still renders.
       console.warn("[GoodsbarnX/trust] aggregate scoring failed (non-fatal):", aggErr && aggErr.message);
+      trustSummaryState.aggregateQueryFailed = true;
     }
 
-    computeDistributorMeta(activityByDistId, reliabilityByDistId);
+    computeDistributorMeta(activityByDistId, reliabilityByDistId, countByDistId, trustSummaryState.aggregateQueryFailed);
 
-    // Populate viewer's graph (buyer's partition signal)
-    __gbxTrustViewerGraph.distributorIdsWithRelationship = new Set();
+    // Step 2c — viewer's own relationship map (buyer only).
+    // Gate 2 fix: buyers see relationship state on the card.
+    trustSummaryState.viewerRelationshipMap = Object.create(null);
     if (currentUser && currentUser.role === "buyer") {
       (trustSummaryState.relationships || []).forEach(function (r) {
-        if (r.distributor_id && r.status === "active") {
-          __gbxTrustViewerGraph.distributorIdsWithRelationship.add(r.distributor_id);
+        if (r.distributor_id) {
+          var status = String(r.status || "").toLowerCase();
+          // If multiple, keep the strongest (active > pending > paused > released > terminated)
+          var rank = { active: 4, pending: 3, paused: 2, suspended: 1, released: 0, terminated: -1 };
+          var cur = trustSummaryState.viewerRelationshipMap[r.distributor_id];
+          if (!cur || (rank[status] || -2) > (rank[cur] || -2)) {
+            trustSummaryState.viewerRelationshipMap[r.distributor_id] = status;
+          }
         }
       });
     }
-    __gbxTrustViewerGraph.loaded = true;
+
+    // Step 2d — viewer's looking_for category (buyer only).
+    trustSummaryState.viewerLookingFor = null;
+    if (currentUser && currentUser.role === "buyer") {
+      try {
+        const lp = await sb.from("buyer_profiles")
+          .select("looking_for")
+          .eq("id", currentUser.id)
+          .maybeSingle();
+        if (!lp.error && lp.data) {
+          trustSummaryState.viewerLookingFor = (lp.data.looking_for || "").trim() || null;
+        }
+      } catch (_) { /* non-fatal */ }
+    }
 
     trustSummaryState.loadedAt = new Date().toISOString();
     renderTrustScreen();
@@ -444,7 +450,7 @@ async function loadTrustData() {
 }
 
 // --------------------------------------------------------------------------
-// L3 · RENDER — composition per viewer
+// RENDER
 // --------------------------------------------------------------------------
 
 function renderTrustScreen() {
@@ -463,15 +469,11 @@ function renderTrustSummary() {
   const verified = trustSummaryState.distributors.filter(
     x => x.verification_tier === "association" || x.verification_tier === "market board"
   ).length;
-
-  // Establish trust count: distributors with tier ESTABLISHED
   const established = Object.values(trustSummaryState.distributorsMeta || {}).filter(
     m => m.tier === "ESTABLISHED"
   ).length;
 
   if (role === "buyer") {
-    // Buyer sees: how many distributors are ready to trade (verified +
-    // established), not a platform-wide roster count.
     el.innerHTML =
       '<div class="trust-item"><div class="n" style="color:var(--ok);">' + verified + '</div><div class="t">Verified</div></div>' +
       (established > 0
@@ -482,7 +484,6 @@ function renderTrustSummary() {
   }
 
   if (role === "distributor") {
-    // Distributor sees their own position.
     const myId = currentUser && currentUser.id;
     const myMeta = myId ? trustSummaryState.distributorsMeta[myId] : null;
     if (!myMeta) {
@@ -498,7 +499,6 @@ function renderTrustSummary() {
     return;
   }
 
-  // Guest — platform credibility numbers only.
   el.innerHTML =
     '<div class="trust-item"><div class="n" style="color:var(--ok);">' + verified + '</div><div class="t">Verified distributors</div></div>' +
     '<div class="trust-item"><div class="n">' + total + '</div><div class="t">Total listed</div></div>';
@@ -511,7 +511,6 @@ function renderTrustSignals() {
   const role = trustViewerRole();
 
   if (role === "distributor") {
-    // Distributors get the full 8 §8 signals — their diagnostic surface.
     const perDistributor = deriveTrustSignals(currentUser);
     const aggregates = deriveAggregateSignals();
     const all = perDistributor.concat(aggregates);
@@ -544,34 +543,9 @@ function renderTrustSignals() {
     return;
   }
 
-  if (role === "buyer") {
-    // Buyer sees "how we verify" explainer — not their own signals.
-    // Their own reliability is aggregated into "you have relationships with"
-    // section (in verified-distributors-list).
-    container.innerHTML =
-      '<div class="section-label">How we verify</div>' +
-      '<div class="manifest">' +
-        '<div class="m-name">Association Verified</div>' +
-        '<div class="m-loc">The distributor\'s trade association has confirmed their identity and current trading status. This is the highest tier we recognise.</div>' +
-      '</div>' +
-      '<div class="manifest">' +
-        '<div class="m-name">Market Board Verified</div>' +
-        '<div class="m-loc">The distributor\'s market board has confirmed their stall and trading identity. Second-highest tier.</div>' +
-      '</div>' +
-      '<div class="manifest">' +
-        '<div class="m-name">Self-Attested</div>' +
-        '<div class="m-loc">The distributor attested their own identity. Not independently verified — treat as a starting point, not a guarantee.</div>' +
-      '</div>' +
-      '<div class="manifest">' +
-        '<div class="m-name">Established</div>' +
-        '<div class="m-loc">Verified <em>and</em> actively trading <em>and</em> reliable (trust score ≥ 60). The strongest tier in our network.</div>' +
-      '</div>';
-    return;
-  }
-
-  // Guest — same explainer, without the buyer-specific framing.
-  container.innerHTML =
-    '<div class="section-label">How verification works</div>' +
+  // Buyer + guest explainer
+  const explainer =
+    '<div class="section-label">How we verify</div>' +
     '<div class="manifest">' +
       '<div class="m-name">Association Verified</div>' +
       '<div class="m-loc">Confirmed by the distributor\'s trade association. Highest tier.</div>' +
@@ -586,18 +560,23 @@ function renderTrustSignals() {
     '</div>' +
     '<div class="manifest">' +
       '<div class="m-name">Established</div>' +
-      '<div class="m-loc">Verified + actively trading + reliable. The strongest tier.</div>' +
+      '<div class="m-loc">Verified + actively trading + reliable (trust ≥ 60). The strongest tier.</div>' +
     '</div>';
+
+  container.innerHTML = explainer;
 }
 
 /**
  * Verified distributors — the conversion surface.
- * Buyer view: split into "start with" and "you already know", with one
- *   primary CTA per card. Empty network buyers see "start with" as the
- *   most prominent section.
- * Distributor view: split into "peers with ESTABLISHED" and "peers to
- *   emulate" — the aspirational view.
- * Guest view: single flat list, but only the top 5, to keep it scannable.
+ *
+ * Buyer: split "start with" (no relationship) from "you trade with" (has
+ * relationship). Sort by tier, then category match, then reliability.
+ * Gate 2 fix: card carries relationship state.
+ * Gate 5 fix: category-aware sort.
+ * Gate 6 fix: ACTIVE-tier distributors surfaced honestly.
+ *
+ * Distributor: peers with ESTABLISHED / VERIFIED.
+ * Guest: top 5 flat.
  */
 function renderVerifiedDistributors() {
   const el = document.getElementById("verified-distributors-list");
@@ -606,22 +585,29 @@ function renderVerifiedDistributors() {
   const role = trustViewerRole();
   const all = trustSummaryState.distributors || [];
   const meta = trustSummaryState.distributorsMeta || {};
+  const lookingFor = trustSummaryState.viewerLookingFor;
+  const relMap = trustSummaryState.viewerRelationshipMap || {};
 
-  // Only consider distributors with a valid tier and, for buyers, those
-  // not yet in the buyer's network.
   const scored = all
     .map(function (d) {
-      var m = meta[d.id] || { tier: "LISTED", activity: 0, reliability: null };
+      var m = meta[d.id] || { tier: "LISTED", activity: 0, reliability: null, reliabilityCount: 0 };
       return { d: d, m: m };
     })
-    .filter(function (x) { return x.m.tier !== "LISTED"; });
+    .filter(function (x) { return x.m.tier !== "LISTED" || x.m.activity > 0; });
 
-  // Sort by tier (ESTABLISHED > VERIFIED > ACTIVE), then reliability desc,
-  // then activity desc, then name.
+  // Sort by: tier rank, then category match (buyer only), then reliability,
+  // then activity, then name.
   scored.sort(function (a, b) {
     var ta = TRUST_TIER_ORDER[a.m.tier] != null ? TRUST_TIER_ORDER[a.m.tier] : 99;
     var tb = TRUST_TIER_ORDER[b.m.tier] != null ? TRUST_TIER_ORDER[b.m.tier] : 99;
     if (ta !== tb) return ta - tb;
+
+    if (lookingFor) {
+      var ca = (a.d.category || "").trim() === lookingFor ? 0 : 1;
+      var cb = (b.d.category || "").trim() === lookingFor ? 0 : 1;
+      if (ca !== cb) return ca - cb;
+    }
+
     var ra = a.m.reliability != null ? a.m.reliability : -1;
     var rb = b.m.reliability != null ? b.m.reliability : -1;
     if (rb !== ra) return rb - ra;
@@ -630,29 +616,32 @@ function renderVerifiedDistributors() {
   });
 
   if (role === "buyer") {
-    const myNetwork = __gbxTrustViewerGraph.distributorIdsWithRelationship;
-    const startWith = scored.filter(function (x) { return !myNetwork.has(x.d.id); }).slice(0, 3);
-    const youKnow = scored.filter(function (x) { return myNetwork.has(x.d.id); });
+    const startWith = scored.filter(function (x) { return !relMap[x.d.id]; }).slice(0, 3);
+    const youKnow   = scored.filter(function (x) { return !!relMap[x.d.id]; });
 
     let html = "";
 
     if (startWith.length > 0) {
       html +=
         '<div class="section-label">Start with</div>' +
-        startWith.map(function (x) { return renderTrustDistributorCard(x.d, x.m, "buyer-new"); }).join("");
+        startWith.map(function (x) {
+          return renderTrustDistributorCard(x.d, x.m, null);
+        }).join("");
     } else if (scored.length === 0) {
       html +=
         '<div class="section-label">Start with</div>' +
         '<div class="manifest">' +
-          '<div class="m-name">No verified distributors yet</div>' +
-          '<div class="m-loc">The network is still building. Check back or invite a distributor you trust.</div>' +
+          '<div class="m-name">No distributors match your criteria yet</div>' +
+          '<div class="m-loc">The network is growing. Check back or adjust your looking-for category in Profile.</div>' +
         '</div>';
     }
 
     if (youKnow.length > 0) {
       html +=
-        '<div class="section-label">You have relationships with</div>' +
-        youKnow.map(function (x) { return renderTrustDistributorCard(x.d, x.m, "buyer-known"); }).join("");
+        '<div class="section-label">You trade with</div>' +
+        youKnow.map(function (x) {
+          return renderTrustDistributorCard(x.d, x.m, relMap[x.d.id]);
+        }).join("");
     }
 
     el.innerHTML = html;
@@ -665,70 +654,91 @@ function renderVerifiedDistributors() {
     const verified   = scored.filter(function (x) { return x.m.tier === "VERIFIED"   && x.d.id !== myId; });
 
     let html = "";
-
     if (established.length > 0) {
       html +=
         '<div class="section-label">Established peers</div>' +
-        established.slice(0, 5).map(function (x) { return renderTrustDistributorCard(x.d, x.m, "peer-established"); }).join("");
+        established.slice(0, 5).map(function (x) { return renderTrustDistributorCard(x.d, x.m, null); }).join("");
     }
     if (verified.length > 0) {
       html +=
         '<div class="section-label">Verified peers</div>' +
-        verified.slice(0, 5).map(function (x) { return renderTrustDistributorCard(x.d, x.m, "peer-verified"); }).join("");
+        verified.slice(0, 5).map(function (x) { return renderTrustDistributorCard(x.d, x.m, null); }).join("");
     }
-    if (!html) {
-      html = '<div class="loading-text">No established peers yet.</div>';
-    }
+    if (!html) html = '<div class="loading-text">No established peers yet.</div>';
 
     el.innerHTML = html;
     return;
   }
 
-  // Guest — flat, top 5.
+  // Guest
   if (!scored.length) {
     el.innerHTML = '<div class="loading-text">No verified distributors yet.</div>';
     return;
   }
   el.innerHTML = scored.slice(0, 5).map(function (x) {
-    return renderTrustDistributorCard(x.d, x.m, "guest");
+    return renderTrustDistributorCard(x.d, x.m, null);
   }).join("");
 }
 
 /**
- * The card. Same DOM contract on every surface, one primary CTA.
+ * Distributor card.
+ * Gate 1 fix: trust score carries its denominator.
+ * Gate 2 fix: relationship state is displayed honestly.
+ * Gate 3 fix: aggregate failure is named, not hidden.
+ * Gate 6 fix: ACTIVE tier is shown with honest "not verified" label.
  *
- * `context` is used only to decide whether to show the CTA at all:
- *   "buyer-new"        → CTA "View storefront"
- *   "buyer-known"      → CTA "View storefront"
- *   "peer-established" → CTA "View storefront" (distributors can view peers)
- *   "peer-verified"    → CTA "View storefront"
- *   "guest"            → CTA "View storefront" (guests are converted on the
- *                         storefront, which prompts signup on interaction)
+ * `relationshipState` param:
+ *   "active" | "paused" | "released" | "terminated" | "pending" | null (none)
  */
-function renderTrustDistributorCard(d, meta, context) {
+function renderTrustDistributorCard(d, meta, relationshipState) {
   var tierLabels = {
     ESTABLISHED: "Established",
     VERIFIED:    "Verified",
-    ACTIVE:      "Active"
+    ACTIVE:      "Active trader",
+    LISTED:      "Listed"
   };
   var tierColors = {
     ESTABLISHED: "var(--gbx-green)",
     VERIFIED:    "var(--ok)",
-    ACTIVE:      "var(--brass)"
+    ACTIVE:      "var(--brass)",
+    LISTED:      "var(--gbx-muted)"
   };
   var tierLabel = tierLabels[meta.tier] || meta.tier;
   var tierColor = tierColors[meta.tier] || "var(--gbx-muted)";
 
-  var detailParts = [];
-  if (meta.reliability != null) {
-    detailParts.push("Trust score " + meta.reliability + "/100");
+  // Trust score line — carries its denominator (Gate 1)
+  var trustLine = "";
+  if (meta.reliability != null && meta.reliabilityCount > 0) {
+    trustLine = "Trust " + meta.reliability + "/100 across " +
+      meta.reliabilityCount + " relationship" + (meta.reliabilityCount === 1 ? "" : "s");
+  } else if (meta.aggregateQueryFailed) {
+    trustLine = "Trust data limited";
   } else if (meta.tier === "VERIFIED") {
-    detailParts.push("New to the network");
+    trustLine = "Verified · new to the network";
+  } else if (meta.tier === "ACTIVE") {
+    trustLine = "Trading · not yet verified";
   }
-  if (meta.activity > 0) {
-    detailParts.push(meta.activity + " trade event" + (meta.activity === 1 ? "" : "s") + " in last 30 days");
+
+  // Relationship state badge (Gate 2)
+  var relBadge = "";
+  if (relationshipState) {
+    var relLabel = relationshipState === "active" ? "You trade with them"
+                 : relationshipState === "pending" ? "Connection pending"
+                 : relationshipState === "paused" ? "Relationship paused"
+                 : relationshipState === "released" ? "Released — rekindle"
+                 : relationshipState === "terminated" ? "Terminated"
+                 : null;
+    var relTone = relationshipState === "active" ? "active"
+                : relationshipState === "pending" ? "pending"
+                : "inactive";
+    if (relLabel) {
+      relBadge = '<span class="trust-rel-badge" data-tone="' + relTone + '">' +
+        trustEscHtml(relLabel) + '</span>';
+    }
   }
-  var detailLine = detailParts.join(" · ");
+
+  // Category line
+  var categoryLine = d.category ? " · " + d.category : "";
 
   var safeId = trustEscAttr(d.id);
 
@@ -736,9 +746,12 @@ function renderTrustDistributorCard(d, meta, context) {
     '<div class="manifest trust-distributor-card" data-distributor-id="' + safeId + '">' +
       '<div class="manifest-top">' +
         '<div>' +
-          '<div class="m-name">' + trustEscHtml(d.business_name || "Distributor") + '</div>' +
-          (detailLine
-            ? '<div class="m-loc">' + trustEscHtml(detailLine) + '</div>'
+          '<div class="m-name">' + trustEscHtml(d.business_name || "Distributor") + relBadge + '</div>' +
+          (trustLine
+            ? '<div class="m-loc">' + trustEscHtml(trustLine) + '</div>'
+            : "") +
+          (categoryLine
+            ? '<div class="m-loc" style="font-size:10.5px; opacity:.72;">' + trustEscHtml(categoryLine.slice(3)) + '</div>'
             : "") +
         '</div>' +
         '<span class="trust-tier-badge" style="border-color:' + tierColor + '; color:' + tierColor + ';">' +
@@ -754,11 +767,6 @@ function renderTrustDistributorCard(d, meta, context) {
   );
 }
 
-/**
- * Disputes — distributor view only. Buyers and guests do not see the
- * platform-wide disputes list. Distributors see it as peer intelligence
- * (who's had disputes, so they can calibrate their own conduct).
- */
 function renderDisputesList() {
   const el = document.getElementById("disputes-list");
   if (!el) { trustWarnMissing("disputes-list"); return; }
@@ -767,7 +775,6 @@ function renderDisputesList() {
   if (role !== "distributor") {
     el.style.display = "none";
     el.innerHTML = "";
-    // Hide the section label too, if present
     var labels = document.querySelectorAll("#screen-trust .section-label");
     labels.forEach(function (l) {
       if (l.textContent && /dispute/i.test(l.textContent)) l.style.display = "none";
@@ -853,7 +860,6 @@ function bindTrustEvents() {
   });
 })();
 
-// Bind immediately in case the trust screen is already visible on first paint
 if (typeof window !== "undefined") {
   if (document.readyState === "complete" || document.readyState === "interactive") {
     setTimeout(bindTrustEvents, 0);
@@ -868,4 +874,4 @@ if (typeof window !== "undefined") {
 
 window.loadTrustData = loadTrustData;
 
-console.log("[GoodsbarnX] trust.js loaded (V1.8.2.6 rev.2 · Elite Trust)");
+console.log("[GoodsbarnX] trust.js loaded (V1.8.2.6 rev.3 · elite trust surface)");
