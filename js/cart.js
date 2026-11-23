@@ -1,16 +1,29 @@
 // ==========================================================================
-// GoodsbarnX — cart.js  (rev. 7 · Trust the Server)
+// GoodsbarnX — cart.js  (rev. 8 · Canonical Basis + Pre-Submit Reprice)
 // Plain global script. Depends on the global `cart` array.
 //
-// rev.7 changes (F-19-Fix):
-//   - Removed the aggressive client-side price mismatch block in
-//     `submitCartGroup`. The server RPC (`submit_cart_group`) is now the
-//     sole authority on price validation. The client just submits the
-//     snapshot and the `price_basis`. If the server rejects it, the cart
-//     displays the server's error.
-//   - This fixes the false-positive loop where a valid relationship
-//     discount (e.g., ₦48,000) was blocked because it didn't exactly match
-//     the public database price (e.g., ₦55,000).
+// rev.8 changes (F-19-D):
+//   - ROOT-CAUSE FIX: price basis is normalised through normalizeCartBasis().
+//     Display labels from older storefront builds ("your_negotiated_price",
+//     "relationship_discount_13") were falling through the whitelist in
+//     deriveCartPriceBasis() and being sent to submit_cart_group as
+//     "public", so the server compared a discounted unit_price against the
+//     catalogue price and raised "Price mismatch". Stored carts are repaired
+//     in place (normalizeCartSnapshots) so buyers need not clear them.
+//   - cartRepriceGroup(): before an order is submitted, each line is
+//     re-priced against the SAME server-authoritative source the storefront
+//     uses (get_relationship_pricing + products.price). If a price has
+//     drifted, the snapshot is updated and the buyer is asked to review;
+//     the order is never silently submitted at a different price. If the
+//     check cannot run (network/RLS), it is skipped and the server remains
+//     the final authority.
+//   - Cart lines, WhatsApp text and idempotency key use the canonical basis.
+//   - Server price-mismatch errors are logged with the raw message and
+//     payload for diagnosis, and the product name is trimmed.
+//
+// rev.7 changes (retained):
+//   - submit_cart_group is the sole price authority; the client submits the
+//     snapshot and `price_basis` and surfaces the server's error.
 // ==========================================================================
 
 // ==========================================================================
@@ -19,13 +32,55 @@
 
 const CART_STORAGE_KEY   = "goodsbarnx_cart";
 const CART_HASH_KEY      = "goodsbarnx_cart:hash";
-const CART_SCHEMA_VERSION = 7;
+const CART_SCHEMA_VERSION = 8;
 
 const CART_STALE_AFTER_MS       = 5  * 60 * 1000;
 const CART_UNAVAILABLE_AFTER_MS = 30 * 60 * 1000;
 
 // Rate limit: per (buyer, distributor) submission cooldown.
 const CART_SUBMIT_COOLDOWN_MS = 30 * 1000;
+
+// ==========================================================================
+// PRICE BASIS (canonical vocabulary shared with storefront.js and the RPC)
+//   public | relationship_discount | negotiated | negotiable
+// ==========================================================================
+
+function normalizeCartBasis(basis) {
+  var b = String(basis == null ? "" : basis).toLowerCase();
+  if (b === "public" || b === "relationship_discount" || b === "negotiated" || b === "negotiable") return b;
+  if (b === "your_negotiated_price" || b.indexOf("negotiated") === 0) return "negotiated";
+  if (b.indexOf("relationship_discount") === 0) return "relationship_discount";
+  return "public";
+}
+
+function cartBasisLabel(basis) {
+  switch (normalizeCartBasis(basis)) {
+    case "negotiated":            return "Negotiated price";
+    case "relationship_discount": return "Relationship discount";
+    case "negotiable":            return "Negotiable";
+    default:                      return "Public price";
+  }
+}
+
+// Repairs lines saved by earlier builds (non-canonical basis labels).
+function normalizeCartSnapshots() {
+  var changed = false;
+  cart.forEach(function (item) {
+    if (!item || !item.price_snapshot) return;
+    var norm = normalizeCartBasis(item.price_snapshot.basis);
+    if (item.price_snapshot.basis !== norm) {
+      item.price_snapshot.basis = norm;
+      changed = true;
+    }
+  });
+  if (changed) cartPersist();
+}
+
+function cartSb() {
+  if (window.sb) return window.sb;
+  try { if (typeof sb !== "undefined" && sb) return sb; } catch (_) {}
+  return null;
+}
 
 // ==========================================================================
 // L1 · STORE
@@ -112,14 +167,18 @@ function addToCart(productId, name, price, distributorId, distributorName, qty, 
   var moq = Number(o.moq) || 1;
   if (addQty < moq) addQty = moq;
 
+  // Canonical vocabulary only; null when the caller supplied no basis.
+  var basis = o.price_basis ? normalizeCartBasis(o.price_basis) : null;
+
   var existing = cart.find(function (item) { return item.productId === productId; });
   if (existing) {
     existing.qty = (Number(existing.qty) || 1) + addQty;
     if (isFinite(Number(price)) && Number(price) > 0) {
+      var prevSnap = existing.price_snapshot || {};
       existing.price_snapshot = {
         value: Number(price),
-        basis: o.price_basis || existing.price_snapshot.basis,
-        termsRef: o.termsRef || existing.price_snapshot.termsRef || null,
+        basis: basis || normalizeCartBasis(prevSnap.basis),
+        termsRef: o.termsRef || prevSnap.termsRef || null,
         capturedAt: new Date().toISOString()
       };
     }
@@ -136,7 +195,7 @@ function addToCart(productId, name, price, distributorId, distributorName, qty, 
       moq: moq,
       price_snapshot: {
         value: Number(price) || 0,
-        basis: o.price_basis || (price ? "public" : "negotiable"),
+        basis: basis || (price ? "public" : "negotiable"),
         termsRef: o.termsRef || null,
         capturedAt: new Date().toISOString()
       },
@@ -215,6 +274,9 @@ function updateCartBadge() {
 // ==========================================================================
 
 function getCartGroups() {
+  // Repair any non-canonical basis labels before grouping, rendering or submitting.
+  normalizeCartSnapshots();
+
   var groupsById = Object.create(null);
 
   cart.forEach(function (item) {
@@ -443,7 +505,7 @@ function deriveCartIdempotencyKey(group) {
   var parts = group.items.map(function (it) {
     var pid = String(it.productId || "");
     var qty = String(Number(it.qty) || 0);
-    var basis = (it.price_snapshot && it.price_snapshot.basis) || "public";
+    var basis = normalizeCartBasis(it.price_snapshot && it.price_snapshot.basis);
     return pid + ":" + qty + ":" + basis;
   });
   parts.sort();
@@ -451,24 +513,115 @@ function deriveCartIdempotencyKey(group) {
 }
 
 // -------------------------------------------------------------------------
-// F-19 · price basis mapping
+// F-19 · price basis mapping (canonical; never downgrades a known basis)
 // -------------------------------------------------------------------------
 function deriveCartPriceBasis(item) {
-  var basis = (item.price_snapshot && item.price_snapshot.basis) || "public";
-  if (basis === "public" || basis === "relationship_discount" ||
-      basis === "negotiated" || basis === "negotiable") {
-    return basis;
+  return normalizeCartBasis(item && item.price_snapshot && item.price_snapshot.basis);
+}
+
+// -------------------------------------------------------------------------
+// F-19-D · authoritative re-pricing
+//
+// Mirrors storefront.js sfComputePrice() exactly, so the cart and the
+// storefront can never disagree:
+//   negotiated price  >  relationship discount (active only)  >  public price
+//   no public price and no negotiated price  →  negotiable (0)
+// -------------------------------------------------------------------------
+function cartAuthoritativePrice(publicPrice, negotiatedPrice, discountPercent) {
+  var pub = Number(publicPrice) || 0;
+  if (negotiatedPrice != null && negotiatedPrice !== "" && isFinite(Number(negotiatedPrice))) {
+    return { value: Number(negotiatedPrice), basis: "negotiated" };
   }
-  return "public";
+  if (discountPercent > 0 && pub > 0) {
+    return { value: Math.round(pub * (1 - discountPercent / 100)), basis: "relationship_discount" };
+  }
+  if (pub > 0) return { value: pub, basis: "public" };
+  return { value: 0, basis: "negotiable" };
+}
+
+function describeRepriceChanges(changes) {
+  return changes.map(function (c) {
+    return c.name + ": ₦" + Number(c.from).toLocaleString() + " → ₦" + Number(c.to).toLocaleString();
+  }).join("; ");
+}
+
+// Returns { checked: boolean, changes: [{name, from, to}] }.
+// Fails open: if the check cannot run, the server stays the final authority.
+async function cartRepriceGroup(group) {
+  var client = cartSb();
+  if (!client || !currentUser || currentUser.role !== "buyer" || !group.distributorId) {
+    return { checked: false, changes: [] };
+  }
+
+  var pricing, priceRows;
+  try {
+    var pr = await client.rpc("get_relationship_pricing", {
+      p_buyer_id: currentUser.id,
+      p_distributor_id: group.distributorId
+    });
+    if (pr.error) throw pr.error;
+    pricing = pr.data || {};
+
+    var ids = group.items.map(function (it) { return String(it.productId); });
+    var pq = await client.from("products").select("id, price").in("id", ids);
+    if (pq.error) throw pq.error;
+    priceRows = pq.data || [];
+  } catch (err) {
+    console.warn("[GoodsbarnX/cart] reprice check skipped:", err && err.message);
+    return { checked: false, changes: [] };
+  }
+
+  var discount   = pricing.status === "active" ? (Number(pricing.discount_percent) || 0) : 0;
+  var negotiated = pricing.negotiated_prices || {};
+  var publicById = Object.create(null);
+  priceRows.forEach(function (r) { publicById[String(r.id)] = r.price; });
+
+  var changes = [];
+  var touched = false;
+
+  group.items.forEach(function (item) {
+    var pid = String(item.productId);
+    if (!(pid in publicById)) return; // not visible in the catalogue; the server reports it
+
+    var auth = cartAuthoritativePrice(publicById[pid], negotiated[pid], discount);
+    var snap = item.price_snapshot || {};
+    var oldValue = Number(snap.value) || 0;
+    var valueChanged = Math.abs(auth.value - oldValue) > 0.004;
+    var basisChanged = normalizeCartBasis(snap.basis) !== auth.basis;
+    if (!valueChanged && !basisChanged) return;
+
+    item.price_snapshot = {
+      value: auth.value,
+      basis: auth.basis,
+      termsRef: snap.termsRef || null,
+      capturedAt: new Date().toISOString()
+    };
+    touched = true;
+    if (valueChanged) {
+      changes.push({ name: String(item.name || "an item").trim(), from: oldValue, to: auth.value });
+    }
+  });
+
+  if (touched) cartPersist();
+  return { checked: true, changes: changes };
 }
 
 // -------------------------------------------------------------------------
 // F-19 · submitCartGroupOrder
 // -------------------------------------------------------------------------
 async function submitCartGroupOrder(group) {
-  if (!currentUser || !window.sb) return { ok: false, reason: "not_authenticated" };
+  var client = cartSb();
+  if (!currentUser || !client) return { ok: false, reason: "not_authenticated" };
   if (!group || !Array.isArray(group.items) || !group.items.length) {
     return { ok: false, reason: "empty_group" };
+  }
+
+  // Re-verify prices against server-authoritative terms BEFORE building the
+  // payload. If anything drifted, show the buyer the new price instead of
+  // submitting or silently changing what they agreed to.
+  var reprice = await cartRepriceGroup(group);
+  if (reprice.changes.length) {
+    return { ok: false, reason: "price_updated:" + describeRepriceChanges(reprice.changes) };
   }
 
   // Build the RPC payload
@@ -487,7 +640,7 @@ async function submitCartGroupOrder(group) {
 
   var result;
   try {
-    result = await sb.rpc("submit_cart_group", {
+    result = await client.rpc("submit_cart_group", {
       p_distributor_id: group.distributorId,
       p_items: items,
       p_idempotency_key: idempotencyKey
@@ -503,8 +656,9 @@ async function submitCartGroupOrder(group) {
 
     // Map RPC-raised exceptions to cart-level reasons
     if (/price mismatch/i.test(msg)) {
+      console.warn("[GoodsbarnX/cart] server price mismatch:", code, msg, JSON.stringify(items));
       var match = msg.match(/Price mismatch for (.+?) \(/);
-      var productName = match && match[1] ? match[1] : "an item";
+      var productName = match && match[1] ? match[1].trim() : "an item";
       return { ok: false, reason: "price_changed:" + productName };
     }
     if (/relationship with distributor is not active/i.test(msg)) {
@@ -557,7 +711,7 @@ function submitCartGroupWhatsApp(group) {
   group.items.forEach(function (item) {
     var price = Number(item.price_snapshot && item.price_snapshot.value) || 0;
     var qty   = Number(item.qty) || 1;
-    var basis = (item.price_snapshot && item.price_snapshot.basis) || "public";
+    var basis = cartBasisLabel(item.price_snapshot && item.price_snapshot.basis);
     var priceLine = price > 0
       ? "₦" + price.toLocaleString() + " × " + qty + " (" + basis + ")"
       : "Negotiable × " + qty;
@@ -680,12 +834,8 @@ function renderCartItemHtml(item) {
   var qty  = Number(item.qty) || 1;
   var unit = Number(item.price_snapshot && item.price_snapshot.value) || 0;
   var lineTotal = unit * qty;
-  var basis = (item.price_snapshot && item.price_snapshot.basis) || "public";
-  var basisLabel =
-    basis === "negotiated"            ? "Negotiated price" :
-    basis === "relationship_discount" ? "Relationship discount" :
-    basis === "negotiable"            ? "Negotiable" :
-    "Public price";
+  var basis = normalizeCartBasis(item.price_snapshot && item.price_snapshot.basis);
+  var basisLabel = cartBasisLabel(basis);
 
   var imageStyle = item.image_url
     ? "background-image:url('" + escapeCartAttr(item.image_url) + "');"
@@ -780,6 +930,11 @@ function formatCartAge(ms) {
 function humanizeCartReason(reason) {
   var r = String(reason || "");
 
+  if (r.indexOf("price_updated:") === 0) {
+    return "Prices were updated to your current terms (" +
+      r.slice("price_updated:".length) +
+      "). Review your cart, then submit again.";
+  }
   if (r.indexOf("moq_not_met:") === 0) {
     var parts = r.split(":");
     if (parts[2] === "server-verified") {
@@ -821,14 +976,15 @@ function humanizeCartReason(reason) {
     return "Not enough stock for " + r.split(":")[1] + ". Reduce quantity or contact the distributor.";
   }
   if (r.indexOf("price_changed:") === 0) {
-    var detail = r.split(":")[1] || "";
+    var detail = String(r.split(":")[1] || "").trim();
     if (detail.indexOf("suspiciously_low") !== -1) {
       return "The price for this item cannot be verified. Please remove it and re-add from the storefront.";
     }
     if (detail.indexOf("higher") !== -1) {
       return "The price for this item is higher than the current catalogue. Please remove and re-add.";
     }
-    return "Price changed since you added " + detail + ". Remove and re-add to confirm the current price.";
+    return "The price for " + (detail || "this item") +
+      " no longer matches your current terms with the distributor. Remove it and re-add it from the storefront.";
   }
   if (r === "phone_unavailable") {
     return "This distributor's phone number is unavailable. Try Contact instead.";
@@ -886,4 +1042,4 @@ function escapeCartAttr(v) { return escapeCartHtml(v); }
   }
 })();
 
-console.log("[GoodsbarnX] cart.js loaded (V1.8.2.6 rev.7 · Server-Trusted Pricing)");
+console.log("[GoodsbarnX] cart.js loaded (V1.8.2.7 rev.8 · Canonical Basis + Pre-Submit Reprice)");
