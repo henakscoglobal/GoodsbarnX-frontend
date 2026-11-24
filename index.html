@@ -33,7 +33,6 @@
       --auth-font: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
     }
 
-    /* Neutralise any body-level layout rules from main.css while the auth screen is up */
     body.auth-active {
       background-color: var(--auth-bg);
       color: var(--auth-text);
@@ -60,10 +59,8 @@
       pointer-events: none;
       z-index: 0;
     }
-    /* Hidden only while the saved session is being checked (removed by app.js; failsafe below) */
     body.auth-booting #auth-shell { visibility: hidden; }
 
-    /* ---- Layout ---- */
     #auth-shell {
       display: flex;
       min-height: 100vh;
@@ -120,7 +117,6 @@
     }
     #auth-shell .auth-card { width: 100%; max-width: 440px; margin: auto; }
 
-    /* ---- City ticker ---- */
     #auth-shell .city-ticker {
       font-family: 'DM Mono', monospace;
       font-size: 0.75rem;
@@ -137,7 +133,6 @@
     #auth-shell .city-ticker-content { display: inline-block; animation: gbx-ticker 30s linear infinite; }
     @keyframes gbx-ticker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 
-    /* ---- Headers ---- */
     #auth-shell .auth-header h1 {
       font-size: 1.875rem; font-weight: 700; letter-spacing: -0.02em;
       margin: 0 0 0.5rem 0; color: var(--auth-text);
@@ -146,7 +141,7 @@
       color: var(--auth-text-muted); margin: 0 0 2rem 0; font-size: 0.95rem;
     }
 
-    /* ---- Role switcher ---- */
+    /* 5-Role switcher */
     #auth-shell .role-switcher {
       display: flex;
       background: var(--auth-surface);
@@ -155,12 +150,14 @@
       border: 1px solid var(--auth-border);
       margin-bottom: 2rem;
       position: relative;
+      overflow-x: auto;
     }
     #auth-shell .role-btn {
       flex: 1;
+      min-width: 70px;
       padding: 0.6rem 0;
       text-align: center;
-      font-size: 0.85rem;
+      font-size: 0.75rem;
       font-weight: 600;
       font-family: var(--auth-font);
       color: var(--auth-text-muted);
@@ -171,12 +168,13 @@
       z-index: 2;
       transition: color 0.3s ease;
       border-radius: 8px;
+      white-space: nowrap;
     }
     #auth-shell .role-btn.active { color: var(--auth-text); }
     #auth-shell .role-slider {
       position: absolute;
       top: 4px; bottom: 4px; left: 4px;
-      width: calc((100% - 8px) / 3);
+      width: calc((100% - 8px) / 5);
       background: var(--auth-bg);
       border-radius: 8px;
       border: 1px solid rgba(255,255,255,0.05);
@@ -185,130 +183,76 @@
       transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
     }
 
-    /* ---- Fields ---- */
     #auth-shell .form-group { margin-bottom: 1.25rem; position: relative; }
-
+    
     #auth-shell .role-fields {
-      opacity: 0;
-      pointer-events: none;
-      visibility: hidden;
-      height: 0;
-      overflow: hidden;
+      opacity: 0; pointer-events: none; visibility: hidden; height: 0; overflow: hidden;
       transition: opacity 0.3s ease;
     }
     #auth-shell .role-fields.active {
-      opacity: 1;
-      pointer-events: auto;
-      visibility: visible;
-      height: auto;
-      overflow: visible;
+      opacity: 1; pointer-events: auto; visibility: visible; height: auto; overflow: visible;
     }
 
     #auth-shell .input-wrapper {
-      position: relative;
-      display: flex;
-      align-items: center;
-      background: var(--auth-surface);
-      border: 1px solid var(--auth-border);
-      border-radius: var(--auth-radius);
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      position: relative; display: flex; align-items: center;
+      background: var(--auth-surface); border: 1px solid var(--auth-border);
+      border-radius: var(--auth-radius); transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
     #auth-shell .input-wrapper:focus-within {
-      border-color: var(--auth-accent);
-      box-shadow: 0 0 0 3px rgba(4, 120, 87, 0.15);
+      border-color: var(--auth-accent); box-shadow: 0 0 0 3px rgba(4, 120, 87, 0.15);
     }
     #auth-shell .input-wrapper.error   { border-color: var(--auth-error); }
     #auth-shell .input-wrapper.success { border-color: var(--auth-success); }
 
-    #auth-shell .input-wrapper input {
-      width: 100%;
-      min-width: 0;
-      background: transparent;
-      border: none;
-      color: var(--auth-text);
-      font-size: 0.95rem;
-      padding: 1.5rem 2.5rem 0.5rem 1rem;
-      margin: 0;
-      outline: none;
-      font-family: var(--auth-font);
-      box-shadow: none;
-      border-radius: var(--auth-radius);
+    #auth-shell .input-wrapper input,
+    #auth-shell .input-wrapper select {
+      width: 100%; min-width: 0; background: transparent; border: none;
+      color: var(--auth-text); font-size: 0.95rem;
+      padding: 1.5rem 2.5rem 0.5rem 1rem; margin: 0; outline: none;
+      font-family: var(--auth-font); box-shadow: none; border-radius: var(--auth-radius);
+      appearance: none; -webkit-appearance: none;
     }
+    #auth-shell .input-wrapper select option { color: #000; }
     #auth-shell .input-wrapper input:-webkit-autofill {
       -webkit-box-shadow: 0 0 0 1000px var(--auth-surface) inset;
       -webkit-text-fill-color: var(--auth-text);
       caret-color: var(--auth-text);
     }
     #auth-shell .input-wrapper label {
-      position: absolute;
-      left: 1rem;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--auth-text-muted);
-      font-size: 0.95rem;
-      transition: all 0.2s ease;
-      pointer-events: none;
-      max-width: calc(100% - 3rem);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin: 0;
+      position: absolute; left: 1rem; top: 50%; transform: translateY(-50%);
+      color: var(--auth-text-muted); font-size: 0.95rem;
+      transition: all 0.2s ease; pointer-events: none; margin: 0;
+      max-width: calc(100% - 3rem); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     #auth-shell .input-wrapper input:focus ~ label,
     #auth-shell .input-wrapper input:not(:placeholder-shown) ~ label,
-    #auth-shell .input-wrapper input:-webkit-autofill ~ label,
+    #auth-shell .input-wrapper select ~ label,
     #auth-shell .input-wrapper.has-prefix label {
-      top: 0.75rem;
-      transform: none;
-      font-size: 0.7rem;
-      font-weight: 600;
-      color: var(--auth-text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      top: 0.75rem; transform: none; font-size: 0.7rem; font-weight: 600;
+      color: var(--auth-text-muted); text-transform: uppercase; letter-spacing: 0.05em;
     }
     #auth-shell .input-wrapper input:focus ~ label { color: var(--auth-accent); }
 
-    /* Phone prefix */
     #auth-shell .input-prefix {
-      align-self: flex-end;
-      padding: 0 0.6rem 0.55rem 1rem;
-      margin-right: 0.6rem;
-      color: var(--auth-text-muted);
-      font-size: 0.9rem;
-      line-height: 1.4;
-      white-space: nowrap;
-      border-right: 1px solid var(--auth-border);
+      align-self: flex-end; padding: 0 0.6rem 0.55rem 1rem; margin-right: 0.6rem;
+      color: var(--auth-text-muted); font-size: 0.9rem; line-height: 1.4;
+      white-space: nowrap; border-right: 1px solid var(--auth-border);
     }
     #auth-shell .input-wrapper.has-prefix input { padding-left: 0; }
-    #auth-shell .input-wrapper.has-prefix input::placeholder { color: rgba(148,163,184,0.5); }
 
-    /* Validation icons */
     #auth-shell .val-icon {
-      position: absolute;
-      right: 1rem;
-      opacity: 0;
-      transition: opacity 0.2s ease;
-      pointer-events: none;
-      display: flex;
+      position: absolute; right: 1rem; opacity: 0; transition: opacity 0.2s ease;
+      pointer-events: none; display: flex;
     }
     #auth-shell .input-wrapper.success .val-icon.success { opacity: 1; }
 
-    /* Password eye */
     #auth-shell .toggle-pw {
-      position: absolute;
-      right: 0;
-      top: 0; bottom: 0;
-      background: none;
-      border: none;
-      padding: 0 1rem;
-      cursor: pointer;
-      color: var(--auth-text-muted);
-      display: flex;
-      align-items: center;
+      position: absolute; right: 0; top: 0; bottom: 0;
+      background: none; border: none; padding: 0 1rem;
+      cursor: pointer; color: var(--auth-text-muted); display: flex; align-items: center;
     }
     #auth-shell .toggle-pw:hover { color: var(--auth-text); }
 
-    /* Strength meter */
     #auth-shell .strength-meter {
       height: 4px; background: var(--auth-border); border-radius: 2px;
       margin-top: 0.5rem; overflow: hidden;
@@ -317,24 +261,14 @@
       height: 100%; width: 0; background: var(--auth-error); transition: all 0.3s ease;
     }
 
-    /* ---- Buttons & footer ---- */
     #auth-shell .btn-primary {
-      width: 100%;
-      background: var(--auth-accent);
-      color: #fff;
-      border: none;
-      border-radius: var(--auth-radius);
-      padding: 1rem;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      margin-top: 1rem;
-      font-family: var(--auth-font);
+      width: 100%; background: var(--auth-accent); color: #fff;
+      border: none; border-radius: var(--auth-radius); padding: 1rem;
+      font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease;
+      margin-top: 1rem; font-family: var(--auth-font);
     }
     #auth-shell .btn-primary:hover:not(:disabled) {
-      background: var(--auth-accent-hover);
-      transform: translateY(-1px);
+      background: var(--auth-accent-hover); transform: translateY(-1px);
       box-shadow: 0 4px 12px rgba(4, 120, 87, 0.3);
     }
     #auth-shell .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
@@ -348,18 +282,9 @@
     #auth-shell .auth-footer a:hover { text-decoration: underline; }
 
     #auth-shell .auth-guest-link {
-      display: block;
-      width: 100%;
-      margin-top: 1.25rem;
-      background: none;
-      border: none;
-      color: var(--auth-text-muted);
-      font-family: var(--auth-font);
-      font-size: 0.85rem;
-      text-align: center;
-      text-decoration: underline;
-      text-underline-offset: 3px;
-      cursor: pointer;
+      display: block; width: 100%; margin-top: 1.25rem; background: none; border: none;
+      color: var(--auth-text-muted); font-family: var(--auth-font); font-size: 0.85rem;
+      text-align: center; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
     }
     #auth-shell .auth-guest-link:hover { color: var(--auth-text); }
 
@@ -374,66 +299,43 @@
 
     #auth-shell .social-btns { display: flex; gap: 1rem; }
     #auth-shell .btn-social {
-      flex: 1;
-      background: var(--auth-surface);
-      border: 1px solid var(--auth-border);
-      color: var(--auth-text);
-      padding: 0.75rem;
-      border-radius: var(--auth-radius);
+      flex: 1; background: var(--auth-surface); border: 1px solid var(--auth-border);
+      color: var(--auth-text); padding: 0.75rem; border-radius: var(--auth-radius);
       display: flex; align-items: center; justify-content: center; gap: 0.5rem;
       font-size: 0.9rem; font-weight: 500; font-family: var(--auth-font);
       cursor: pointer; transition: background 0.2s ease;
     }
     #auth-shell .btn-social:hover { background: rgba(255,255,255,0.05); }
 
-    /* Error / notice banners */
     #auth-shell .auth-error-toast {
-      background: rgba(239, 68, 68, 0.1);
-      border: 1px solid rgba(239, 68, 68, 0.3);
-      color: #FCA5A5;
-      padding: 10px 14px;
-      border-radius: 8px;
-      font-size: 0.85rem;
-      text-align: center;
-      margin-top: 1rem;
-      display: none;
+      background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #FCA5A5; padding: 10px 14px; border-radius: 8px; font-size: 0.85rem;
+      text-align: center; margin-top: 1rem; display: none;
     }
     #auth-shell .auth-error-toast:not(:empty) {
-      display: block;
-      animation: gbx-shake 0.3s cubic-bezier(.36,.07,.19,.97) both;
+      display: block; animation: gbx-shake 0.3s cubic-bezier(.36,.07,.19,.97) both;
     }
     #auth-shell .auth-notice {
-      background: rgba(16, 185, 129, 0.1);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-      color: #6EE7B7;
-      padding: 10px 14px;
-      border-radius: 8px;
-      font-size: 0.85rem;
-      text-align: center;
-      margin-bottom: 1.25rem;
-      display: none;
+      background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #6EE7B7; padding: 10px 14px; border-radius: 8px; font-size: 0.85rem;
+      text-align: center; margin-bottom: 1.25rem; display: none;
     }
     #auth-shell .auth-notice:not(:empty) { display: block; }
+    
     @keyframes gbx-shake {
       10%, 90% { transform: translate3d(-1px, 0, 0); }
       20%, 80% { transform: translate3d(2px, 0, 0); }
       30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
       40%, 60% { transform: translate3d(4px, 0, 0); }
     }
-    @media (prefers-reduced-motion: reduce) {
-      #auth-shell .city-ticker-content { animation: none; }
-      #auth-shell .auth-error-toast:not(:empty) { animation: none; }
-    }
   </style>
 </head>
 <body class="auth-active auth-booting">
 
   <!-- ====================================================================
-       AUTH SHELL (login + signup, one screen, two views)
+       AUTH SHELL
        ==================================================================== -->
   <div id="auth-shell">
-
-    <!-- Left hero (desktop only) -->
     <div class="auth-hero">
       <div class="auth-graphic"></div>
       <div style="position:relative; z-index:2;">
@@ -441,14 +343,12 @@
       </div>
       <div class="auth-quote">
         <h2>The network that<br>moves your business.</h2>
-        <p>Connecting verified distributors and buyers across the South-East and South-South.</p>
+        <p>Connecting the full supply chain across the South-East and South-South.</p>
       </div>
     </div>
 
-    <!-- Right form panel -->
     <div class="auth-main">
       <div class="auth-card">
-
         <div class="city-ticker" aria-hidden="true">
           <div class="city-ticker-content">
             Serving Onitsha • Nnewi • Awka • Asaba • Enugu • Owerri • Abakiliki • Agbor • Warri • Aba • Serving Onitsha • Nnewi • Awka • Asaba • Enugu • Owerri • Abakiliki • Agbor • Warri • Aba •
@@ -467,17 +367,16 @@
             <button type="button" class="role-btn active" data-role="buyer" onclick="setAuthRole('buyer')">Buyer</button>
             <button type="button" class="role-btn" data-role="distributor" onclick="setAuthRole('distributor')">Distributor</button>
             <button type="button" class="role-btn" data-role="agent" onclick="setAuthRole('agent')">Agent</button>
+            <button type="button" class="role-btn" data-role="retailer" onclick="setAuthRole('retailer')">Retailer</button>
+            <button type="button" class="role-btn" data-role="consumer" onclick="setAuthRole('consumer')">Consumer</button>
           </div>
 
           <form id="signup-form" onsubmit="return gbxSubmit(event, 'signup')">
-
             <div class="form-group">
               <div class="input-wrapper">
                 <input type="text" id="auth-name" name="name" placeholder=" " autocomplete="name" required oninput="validateName(this)" />
                 <label for="auth-name">Full Name</label>
-                <div class="val-icon success">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                </div>
+                <div class="val-icon success"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
               </div>
             </div>
 
@@ -486,13 +385,11 @@
                 <div class="input-prefix">🇳🇬 +234</div>
                 <input type="tel" id="auth-phone" name="phone" placeholder="803 123 4567" autocomplete="tel-national" inputmode="tel" required oninput="validatePhone(this)" />
                 <label for="auth-phone">Phone Number</label>
-                <div class="val-icon success">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                </div>
+                <div class="val-icon success"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
               </div>
             </div>
 
-            <!-- Distributor-only fields -->
+            <!-- Distributor Fields -->
             <div id="role-fields-distributor" class="role-fields">
               <div class="form-group">
                 <div class="input-wrapper">
@@ -508,7 +405,7 @@
               </div>
             </div>
 
-            <!-- Agent-only fields -->
+            <!-- Agent Fields -->
             <div id="role-fields-agent" class="role-fields">
               <div class="form-group">
                 <div class="input-wrapper">
@@ -518,13 +415,45 @@
               </div>
             </div>
 
+            <!-- Retailer Fields -->
+            <div id="role-fields-retailer" class="role-fields">
+              <div class="form-group">
+                <div class="input-wrapper">
+                  <input type="text" id="auth-retail-business" placeholder=" " autocomplete="organization" />
+                  <label for="auth-retail-business">Shop Name</label>
+                </div>
+              </div>
+              <div class="form-group">
+                <div class="input-wrapper">
+                  <select id="auth-retail-location" style="color:transparent;">
+                    <option value="" disabled selected>Select location</option>
+                    <option value="Onitsha">Onitsha</option>
+                    <option value="Nnewi">Nnewi</option>
+                    <option value="Awka">Awka</option>
+                    <option value="Asaba">Asaba</option>
+                    <option value="Enugu">Enugu</option>
+                    <option value="Owerri">Owerri</option>
+                  </select>
+                  <label>Market Location</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Consumer Fields -->
+            <div id="role-fields-consumer" class="role-fields">
+              <div class="form-group">
+                <div class="input-wrapper">
+                  <input type="text" id="auth-consumer-address" placeholder=" " autocomplete="street-address" />
+                  <label for="auth-consumer-address">Delivery Address</label>
+                </div>
+              </div>
+            </div>
+
             <div class="form-group">
               <div class="input-wrapper">
                 <input type="email" id="auth-email" name="email" placeholder=" " autocomplete="email" required oninput="validateEmail(this)" />
                 <label for="auth-email">Email Address</label>
-                <div class="val-icon success">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                </div>
+                <div class="val-icon success"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
               </div>
             </div>
 
@@ -533,7 +462,7 @@
                 <input type="password" id="auth-password" name="password" placeholder=" " autocomplete="new-password" required oninput="validatePassword(this)" />
                 <label for="auth-password">Password (min. 8 characters)</label>
                 <button type="button" class="toggle-pw" aria-label="Show or hide password" onclick="togglePasswordVisibility('auth-password', this)">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                 </button>
               </div>
               <div class="strength-meter"><div class="strength-bar" id="pw-strength"></div></div>
@@ -570,9 +499,7 @@
               <div class="input-wrapper">
                 <input type="email" id="login-email" name="email" placeholder=" " autocomplete="email" required oninput="validateEmail(this)" />
                 <label for="login-email">Email Address</label>
-                <div class="val-icon success">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                </div>
+                <div class="val-icon success"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
               </div>
             </div>
 
@@ -581,7 +508,7 @@
                 <input type="password" id="login-password" name="password" placeholder=" " autocomplete="current-password" required />
                 <label for="login-password">Password</label>
                 <button type="button" class="toggle-pw" aria-label="Show or hide password" onclick="togglePasswordVisibility('login-password', this)">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                 </button>
               </div>
             </div>
@@ -615,13 +542,12 @@
         <div style="text-align:center; margin-top:3rem; font-size:0.75rem; color:var(--auth-text-muted); text-transform:uppercase; letter-spacing:0.05em;">
           Trusted by 500+ Supply Chain Partners
         </div>
-
       </div>
     </div>
   </div>
 
   <!-- ====================================================================
-       THE MAIN APP (hidden until login or guest browsing)
+       THE MAIN APP
        ==================================================================== -->
   <div id="app" style="display:none;">
     <div class="status-bar"></div>
@@ -975,7 +901,7 @@
   </div>
 
   <!-- ====================================================================
-       MODALS (sheet overlays — unchanged from the original app)
+       MODALS
        ==================================================================== -->
   <div class="sheet-overlay" id="inquiry-modal">
     <div class="sheet">
@@ -1251,21 +1177,13 @@
     </div>
   </div>
 
-  <!-- ====================================================================
-       AUTH UI LOGIC — presentation only.
-       All authentication (Supabase) logic lives in js/auth.js.
-       ==================================================================== -->
+  <!-- AUTH UI LOGIC -->
   <script>
-    // Failsafe: never leave the auth screen invisible if boot stalls.
     setTimeout(function () { document.body.classList.remove('auth-booting'); }, 5000);
 
     var GBX_EYE_ON  = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
     var GBX_EYE_OFF = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
 
-    // NOTE: selectedSignupRole is declared ONCE, in app.js. Declaring it here
-    // too is a SyntaxError that prevents app.js from running.
-
-    // Form submit gateway: always blocks the native submit, even if auth.js failed to load.
     function gbxSubmit(e, kind) {
       e.preventDefault();
       var fn = kind === 'login' ? window.handleLogin : window.handleSignup;
@@ -1283,23 +1201,26 @@
       if (el) el.textContent = provider + ' sign-in is not enabled yet. Please use your email and password.';
     }
 
-    // Role switcher
+    // Extended Role Switcher
     function setAuthRole(role) {
-      try { selectedSignupRole = role; } catch (e) { /* app.js not ready; auth.js defaults to buyer */ }
+      try { selectedSignupRole = role; } catch (e) { /* app.js not ready */ }
 
       var slider = document.getElementById('role-slider');
-      var index = role === 'buyer' ? 0 : role === 'distributor' ? 1 : 2;
+      var index = ['buyer', 'distributor', 'agent', 'retailer', 'consumer'].indexOf(role);
       if (slider) slider.style.transform = 'translateX(' + (index * 100) + '%)';
 
       document.querySelectorAll('#auth-shell .role-btn').forEach(function (b) {
         b.classList.toggle('active', b.getAttribute('data-role') === role);
       });
 
-      document.getElementById('role-fields-distributor').classList.toggle('active', role === 'distributor');
-      document.getElementById('role-fields-agent').classList.toggle('active', role === 'agent');
+      document.querySelectorAll('#auth-shell .role-fields').forEach(function (el) {
+        el.classList.remove('active');
+      });
+
+      var target = document.getElementById('role-fields-' + role);
+      if (target) target.classList.add('active');
     }
 
-    // View switching
     function showLoginView() {
       document.getElementById('signup-view').style.display = 'none';
       document.getElementById('login-view').style.display = 'block';
@@ -1312,7 +1233,6 @@
       var e = document.getElementById('auth-error'); if (e) e.textContent = '';
     }
 
-    // Validation (visual feedback only; auth.js re-validates on submit)
     function gbxMark(wrapper, state) {
       wrapper.classList.remove('success', 'error');
       if (state) wrapper.classList.add(state);
@@ -1365,19 +1285,15 @@
     }
   </script>
 
-  <!-- ====================================================================
-       SCRIPT LOAD ORDER (Canon §10, amended by D13, D25, D33, F-14, F-16)
-       Do not reorder.
-       ==================================================================== -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://js.paystack.co/v2/inline.js"></script>
 
   <script src="js/config.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/auth.js?v=1.8.2.7"></script>
-<script src="js/market.js?v=1.8.2.7-mkt7"></script>
+  <script src="js/market.js?v=1.8.2.7-mkt7"></script>
   <script src="js/inquiries.js?v=1.8.2.6-f11"></script>
-<script src="js/storefront.js?v=1.8.2.7-sf6"></script>
+  <script src="js/storefront.js?v=1.8.2.7-sf6"></script>
   <script src="js/cart.js?v=1.8.2.7-cart6"></script>
   <script src="js/depletor-stock.js"></script>
   <script src="js/depletor-radar.js"></script>
@@ -1398,7 +1314,6 @@
   <script src="js/integration.js?v=1.8.2.6-f14"></script>
   <script src="js/app.js?v=1.8.2.7"></script>
 
-  <!-- Guest mode: give guests a way back to the login screen from the app header. -->
   <script>
     (function () {
       var original = window.continueAsGuest;
@@ -1413,43 +1328,23 @@
     })();
   </script>
 
-    <!-- ====================================================================
-       TRUST SCREEN BOOTSTRAPPER
-       Ensures trust.js binds its events and loads data when navigating
-       ==================================================================== -->
   <script>
     (function bootstrapTrustScreen() {
-      // 1. Wait for the DOM and all scripts to be fully loaded
       window.addEventListener('load', function() {
-        
-        // 2. Grab the Trust navigation button and screen
         const navTrust = document.getElementById('nav-trust');
         const screenTrust = document.getElementById('screen-trust');
 
-        if (!navTrust || !screenTrust) {
-          console.warn('[GoodsbarnX] Trust nav or screen element missing from DOM.');
-          return;
-        }
+        if (!navTrust || !screenTrust) return;
 
-        // 3. Intercept the click on the Trust nav button
         navTrust.addEventListener('click', function() {
-          // We delay by 50ms to let app.js finish its showScreen transition
           setTimeout(function() {
-            if (typeof window.loadTrustData === 'function') {
-              // Load the trust data
-              window.loadTrustData();
-            } else {
-              console.warn('[GoodsbarnX] trust.js did not export loadTrustData.');
-            }
+            if (typeof window.loadTrustData === 'function') window.loadTrustData();
           }, 50);
         });
 
-        // 4. If the user is already on the trust screen on load (e.g., page refresh)
         if (screenTrust.classList.contains('active')) {
           setTimeout(function() {
-            if (typeof window.loadTrustData === 'function') {
-              window.loadTrustData();
-            }
+            if (typeof window.loadTrustData === 'function') window.loadTrustData();
           }, 200);
         }
       });
