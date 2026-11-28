@@ -1,5 +1,5 @@
 // ==========================================================================
-// GoodsbarnX — js/demand.js  (rev. 1 · consumer-side demand resolution)
+// GoodsbarnX — js/demand.js  (rev. 2 · F-31 integrated)
 // Plain global script. Loads AFTER storefront.js, cart.js, and cart.js's
 // helpers. Registers a delegated click handler on the storefront so it can
 // present "Buy one now" affordances alongside the existing B2B cart flow.
@@ -10,9 +10,10 @@
 //   public.resolve_consumer_demand(uuid)              — SQL-B
 //   public.consumer_demand / demand_pools /
 //   demand_pool_members / retailer_inventory          — SQL-A + SQL-B
+//   public.submit_consumer_retail_order(uuid, uuid)   — F-31 SQL
 //
 // Does NOT:
-//   - Place orders. Pool commitment is separate (see confirm_demand_pool).
+//   - Place B2B orders. Pool commitment is separate.
 //   - Modify cart.js or storefront.js. Interaction is additive.
 //   - Touch any B2B table. trade_relationships, orders, order_items are
 //     untouched.
@@ -64,27 +65,11 @@
   // ------------------------------------------------------------------------
   // Local cache of recent route decisions, so the storefront can render
   // "Join pool" state without re-querying on every render.
-  //
-  // Shape:
-  //   { "<product_id>": { route, evidence, pool, retailer, demand_id,
-  //                       resolvedAt } }
   // ------------------------------------------------------------------------
   const __dmRouteCache = Object.create(null);
 
   // ------------------------------------------------------------------------
   // resolveDemandForProduct(product, requestedQty)
-  //
-  // Called when a consumer opens a product detail on the storefront.
-  // Creates a consumer_demand row (status=OPEN), then calls
-  // resolve_consumer_demand which either routes it or returns evidence.
-  //
-  // Returns the decision envelope, or null on error.
-  //
-  // Notes:
-  //   - Idempotency: a fingerprint of (product_id, qty, location) is stored
-  //     in localStorage. If the consumer opens the same product again with
-  //     the same qty, the existing OPEN demand is reused (not duplicated).
-  //   - If the demand was already routed or pooled, that route is returned.
   // ------------------------------------------------------------------------
   async function resolveDemandForProduct(product, requestedQty) {
     if (!dmIsConsumer() || !window.sb || !product || !product.id) return null;
@@ -193,9 +178,7 @@
   }
 
   // ------------------------------------------------------------------------
-  // Persisted registry: keeps a map of fingerprint → { demand_id } so a
-  // consumer re-opening the same product does not create a duplicate demand.
-  // Cleared by demResolveRegistry() on logout or when a demand is fulfilled.
+  // Persisted registry: keeps a map of fingerprint → { demand_id }
   // ------------------------------------------------------------------------
   function readDemandRegistry() {
     try {
@@ -220,11 +203,6 @@
 
   // ------------------------------------------------------------------------
   // Render the demand panel on a product detail sheet.
-  //
-  // Called from demand.js's own click handler. Renders into a dedicated
-  // container inside the sheet so it does not disturb storefront's layout.
-  //
-  // The panel is contextual: what it shows depends on the route.
   // ------------------------------------------------------------------------
   function renderDemandPanel(hostEl, product, envelope) {
     if (!hostEl || !envelope) return;
@@ -300,10 +278,6 @@
 
   // ------------------------------------------------------------------------
   // Load and render the demand panel for the currently-open product detail
-  // (called by the storefront's delegated handler).
-  //
-  // Presents the panel inside the existing sheet, above the B2B Add to cart
-  // button so both flows are visible.
   // ------------------------------------------------------------------------
   async function mountDemandPanelOnDetail(product, requestedQty) {
     if (!dmIsConsumer()) return;
@@ -336,56 +310,79 @@
   // Actions
   // ------------------------------------------------------------------------
 
-  // Consumer taps "Buy from [retailer]" — the retailer will fulfil this
+  // F-31: Consumer taps "Buy from [retailer]" — the retailer will fulfil this
   // individual purchase. This does NOT create a B2B order.
   async function consumerRetailerBuy(demandId) {
     if (!dmIsConsumer() || !dmIsUuid(demandId)) return;
     if (!window.sb) return;
+
+    // Prevent double-click
+    const btn = document.querySelector(`[data-dm-action="retailer-buy"][data-demand-id="${demandId}"]`);
+    if (btn) { btn.disabled = true; btn.textContent = "Processing…"; }
 
     // Load demand to find the retailer + product
     const dRes = await sb.from("consumer_demand")
       .select("id, product_id, consumer_id, requested_qty, status, route_evidence")
       .eq("id", demandId)
       .maybeSingle();
+    
     if (dRes.error || !dRes.data) {
+      if (btn) { btn.disabled = false; btn.textContent = "Buy"; }
       alert("Could not load this demand.");
       return;
     }
+    
     const demand = dRes.data;
     if (demand.consumer_id !== currentUser.id) return;
 
     const evidence = demand.route_evidence || {};
     const retailerId = evidence.retailer_id;
-    const unitPrice = dmNum(evidence.retailer_unit_price, 0);
-    const qty = dmNum(demand.requested_qty, 1);
 
-    // Create a lightweight consumer order row via a dedicated RPC.
-    // (The RPC is part of the next delivery. For now we show the intent.)
-    const rpc = await sb.rpc("submit_consumer_retail_order", {
-      p_demand_id: demandId,
-      p_retailer_id: retailerId
-    });
+    try {
+      // Execute the F-31 RPC
+      const rpc = await sb.rpc("submit_consumer_retail_order", {
+        p_demand_id: demandId,
+        p_retailer_id: retailerId
+      });
 
-    if (rpc.error) {
-      const msg = String(rpc.error.message || "");
-      if (/function .* does not exist/i.test(msg) || rpc.error.code === "42883") {
-        // The consumer order RPC has not been deployed yet — show a clear
-        // pending message instead of a stack trace.
-        alert(
-          "Ordering from retailers is being enabled. " +
-          "Your interest is recorded; you'll be notified the moment " +
-          retailerId ? "" : "" +
-          "the retailer confirms their capacity."
-        );
-        return;
+      if (rpc.error) throw rpc.error;
+
+      // Success!
+      const data = rpc.data;
+      alert("Order confirmed!\n\nTotal: ₦" + data.total_amount.toLocaleString() + "\nStatus: Pending retailer confirmation.");
+      
+      // Update the UI to show success state
+      const panel = document.querySelector(".dm-demand-panel");
+      if (panel) {
+        panel.innerHTML = 
+          '<div class="dm-panel dm-panel-retailer" style="border-color:#10B981;">' +
+            '<div class="dm-panel-kicker" style="color:#10B981;">Order Placed</div>' +
+            '<div class="dm-panel-title">The retailer is preparing your order</div>' +
+            '<div class="dm-panel-meta">Order ID: ' + data.order_id.slice(0,8) + '</div>' +
+            '<div class="dm-panel-actions">' +
+              '<button type="button" class="dm-btn-secondary" onclick="closeStorefrontModal()">Continue browsing</button>' +
+            '</div>' +
+          '</div>';
       }
-      alert("Could not place the order: " + msg);
-      return;
-    }
 
-    // Success
-    alert("Request sent to " + (evidence.retailer_id ? "the retailer" : "retailer") + " for " +
-      qty + " unit" + (qty === 1 ? "" : "s") + ". They will confirm shortly.");
+    } catch (err) {
+      console.error("[GoodsbarnX/demand] retail order failed:", err);
+      
+      let msg = err.message || String(err);
+      if (err.code === '42883' || /function .* does not exist/i.test(msg)) {
+        msg = "This feature is being enabled. Please try again shortly.";
+      } else if (/Insufficient stock/i.test(msg)) {
+        msg = "Sorry, another buyer just took the last units. Please try another product.";
+      }
+
+      alert("Could not place the order: " + msg);
+      
+      // Restore the button
+      if (btn) { 
+        btn.disabled = false; 
+        btn.textContent = "Try again"; 
+      }
+    }
   }
 
   // Consumer taps "Join this demand pool"
@@ -534,5 +531,5 @@
     };
   }
 
-  console.log("[GoodsbarnX] demand.js loaded (rev.1 · consumer-side demand resolution)");
+  console.log("[GoodsbarnX] demand.js loaded (rev.2 · F-31 integrated)");
 })();
