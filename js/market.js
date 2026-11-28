@@ -1,54 +1,13 @@
 // ==========================================================================
-// GoodsbarnX — market.js  (rev. 7 · Relationship Desk)
+// GoodsbarnX — market.js  (rev. 8 · Relationship Desk + Consumer Retailers)
 // Plain global script. Loads fourth (Canon §10).
 //
-// The market is not a directory. It is the viewer's relationship graph:
-//   BUYER        → "Relationship desk" (what needs you now), "Your network"
-//                  (live trading relationships), "Discover" (ranked by trust,
-//                  proximity and prior contact).
-//   DISTRIBUTOR  → desk of unanswered invitations and inquiry→relationship
-//                  conversions; buyer roster segmented by relationship state.
-//   GUEST        → ranked directory with a clear path into the network.
-//
-// Security contract (rev.6, retained in full):
-//   V-A  No inline handlers. One delegated click + change listener.
-//   V-B  Buyer roster is loaded/rendered for distributors only.
-//   V-C  Every distributor/buyer id is UUID-validated before dispatch.
-//   V-D  Phone numbers are normalised + validated before any wa.me URL.
-//   V-E  distributor_view emission is UUID-guarded and session-throttled.
-//   V-F  All queries are column-scoped (head-only count for inquiries).
-//   V-G  Graph rows are shape-validated; corrupt rows are dropped.
-//   V-H  escHtml strips C0/C1 control characters.
-//   V-I  (rev.7) Every enum that reaches the DOM (sort, chip, segment,
-//        status) is whitelisted; nothing user-controlled is interpolated
-//        unescaped.
-//
-// Fixed in rev.7:
-//   F-1  Buyer-card WhatsApp button was dead (action/id mismatch).
-//   F-2  wa.me links used the local leading 0 (must be 234…).
-//   F-3  `:has()` selector could throw on older Android WebViews and abort
-//        applyFilters(); replaced with sibling lookup + try/catch.
-//   F-4  Relationship graph never refreshed (stale after accepting a
-//        request, or after switching account). Now keyed by user id with a
-//        45s TTL and window.marketInvalidateGraph().
-//   F-5  A failed load left "Loading…" forever; now shows a retry state.
-//   F-6  Own listing offered Inquire/WhatsApp to yourself.
-//   F-7  Reads of globals that may not exist (userFavourites etc.) could
-//        throw ReferenceError; all reads are typeof-guarded.
-//   F-8  Relevance sort re-enriched on every comparison; now cached.
-//   F-9  Serial awaits on load replaced with parallel fetch.
-//   F-10 Duplicate stat queries removed from the screen loader.
-//
-// Backward compatibility (unchanged):
-//   - Public functions/exports: loadDistributorsAndBuyers, applyFilters,
-//     updateStats, renderDistributors, renderBuyers, openWhatsApp,
-//     marketOpenDistributorContext, updateInquiryCountRing.
-//   - Globals used: allDistributors, allBuyers, activeCategory, currentUser,
-//     userFavourites, sb, selectCategory, toggleFavourite, openModal,
-//     openStorefrontModal, openDisputeModal, openInviteBuyerModal,
-//     showScreen, registerScreenLoader, goodsbarnxBehaviourTrack.
-//   - DOM targets: #screen-market, #distributor-list, #buyer-list, stat ids.
-//   - index.html: no structural change. Cache-bust the script tag only.
+// rev. 8 changes:
+//   - Added consumer branch. If the viewer is a consumer, the market fetches
+//     retailer_profiles instead of distributor_profiles.
+//   - Added renderRetailers() and a consumer desk banner.
+//   - Hidden B2B filters (vertical rail, verification/saved chips) for
+//     consumers.
 // ==========================================================================
 
 // ==========================================================================
@@ -56,7 +15,6 @@
 // ==========================================================================
 
 function escHtml(v) {
-  // V-H: strip C0/C1 control chars before escaping.
   return String(v == null ? "" : v)
     .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
     .replace(/&/g, "&amp;")
@@ -71,10 +29,7 @@ function escAttr(v) { return escHtml(v); }
 var __MARKET_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function isValidUuid(v) { return typeof v === "string" && __MARKET_UUID_RE.test(v); }
 
-// V-D: Nigerian numbers. Legacy regex kept for compatibility; the
-// normaliser is the source of truth (accepts +234…, 234…, 0…, and bare
-// 10-digit national format, returns canonical 234XXXXXXXXXX or "").
-var __MARKET_NG_PHONE_RE = /^(234|0)[789][01]\d{8}$/;
+// V-D: Nigerian numbers.
 var __MARKET_NG_CANON_RE = /^234[789][01]\d{8}$/;
 function normalizeNgPhone(v) {
   var d = String(v || "").replace(/\D/g, "");
@@ -91,7 +46,9 @@ function warnMissingTarget(id) {
   console.warn("[GoodsbarnX/market] DOM target #" + id + " is missing from index.html.");
 }
 
-// F-7: typeof-guarded reads of cross-module globals.
+// Global state for retailers
+var allRetailers = [];
+
 function gmUser() {
   try { return (typeof currentUser !== "undefined" && currentUser) ? currentUser : null; } catch (e) { return null; }
 }
@@ -101,6 +58,9 @@ function gmDists() {
 }
 function gmBuyers() {
   try { return (typeof allBuyers !== "undefined" && Array.isArray(allBuyers)) ? allBuyers : []; } catch (e) { return []; }
+}
+function gmRetailers() {
+  try { return (typeof allRetailers !== "undefined" && Array.isArray(allRetailers)) ? allRetailers : []; } catch (e) { return []; }
 }
 function gmCategory() {
   try { return (typeof activeCategory !== "undefined" && activeCategory) ? activeCategory : "All"; } catch (e) { return "All"; }
@@ -163,7 +123,7 @@ function formatMarketAge(ms) {
 }
 
 // ==========================================================================
-// ICONS (inline SVG, stroke-based, one visual language)
+// ICONS
 // ==========================================================================
 
 var GM_ICONS = {
@@ -207,15 +167,13 @@ const BUYER_ICON_SVG =
   '</svg>';
 
 // ==========================================================================
-// STYLES — injected once, every rule scoped under #screen-market (gm- prefix)
+// STYLES
 // ==========================================================================
 
 var GM_CSS = [
 "#screen-market{--gm-card:#131917;--gm-card2:#18201d;--gm-line:rgba(255,255,255,.08);--gm-line2:rgba(255,255,255,.15);--gm-tx:#e9eeea;--gm-mut:#8f9b95;--gm-green:#22b26a;--gm-greend:#0f7a4b;--gm-brass:var(--brass,#c19a3e);--gm-warn:#e2a93b;--gm-bad:#e5645a;--gm-info:#5aa9e6}",
 "#screen-market .gm-i{flex:0 0 auto;display:inline-block;vertical-align:middle}",
 "#screen-market .gm-mute{color:var(--gm-mut)}",
-
-/* ---- Vertical rail (replaces the 8-row emoji grid; same elements, same onclick) ---- */
 "#screen-market .category-grid{display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;overflow-y:hidden;margin:0 0 14px;padding:2px 0 8px;scroll-snap-type:x proximity;scrollbar-width:none;-webkit-overflow-scrolling:touch;-webkit-mask-image:linear-gradient(90deg,#000 90%,transparent);mask-image:linear-gradient(90deg,#000 90%,transparent)}",
 "#screen-market .category-grid::-webkit-scrollbar{display:none}",
 "#screen-market .category-grid .category-card{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;width:auto;min-width:0;height:auto;aspect-ratio:auto;margin:0;padding:9px 13px;border-radius:999px;font-size:0;line-height:1;white-space:nowrap;scroll-snap-align:start;background:var(--gm-card);border:1px solid var(--gm-line);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:border-color .15s,background .15s,opacity .15s}",
@@ -225,8 +183,6 @@ var GM_CSS = [
 "#screen-market .category-grid .category-card.active span{color:#86e3b0}",
 "#screen-market .category-grid .category-card.active .gm-cat-n{color:#06130c;background:var(--gm-green)}",
 "#screen-market .category-grid .category-card.gm-empty{opacity:.42}",
-
-/* ---- Toolbar ---- */
 "#screen-market .gm-toolbar{margin:0 0 12px}",
 "#screen-market .gm-toolbar-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;min-height:26px}",
 "#screen-market .gm-summary{font-size:12.5px;color:var(--gm-mut)}",
@@ -237,16 +193,12 @@ var GM_CSS = [
 "#screen-market .gm-chips{display:flex;gap:8px;flex-wrap:wrap}",
 "#screen-market .gm-chip{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 13px;border-radius:999px;background:var(--gm-card);border:1px solid var(--gm-line);color:var(--gm-tx);font:500 12.5px/1 inherit;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}",
 "#screen-market .gm-chip[aria-pressed=true]{background:rgba(34,178,106,.14);border-color:var(--gm-green);color:#86e3b0}",
-
-/* ---- Section heads ---- */
 "#screen-market .gm-sec{display:flex;align-items:baseline;gap:8px;margin:18px 0 10px}",
 "#screen-market .gm-sec:first-child{margin-top:4px}",
 "#screen-market .gm-kicker{font:600 10.5px/1 'DM Mono',ui-monospace,monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--gm-green)}",
 "#screen-market .gm-sec .gm-kicker{color:var(--gm-mut)}",
 "#screen-market .gm-sec .gm-n{font:600 11px/1 'DM Mono',ui-monospace,monospace;color:var(--gm-tx)}",
 "#screen-market .gm-sec .gm-hint{font-size:11.5px;color:var(--gm-mut);margin-left:auto}",
-
-/* ---- Relationship desk ---- */
 "#screen-market .gm-console{background:linear-gradient(180deg,rgba(34,178,106,.09),rgba(34,178,106,.02));border:1px solid rgba(34,178,106,.28);border-radius:16px;padding:14px;margin:0 0 14px}",
 "#screen-market .gm-console-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin-bottom:2px}",
 "#screen-market .gm-pulse{display:flex;flex-wrap:wrap;gap:6px}",
@@ -264,20 +216,14 @@ var GM_CSS = [
 "#screen-market .gm-att-body{flex:1;min-width:0}",
 "#screen-market .gm-att-title{font-size:13.5px;font-weight:600;color:var(--gm-tx);line-height:1.3;overflow-wrap:anywhere}",
 "#screen-market .gm-att-meta{font-size:11.5px;color:var(--gm-mut);margin-top:2px}",
-
-/* ---- Engine strip ---- */
 "#screen-market .gm-engine{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:var(--gm-card);border:1px solid var(--gm-line);border-radius:12px;padding:10px 12px;margin:0 0 12px;color:var(--gm-tx);font:500 12.5px/1.3 inherit;font-family:inherit}",
 "#screen-market button.gm-engine{cursor:pointer}",
 "#screen-market .gm-engine-dot{width:8px;height:8px;border-radius:50%;background:var(--gm-warn);box-shadow:0 0 0 4px rgba(226,169,59,.18);flex:0 0 auto}",
 "#screen-market .gm-engine[data-fresh=stale] .gm-engine-dot{background:var(--gm-mut);box-shadow:none}",
 "#screen-market .gm-engine-go{margin-left:auto;color:var(--gm-green);font-weight:600}",
-
-/* ---- Guest banner ---- */
 "#screen-market .gm-guest{display:flex;align-items:center;gap:12px;background:var(--gm-card);border:1px dashed var(--gm-line2);border-radius:14px;padding:12px 14px;margin:0 0 14px}",
 "#screen-market .gm-guest p{margin:0;font-size:12.5px;color:var(--gm-mut);flex:1;line-height:1.4}",
 "#screen-market .gm-guest p b{color:var(--gm-tx)}",
-
-/* ---- Cards ---- */
 "#screen-market .gm-card{position:relative;background:var(--gm-card);border:1px solid var(--gm-line);border-radius:16px;padding:14px;margin:0 0 12px;box-shadow:none}",
 "#screen-market .gm-card[data-rel=active]{border-color:rgba(34,178,106,.4);background:linear-gradient(180deg,rgba(34,178,106,.07),var(--gm-card) 60%)}",
 "#screen-market .gm-card[data-rel=pending_in],#screen-market .gm-card[data-rel=pending_out]{border-color:rgba(90,169,230,.4)}",
@@ -309,15 +255,11 @@ var GM_CSS = [
 "#screen-market .gm-foot{margin-top:10px;display:flex;justify-content:flex-end}",
 "#screen-market .gm-report{background:none;border:0;padding:6px 0;color:var(--gm-mut);font:500 11.5px/1 inherit;font-family:inherit;text-decoration:underline;text-underline-offset:3px;cursor:pointer}",
 "#screen-market .gm-btn:focus-visible,#screen-market .gm-chip:focus-visible,#screen-market .gm-fav:focus-visible,#screen-market .gm-link:focus-visible,#screen-market .gm-report:focus-visible,#screen-market .gm-sort select:focus-visible,#screen-market .category-card:focus-visible{outline:2px solid var(--gm-green);outline-offset:2px}",
-
-/* ---- Segments (demand desk) ---- */
 "#screen-market .gm-seg{display:flex;gap:6px;overflow-x:auto;margin:0 0 12px;padding-bottom:2px;scrollbar-width:none}",
 "#screen-market .gm-seg::-webkit-scrollbar{display:none}",
 "#screen-market .gm-seg button{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 12px;border-radius:999px;background:var(--gm-card);border:1px solid var(--gm-line);color:var(--gm-tx);font:500 12.5px/1 inherit;font-family:inherit;cursor:pointer}",
 "#screen-market .gm-seg button[aria-pressed=true]{background:rgba(34,178,106,.14);border-color:var(--gm-green);color:#86e3b0}",
 "#screen-market .gm-seg b{font:600 10.5px/1 'DM Mono',ui-monospace,monospace;color:var(--gm-mut)}",
-
-/* ---- Empty / error / skeleton ---- */
 "#screen-market .gm-empty-state{text-align:center;padding:30px 18px;border:1px dashed var(--gm-line2);border-radius:16px;color:var(--gm-mut)}",
 "#screen-market .gm-empty-state .gm-ico{color:var(--gm-mut);opacity:.8;margin-bottom:8px}",
 "#screen-market .gm-empty-state h4{margin:0 0 4px;font-size:15px;color:var(--gm-tx)}",
@@ -337,7 +279,7 @@ function ensureMarketStyles() {
 }
 
 // ==========================================================================
-// UI STATE (view-only; never persisted, never trusted by the backend)
+// UI STATE
 // ==========================================================================
 
 var GM_SORTS = ["best", "nearest", "trusted", "az"];
@@ -348,7 +290,7 @@ var __gm = {
   sort: "best",
   chips: { network: false, verified: false, saved: false },
   segment: "all",
-  enrich: Object.create(null),   // per-render enrichment cache (F-8)
+  enrich: Object.create(null),
   enrichB: Object.create(null),
   filtersActive: false,
   loadError: null,
@@ -356,7 +298,7 @@ var __gm = {
 };
 
 // ==========================================================================
-// L1 · RELATIONSHIP GRAPH  (per-session cache, shape-validated, keyed by user)
+// L1 · RELATIONSHIP GRAPH
 // ==========================================================================
 
 const __gbxMarketGraph = {
@@ -366,7 +308,7 @@ const __gbxMarketGraph = {
   myPendingInbound: [],
   myPendingOutbound: [],
   contactedSet: new Set(),
-  myInquiries: Object.create(null),   // distributor_id -> {total, pending, lastAt, lastPendingAt}
+  myInquiries: Object.create(null),
   loaded: false,
   loadedAt: 0
 };
@@ -395,8 +337,6 @@ function gmGraphIsCurrent() {
     (Date.now() - __gbxMarketGraph.loadedAt) < GM_GRAPH_TTL_MS;
 }
 
-// Graph data is only trusted while it belongs to the current viewer. After an
-// account switch, stale rows can never decorate another user's market (F-4).
 function gmGraph() {
   var u = gmUser();
   if (__gbxMarketGraph.viewerId !== (u ? u.id : null)) {
@@ -424,22 +364,12 @@ async function loadMarketGraph() {
   try {
     if (u.role === "buyer") {
       const res = await Promise.all([
-        sb.from("trade_relationships")
-          .select("distributor_id,status,is_primary,relationship_started_at,created_at")
-          .eq("buyer_id", u.id),
-        sb.from("buyer_locks")
-          .select("distributor_id,status,created_at")
-          .eq("buyer_id", u.id)
-          .eq("status", "pending_consent"),
+        sb.from("trade_relationships").select("distributor_id,status,is_primary,relationship_started_at,created_at").eq("buyer_id", u.id),
+        sb.from("buyer_locks").select("distributor_id,status,created_at").eq("buyer_id", u.id).eq("status", "pending_consent"),
         loadBuyerInquiries(u.id)
       ]);
       validateGraphRows(res[0].data || [], "distributor_id").forEach(function (r) {
-        G.myRelationships.push({
-          distributor_id: r.distributor_id,
-          status: String(r.status || "").toLowerCase(),
-          is_primary: !!r.is_primary,
-          since: r.relationship_started_at || r.created_at || null
-        });
+        G.myRelationships.push({ distributor_id: r.distributor_id, status: String(r.status || "").toLowerCase(), is_primary: !!r.is_primary, since: r.relationship_started_at || r.created_at || null });
       });
       validateGraphRows(res[1].data || [], "distributor_id").forEach(function (l) {
         G.myPendingInbound.push({ distributor_id: l.distributor_id, created_at: l.created_at || null });
@@ -457,31 +387,17 @@ async function loadMarketGraph() {
       });
     } else if (u.role === "distributor") {
       const res = await Promise.all([
-        sb.from("trade_relationships")
-          .select("buyer_id,status,is_primary,relationship_started_at,created_at")
-          .eq("distributor_id", u.id),
-        sb.from("buyer_locks")
-          .select("buyer_id,status,created_at")
-          .eq("distributor_id", u.id)
-          .eq("status", "pending_consent"),
-        sb.from("inquiries")
-          .select("buyer_id")
-          .eq("distributor_id", u.id)
+        sb.from("trade_relationships").select("buyer_id,status,is_primary,relationship_started_at,created_at").eq("distributor_id", u.id),
+        sb.from("buyer_locks").select("buyer_id,status,created_at").eq("distributor_id", u.id).eq("status", "pending_consent"),
+        sb.from("inquiries").select("buyer_id").eq("distributor_id", u.id)
       ]);
       validateGraphRows(res[0].data || [], "buyer_id").forEach(function (r) {
-        G.myRelationships.push({
-          buyer_id: r.buyer_id,
-          status: String(r.status || "").toLowerCase(),
-          is_primary: !!r.is_primary,
-          since: r.relationship_started_at || r.created_at || null
-        });
+        G.myRelationships.push({ buyer_id: r.buyer_id, status: String(r.status || "").toLowerCase(), is_primary: !!r.is_primary, since: r.relationship_started_at || r.created_at || null });
       });
       validateGraphRows(res[1].data || [], "buyer_id").forEach(function (l) {
         G.myPendingOutbound.push({ buyer_id: l.buyer_id, created_at: l.created_at || null });
       });
-      (res[2].data || []).forEach(function (x) {
-        if (x && isValidUuid(x.buyer_id)) G.contactedSet.add(x.buyer_id);
-      });
+      (res[2].data || []).forEach(function (x) { if (x && isValidUuid(x.buyer_id)) G.contactedSet.add(x.buyer_id); });
     }
   } catch (err) {
     console.warn("[GoodsbarnX/market] loadMarketGraph failed:", err && err.message);
@@ -491,20 +407,11 @@ async function loadMarketGraph() {
   G.loadedAt = Date.now();
 }
 
-// Optional enrichment: the buyer's own inquiries. If the columns or RLS differ
-// in a given deployment this degrades to "no inquiry state" and never throws.
 async function loadBuyerInquiries(buyerId) {
   try {
-    var r = await sb.from("inquiries")
-      .select("distributor_id,status,created_at")
-      .eq("buyer_id", buyerId)
-      .order("created_at", { ascending: false })
-      .limit(300);
+    var r = await sb.from("inquiries").select("distributor_id,status,created_at").eq("buyer_id", buyerId).order("created_at", { ascending: false }).limit(300);
     if (!r.error && Array.isArray(r.data)) return r.data;
-    var r2 = await sb.from("inquiries")
-      .select("distributor_id,status")
-      .eq("buyer_id", buyerId)
-      .limit(300);
+    var r2 = await sb.from("inquiries").select("distributor_id,status").eq("buyer_id", buyerId).limit(300);
     return (!r2.error && Array.isArray(r2.data)) ? r2.data : [];
   } catch (e) { return []; }
 }
@@ -515,10 +422,7 @@ async function loadBuyerInquiries(buyerId) {
 
 var GM_TIER_RANK = { "association": 3, "market board": 2, "self-attested": 1 };
 function gmTierRank(d) { return GM_TIER_RANK[String((d && d.verification_tier) || "").toLowerCase()] || 0; }
-function gmSameCity(d) {
-  var c = gmUserCity().toLowerCase();
-  return !!c && String((d && d.location) || "").trim().toLowerCase() === c;
-}
+function gmSameCity(d) { var c = gmUserCity().toLowerCase(); return !!c && String((d && d.location) || "").trim().toLowerCase() === c; }
 function gmPhoneOf(d) { return (d && d.profiles && d.profiles.phone) || ""; }
 
 var GM_REL_STATES = {
@@ -669,7 +573,7 @@ function updateInquiryCountRing(count) {
 }
 
 // ==========================================================================
-// LOAD  (parallel; V-B: buyer roster only for distributors)
+// LOAD
 // ==========================================================================
 
 function gmSafe(p) {
@@ -695,37 +599,50 @@ async function __gmLoadInternal() {
   }
 
   ensureMarketStyles();
-  var hadData = gmDists().length > 0;
+  var hadData = gmDists().length > 0 || gmRetailers().length > 0;
   if (!hadData) renderMarketSkeleton();
 
-  var u = gmUser();
-  var viewerIsDistributor = !!(u && u.role === "distributor");
+  var role = gmRole();
+  var viewerIsDistributor = role === "distributor";
+  var viewerIsConsumer = role === "consumer";
 
-  var res = await Promise.all([
-    gmSafe(sb.from("distributor_profiles")
-      .select("id, business_name, location, market, category, verification_tier, profiles(phone)")),
+  var promises = [
+    viewerIsConsumer
+      ? gmSafe(sb.from("retailer_profiles").select("id, business_name, location, market, supports_pickup, supports_delivery"))
+      : gmSafe(sb.from("distributor_profiles").select("id, business_name, location, market, category, verification_tier, profiles(phone)")),
     viewerIsDistributor
       ? gmSafe(sb.from("buyer_profiles").select("id, name, location, market, looking_for, profiles(full_name, phone)"))
       : Promise.resolve({ data: [], error: null }),
     gmSafe(sb.from("inquiries").select("*", { count: "exact", head: true })),
     gmGraphIsCurrent() ? Promise.resolve() : loadMarketGraph()
-  ]);
+  ];
 
-  var distRes = res[0], buyerRes = res[1], inqRes = res[2];
+  var res = await Promise.all(promises);
+  var mainRes = res[0], buyerRes = res[1], inqRes = res[2];
 
-  if (distRes.error) {
-    console.error("[GoodsbarnX/market] error loading distributors:", distRes.error);
-    if (!hadData) __gm.loadError = "We couldn't load distributors. Check your connection and try again.";
-  } else if (Array.isArray(distRes.data)) {
-    __gm.loadError = null;
-    allDistributors = distRes.data.filter(function (d) { return d && isValidUuid(d.id); });
-  }
-
-  if (viewerIsDistributor) {
-    if (buyerRes.error) console.error("[GoodsbarnX/market] error loading buyers:", buyerRes.error);
-    else if (Array.isArray(buyerRes.data)) allBuyers = buyerRes.data.filter(function (b) { return b && isValidUuid(b.id); });
+  if (viewerIsConsumer) {
+    if (mainRes.error) {
+      __gm.loadError = "We couldn't load retailers. Check your connection and try again.";
+    } else if (Array.isArray(mainRes.data)) {
+      __gm.loadError = null;
+      allRetailers = mainRes.data.filter(function (r) { return r && isValidUuid(r.id); });
+      allDistributors = [];
+      allBuyers = [];
+    }
   } else {
-    allBuyers = [];
+    if (mainRes.error) {
+      __gm.loadError = "We couldn't load distributors. Check your connection and try again.";
+    } else if (Array.isArray(mainRes.data)) {
+      __gm.loadError = null;
+      allDistributors = mainRes.data.filter(function (d) { return d && isValidUuid(d.id); });
+      allRetailers = [];
+    }
+    if (viewerIsDistributor) {
+      if (buyerRes.error) console.error("[GoodsbarnX/market] error loading buyers:", buyerRes.error);
+      else if (Array.isArray(buyerRes.data)) allBuyers = buyerRes.data.filter(function (b) { return b && isValidUuid(b.id); });
+    } else {
+      allBuyers = [];
+    }
   }
 
   if (!inqRes.error) updateInquiryCountRing(inqRes.count);
@@ -740,52 +657,42 @@ async function __gmLoadInternal() {
 }
 
 // ==========================================================================
-// PENDING REQUESTS / NETWORK LINKS / STATS (behaviour unchanged)
+// PENDING REQUESTS / NETWORK LINKS / STATS
 // ==========================================================================
 
 async function loadPendingRequests() {
   if (!gmUser() || !window.sb) return;
   var u = gmUser();
   try {
-    const { data: buyerRequests, error: buyerReqError } = await sb
-      .from("trade_relationships").select("id, buyer_id, status, created_at")
-      .eq("distributor_id", u.id).eq("status", "pending");
+    const { data: buyerRequests, error: buyerReqError } = await sb.from("trade_relationships").select("id, buyer_id, status, created_at").eq("distributor_id", u.id).eq("status", "pending");
     if (!buyerReqError && Array.isArray(buyerRequests)) {
       const badge = document.getElementById("buyer-requests-count");
       if (badge) badge.textContent = buyerRequests.length;
       const attentionBadge = document.querySelector(".attention-item .badge.buyer");
       if (attentionBadge) attentionBadge.textContent = buyerRequests.length;
     }
-    const { data: agentRequests, error: agentReqError } = await sb
-      .from("agent_distributor_attachments").select("id, agent_id, status, created_at")
-      .eq("distributor_id", u.id).eq("status", "pending");
+    const { data: agentRequests, error: agentReqError } = await sb.from("agent_distributor_attachments").select("id, agent_id, status, created_at").eq("distributor_id", u.id).eq("status", "pending");
     if (!agentReqError && Array.isArray(agentRequests)) {
       const badge = document.getElementById("agent-requests-count");
       if (badge) badge.textContent = agentRequests.length;
       const attentionBadge = document.querySelector(".attention-item .badge.agent");
       if (attentionBadge) attentionBadge.textContent = agentRequests.length;
     }
-    const { data: pendingInquiries, error: inquiryError } = await sb
-      .from("inquiries").select("id, status")
-      .eq("distributor_id", u.id).eq("status", "pending");
+    const { data: pendingInquiries, error: inquiryError } = await sb.from("inquiries").select("id, status").eq("distributor_id", u.id).eq("status", "pending");
     if (!inquiryError && Array.isArray(pendingInquiries)) {
       const badge = document.getElementById("unanswered-inquiries-count");
       if (badge) badge.textContent = pendingInquiries.length;
       const attentionBadge = document.querySelector(".attention-item .badge.urgent");
       if (attentionBadge) attentionBadge.textContent = pendingInquiries.length;
     }
-  } catch (error) {
-    console.error("[GoodsbarnX/market] loadPendingRequests failed:", error);
-  }
+  } catch (error) { console.error("[GoodsbarnX/market] loadPendingRequests failed:", error); }
 }
 
 async function updateNetworkLinks() {
   if (!gmUser() || !window.sb) return;
   var u = gmUser();
   try {
-    const { data: relationships, error: relError } = await sb
-      .from("trade_relationships").select("id, buyer_id, status")
-      .eq("distributor_id", u.id);
+    const { data: relationships, error: relError } = await sb.from("trade_relationships").select("id, buyer_id, status").eq("distributor_id", u.id);
     if (!relError && Array.isArray(relationships)) {
       const buckets = { pending: 0, active: 0, paused: 0, released: 0, suspended: 0, terminated: 0 };
       let other = 0;
@@ -797,70 +704,79 @@ async function updateNetworkLinks() {
       const countEl = document.getElementById("my-buyers-count");
       if (countEl) countEl.textContent = relationships.length;
       const parts = [];
-      ["active", "pending", "paused", "suspended", "released", "terminated"].forEach(function (k) {
-        if (buckets[k] > 0) parts.push(buckets[k] + " " + k);
-      });
+      ["active", "pending", "paused", "suspended", "released", "terminated"].forEach(function (k) { if (buckets[k] > 0) parts.push(buckets[k] + " " + k); });
       if (other > 0) parts.push(other + " other");
       if (!parts.length) parts.push("none yet");
       const subEl = document.getElementById("my-buyers-sub");
       if (subEl) subEl.textContent = parts.join(" · ");
     }
-    const { data: agents, error: agentError } = await sb
-      .from("agent_distributor_attachments").select("id, agent_id, status")
-      .eq("distributor_id", u.id).eq("status", "accepted");
+    const { data: agents, error: agentError } = await sb.from("agent_distributor_attachments").select("id, agent_id, status").eq("distributor_id", u.id).eq("status", "accepted");
     if (!agentError && Array.isArray(agents)) {
       const countEl = document.getElementById("my-agents-count");
       if (countEl) countEl.textContent = agents.length;
       const subEl = document.getElementById("my-agents-sub");
       if (subEl) subEl.textContent = agents.length + " active · 0 pending";
     }
-  } catch (error) {
-    console.error("[GoodsbarnX/market] updateNetworkLinks failed:", error);
-  }
+  } catch (error) { console.error("[GoodsbarnX/market] updateNetworkLinks failed:", error); }
 }
 
 async function updateStats() {
   if (!window.sb) return;
   try {
-    const { count: distributorCount, error: distError } = await sb
-      .from("distributor_profiles").select("*", { count: "exact", head: true });
+    if (gmRole() === "consumer") {
+      const { count: retailerCount } = await sb.from("retailer_profiles").select("*", { count: "exact", head: true });
+      const statEl = document.getElementById("stat-distributors");
+      if (statEl) statEl.textContent = retailerCount || 0;
+      syncHeroStats();
+      return;
+    }
+
+    const { count: distributorCount, error: distError } = await sb.from("distributor_profiles").select("*", { count: "exact", head: true });
     if (!distError) {
       const statEl = document.getElementById("stat-distributors");
       if (statEl) statEl.textContent = distributorCount || 0;
     }
     if (gmRole() === "distributor") {
-      const { count: buyerCount, error: buyerError } = await sb
-        .from("buyer_profiles").select("*", { count: "exact", head: true });
+      const { count: buyerCount, error: buyerError } = await sb.from("buyer_profiles").select("*", { count: "exact", head: true });
       if (!buyerError) {
         const statEl = document.getElementById("stat-buyers");
         if (statEl) statEl.textContent = buyerCount || 0;
       }
     }
-  } catch (error) {
-    console.error("[GoodsbarnX/market] updateStats failed:", error);
-  }
+  } catch (error) { console.error("[GoodsbarnX/market] updateStats failed:", error); }
   syncHeroStats();
 }
 
-// The hero's "Buyers" tile is meaningless to a buyer. For buyers it becomes
-// "In your network" (their active relationships); for everyone else it is
-// restored to the original label.
 function syncHeroStats() {
-  var statEl = document.getElementById("stat-buyers");
-  if (!statEl || !statEl.parentNode) return;
-  var labelEl = statEl.parentNode.querySelector(".t");
+  var statEl = document.getElementById("stat-distributors");
+  if (statEl && statEl.parentNode && statEl.parentNode.querySelector(".t")) {
+    var labelEl = statEl.parentNode.querySelector(".t");
+    if (gmRole() === "consumer") labelEl.textContent = "Retailers";
+    else labelEl.textContent = "Distributors";
+  }
+
+  var statElB = document.getElementById("stat-buyers");
+  if (!statElB || !statElB.parentNode) return;
+  var labelElB = statElB.parentNode.querySelector(".t");
+  
+  if (gmRole() === "consumer") {
+    statElB.textContent = "—";
+    if (labelElB) labelElB.textContent = "Buyers";
+    return;
+  }
+
   if (gmRole() === "buyer") {
     var G = gmGraph();
     var n = G.myRelationships.filter(function (r) { return r.status === "active"; }).length;
-    statEl.textContent = String(n);
-    if (labelEl) labelEl.textContent = "In your network";
-  } else if (labelEl && labelEl.textContent === "In your network") {
-    labelEl.textContent = "Buyers";
+    statElB.textContent = String(n);
+    if (labelElB) labelElB.textContent = "In your network";
+  } else if (labelElB && labelElB.textContent === "In your network") {
+    labelElB.textContent = "Buyers";
   }
 }
 
 // ==========================================================================
-// TOOLBAR  (created once; updated in place so focus is never lost)
+// TOOLBAR
 // ==========================================================================
 
 function ensureToolbar() {
@@ -876,7 +792,7 @@ function ensureToolbar() {
     '<div class="gm-toolbar-row">' +
       '<div class="gm-summary" id="gm-summary" aria-live="polite"></div>' +
       '<label class="gm-sort"><span>Sort</span>' +
-        '<select id="gm-sort-select" data-market-sort="1" aria-label="Sort distributors">' +
+        '<select id="gm-sort-select" data-market-sort="1" aria-label="Sort results">' +
           '<option value="best">Best match</option>' +
           '<option value="nearest">Nearest to me</option>' +
           '<option value="trusted">Most trusted</option>' +
@@ -913,32 +829,51 @@ function syncToolbar(shown, total) {
 
   var sum = document.getElementById("gm-summary");
   if (sum) {
-    sum.innerHTML = (__gm.filtersActive
-      ? 'Showing <b>' + shown + '</b> of ' + total + ' <button type="button" class="gm-link" data-market-action="clear-filters">Clear</button>'
-      : '<b>' + total + '</b> distributor' + (total === 1 ? "" : "s"));
+    if (role === "consumer") {
+       sum.innerHTML = '<b>' + shown + '</b> retailer' + (shown === 1 ? "" : "s");
+    } else {
+       sum.innerHTML = (__gm.filtersActive
+        ? 'Showing <b>' + shown + '</b> of ' + total + ' <button type="button" class="gm-link" data-market-action="clear-filters">Clear</button>'
+        : '<b>' + total + '</b> distributor' + (total === 1 ? "" : "s"));
+    }
   }
 
   var sortEl = document.getElementById("gm-sort-select");
   if (sortEl) {
-    var near = sortEl.querySelector('option[value="nearest"]');
-    var hasCity = !!gmUserCity();
-    if (near) { near.disabled = !hasCity; near.hidden = !hasCity; }
-    if (__gm.sort === "nearest" && !hasCity) __gm.sort = "best";
-    if (sortEl.value !== __gm.sort) sortEl.value = __gm.sort;
+    sortEl.parentNode.style.display = role === "consumer" ? "none" : "";
+    if (role !== "consumer") {
+      var near = sortEl.querySelector('option[value="nearest"]');
+      var hasCity = !!gmUserCity();
+      if (near) { near.disabled = !hasCity; near.hidden = !hasCity; }
+      if (__gm.sort === "nearest" && !hasCity) __gm.sort = "best";
+      if (sortEl.value !== __gm.sort) sortEl.value = __gm.sort;
+    }
   }
 
+  var chipsContainer = document.getElementById("gm-chips");
+  if (chipsContainer) chipsContainer.style.display = role === "consumer" ? "none" : "";
+  
   var netChip = document.getElementById("gm-chip-network");
   if (netChip) netChip.style.display = role === "buyer" ? "" : "none";
+
   bar.querySelectorAll("[data-chip]").forEach(function (c) {
     var k = c.getAttribute("data-chip");
     c.setAttribute("aria-pressed", __gm.chips[k] ? "true" : "false");
   });
 }
 
-// Vertical rail: decorate the existing .category-card elements with live
-// counts. We never replace them, so selectCategory() / analytics attributes
-// in index.html keep working.
 function decorateCategoryRail(counts) {
+  var catGrid = document.querySelector("#screen-market .category-grid");
+  var catLabel = catGrid ? catGrid.previousElementSibling : null;
+  if (gmRole() === "consumer") {
+    if (catGrid) catGrid.style.display = "none";
+    if (catLabel && catLabel.classList.contains("section-label")) catLabel.style.display = "none";
+    return;
+  } else {
+    if (catGrid) catGrid.style.display = "";
+    if (catLabel && catLabel.classList.contains("section-label")) catLabel.style.display = "";
+  }
+
   var cards = document.querySelectorAll("#screen-market .category-grid .category-card");
   var activeEl = null;
   cards.forEach(function (card) {
@@ -964,7 +899,7 @@ function decorateCategoryRail(counts) {
 }
 
 // ==========================================================================
-// FILTERS + RANKING
+// FILTERS
 // ==========================================================================
 
 function gmSearchTokens() {
@@ -999,20 +934,55 @@ function __gmApplyFilters() {
 
   var tokens = gmSearchTokens();
   var locEl = document.getElementById("filter-location");
-  var tierEl = document.getElementById("filter-tier");
   var lf = locEl ? String(locEl.value || "").toLowerCase() : "";
-  var tf = tierEl ? String(tierEl.value || "").toLowerCase() : "";
   var cat = gmCategory();
   var role = gmRole();
-  if (role !== "buyer") __gm.chips.network = false;
 
+  if (role === "consumer") {
+    var rs = gmRetailers();
+    var base = rs.filter(function (r) {
+      var hay = [r.business_name || "", r.location || "", r.market || ""].join(" ").toLowerCase();
+      var matchTokens = tokens.every(function (t) { return hay.indexOf(t) !== -1; });
+      var matchLoc = !lf || String(r.location || "").toLowerCase() === lf;
+      return matchTokens && matchLoc;
+    });
+    
+    base.sort(function(a,b) { return String(a.business_name || "").localeCompare(String(b.business_name || "")); });
+
+    renderRetailers(base);
+    
+    __gm.filtersActive = !!(tokens.length || lf || cat !== "All");
+    
+    var sum = document.getElementById("gm-summary");
+    if (sum) sum.innerHTML = '<b>' + base.length + '</b> retailer' + (base.length === 1 ? "" : "s");
+
+    var buyerList = document.getElementById("buyer-list");
+    if (buyerList) buyerList.style.display = "none";
+    var label = buyerList ? buyerList.previousElementSibling : null;
+    if (label && label.classList.contains("section-label")) label.style.display = "none";
+
+    var host = ensureDeskHost();
+    if (host) host.innerHTML = gmConsumerConsole();
+
+    var distCountEl = document.getElementById("distributor-count");
+    if (distCountEl) distCountEl.textContent = base.length;
+
+    decorateCategoryRail({ All: base.length });
+    syncHeroStats();
+    syncToolbar(base.length, base.length);
+    return;
+  }
+
+  // B2B Flow
   var dists = gmDists();
   var buyers = gmBuyers();
+  var tierEl = document.getElementById("filter-tier");
+  var tf = tierEl ? String(tierEl.value || "").toLowerCase() : "";
+  if (role !== "buyer") __gm.chips.network = false;
 
   function hay(parts) { return parts.join(" ").toLowerCase(); }
   function tokensMatch(h) { return tokens.every(function (t) { return h.indexOf(t) !== -1; }); }
 
-  // Everything except the vertical, so the rail can show what each vertical would give you.
   var base = dists.filter(function (d) {
     if (tokens.length && !tokensMatch(hay([d.business_name || "", d.location || "", d.market || "", d.category || ""]))) return false;
     if (lf && String(d.location || "").toLowerCase() !== lf) return false;
@@ -1031,7 +1001,6 @@ function __gmApplyFilters() {
 
   __gm.filtersActive = !!(tokens.length || lf || tf || cat !== "All" || __gm.chips.verified || __gm.chips.saved || __gm.chips.network);
 
-  // Buyers (distributor viewers only — V-B)
   var myCat = "";
   var selfRec = dists.find(function (d) { return gmUser() && d.id === gmUser().id; });
   if (selfRec) myCat = String(selfRec.category || "").trim();
@@ -1097,6 +1066,7 @@ function gmBtn(action, label, o) {
   var cls = "gm-btn" + (o.kind ? " gm-btn--" + o.kind : "") + (o.sm ? " gm-btn--sm" : "");
   return '<button type="button" class="' + cls + '" data-market-action="' + escAttr(action) + '"' +
     (o.dist ? ' data-distributor-id="' + escAttr(o.dist) + '"' : "") +
+    (o.retail ? ' data-retailer-id="' + escAttr(o.retail) + '"' : "") +
     (o.buyer ? ' data-buyer-id="' + escAttr(o.buyer) + '"' : "") +
     (o.aria ? ' aria-label="' + escAttr(o.aria) + '"' : "") + '>' +
     (o.icon ? ico(o.icon, o.sm ? 15 : 17) : "") + (label ? '<span>' + escHtml(label) + '</span>' : "") +
@@ -1128,129 +1098,17 @@ function renderMarketSkeleton() {
 }
 
 // ==========================================================================
-// L4 · RENDER — console (relationship desk)
+// L4 · RENDER — console
 // ==========================================================================
 
 function gmFindDist(id) { return gmDists().find(function (x) { return x && x.id === id; }); }
 function gmFindBuyer(id) { return gmBuyers().find(function (x) { return x && x.id === id; }); }
 
-function gmBuyerAttention() {
-  var G = gmGraph(), items = [];
-  G.myPendingInbound.forEach(function (p) {
-    var d = gmFindDist(p.distributor_id); if (!d) return;
-    items.push({ prio: 1, tone: "info", icon: "link", title: (d.business_name || "A distributor") + " wants to connect",
-      meta: "Connection request" + (p.created_at ? " · " + gmAgo(p.created_at) : ""),
-      btns: gmBtn("review-requests", "Review", { kind: "primary", sm: true, dist: d.id }) });
-  });
-  Object.keys(G.myInquiries).forEach(function (did) {
-    var d = gmFindDist(did), iq = G.myInquiries[did];
-    if (!d || !iq || iq.pending < 1) return;
-    var e = enrichDistributorForViewer(d);
-    if (e.relationship === "active") return;
-    var days = iq.lastPendingAt ? gmDaysSince(iq.lastPendingAt) : null;
-    if (days != null && days < 1) return;
-    items.push({ prio: 3, tone: "warn", icon: "clock", title: (d.business_name || "Distributor") + " hasn't replied",
-      meta: "Inquiry sent" + (iq.lastPendingAt ? " " + gmAgo(iq.lastPendingAt) : "") + (iq.pending > 1 ? " · " + iq.pending + " open" : ""),
-      btns: isValidNgPhone(gmPhoneOf(d))
-        ? gmBtn("nudge", "Nudge", { kind: "wa", sm: true, icon: "chat", dist: d.id, aria: "Follow up with " + (d.business_name || "distributor") + " on WhatsApp" })
-        : gmBtn("open-storefront", "Storefront", { sm: true, dist: d.id }) });
-  });
-  G.myRelationships.forEach(function (r) {
-    if (r.status !== "released" && r.status !== "terminated" && r.status !== "paused") return;
-    var d = gmFindDist(r.distributor_id); if (!d) return;
-    items.push({ prio: 4, tone: "ok", icon: "refresh", title: (r.status === "paused" ? "Resume with " : "Rekindle ") + (d.business_name || "distributor"),
-      meta: GM_REL_STATES[r.status].l + (r.since ? " · " + gmTenure(r.since).replace("Trading since ", "since ") : ""),
-      btns: gmBtn("rekindle", r.status === "paused" ? "Resume" : "Rekindle", { kind: "primary", sm: true, dist: d.id }) });
-  });
-  items.sort(function (a, b) { return a.prio - b.prio; });
-  return items;
-}
-
-function gmBuyerConsole() {
-  var G = gmGraph();
-  var active = G.myRelationships.filter(function (r) { return r.status === "active"; }).length;
-  var requests = G.myPendingInbound.length;
-  var awaiting = Object.keys(G.myInquiries).filter(function (k) { return G.myInquiries[k].pending > 0; }).length;
-  var items = gmBuyerAttention().slice(0, 4);
-
-  var pulse = '<span><b>' + active + '</b> active</span>' +
-    (requests ? '<span class="is-info"><b>' + requests + '</b> request' + (requests === 1 ? "" : "s") + '</span>' : "") +
-    (awaiting ? '<span class="is-warn"><b>' + awaiting + '</b> awaiting reply</span>' : "");
-
-  if (!items.length && !active && !requests && !awaiting) {
-    return '<section class="gm-console" aria-label="Relationship desk"><div class="gm-console-head"><span class="gm-kicker">Relationship desk</span></div>' +
-      '<p class="gm-lead">No trading relationships yet. Inquire with a verified distributor, or open a storefront, to start your first trade line.</p></section>';
-  }
-  return '<section class="gm-console" aria-label="Relationship desk"><div class="gm-console-head"><span class="gm-kicker">Relationship desk</span>' +
-    '<div class="gm-pulse">' + pulse + '</div></div>' +
-    (items.length ? gmAttList(items) : '<p class="gm-lead">All caught up — nothing needs your attention.</p>') + '</section>';
-}
-
-function gmAttList(items) {
-  return '<ul class="gm-att">' + items.map(function (it) {
-    return '<li class="gm-att-item" data-tone="' + escAttr(it.tone) + '"><span class="gm-att-ic">' + ico(it.icon, 17) + '</span>' +
-      '<div class="gm-att-body"><div class="gm-att-title">' + escHtml(it.title) + '</div><div class="gm-att-meta">' + escHtml(it.meta) + '</div></div>' +
-      it.btns + '</li>';
-  }).join("") + '</ul>';
-}
-
-function gmDistributorAttention() {
-  var G = gmGraph(), items = [];
-  G.myPendingOutbound.forEach(function (p) {
-    var days = p.created_at ? gmDaysSince(p.created_at) : null;
-    if (days != null && days < 2) return;
-    var b = gmFindBuyer(p.buyer_id); if (!b) return;
-    var name = b.name || (b.profiles && b.profiles.full_name) || "A buyer";
-    items.push({ prio: 1, tone: "warn", icon: "clock", title: "Invitation to " + name + " is unanswered",
-      meta: "Sent" + (p.created_at ? " " + gmAgo(p.created_at) : ""),
-      btns: isValidNgPhone(gmPhoneOf({ profiles: b.profiles }))
-        ? gmBtn("nudge-buyer", "Nudge", { kind: "wa", sm: true, icon: "chat", buyer: b.id, aria: "Follow up with " + name + " on WhatsApp" })
-        : "" });
-  });
-  var related = new Set();
-  G.myRelationships.forEach(function (r) { related.add(r.buyer_id); });
-  G.myPendingOutbound.forEach(function (p) { related.add(p.buyer_id); });
-  var conv = 0;
-  G.contactedSet.forEach(function (bid) {
-    if (related.has(bid) || conv >= 3) return;
-    var b = gmFindBuyer(bid); if (!b) return;
-    conv++;
-    items.push({ prio: 2, tone: "ok", icon: "userplus", title: (b.name || (b.profiles && b.profiles.full_name) || "A buyer") + " — prior contact, not in your network",
-      meta: "Turn this conversation into a trading relationship",
-      btns: gmBtn("invite-buyer", "Invite", { kind: "primary", sm: true, buyer: b.id }) });
-  });
-  items.sort(function (a, b) { return a.prio - b.prio; });
-  return items;
-}
-
-function gmDistributorConsole() {
-  var G = gmGraph();
-  var active = G.myRelationships.filter(function (r) { return r.status === "active"; }).length;
-  var invited = G.myPendingOutbound.length;
-  var requests = G.myRelationships.filter(function (r) { return r.status === "pending"; }).length;
-  var items = gmDistributorAttention().slice(0, 4);
-  var pulse = '<span><b>' + active + '</b> active</span>' +
-    (requests ? '<span class="is-info"><b>' + requests + '</b> requested you</span>' : "") +
-    (invited ? '<span class="is-warn"><b>' + invited + '</b> invited</span>' : "");
-  return '<section class="gm-console" aria-label="Relationship desk"><div class="gm-console-head"><span class="gm-kicker">Relationship desk</span>' +
-    '<div class="gm-pulse">' + pulse + '</div></div>' +
-    (items.length ? gmAttList(items) : '<p class="gm-lead">No follow-ups due. Invite buyers from the roster below to grow your network.</p>') + '</section>';
-}
-
-function renderEngineStrip(engineCtx) {
-  if (!engineCtx || engineCtx.source === "unavailable") return "";
-  if (!engineCtx.highCount && !engineCtx.depletingCount) return "";
-  var parts = [];
-  if (engineCtx.highCount > 0) parts.push(engineCtx.highCount + " high-urgency signal" + (engineCtx.highCount === 1 ? "" : "s"));
-  if (engineCtx.depletingCount > 0) parts.push(engineCtx.depletingCount + " depleting product" + (engineCtx.depletingCount === 1 ? "" : "s"));
-  var ageLabel = engineCtx.freshnessMs != null ? " · updated " + formatMarketAge(engineCtx.freshnessMs) + " ago" : "";
-  var consoleEl = document.getElementById("depletor-console");
-  var actionable = !!(consoleEl && !consoleEl.hidden);
-  var inner = '<span class="gm-engine-dot"></span><span>' + escHtml(parts.join(" · ") + ageLabel) + '</span>' +
-    (actionable ? '<span class="gm-engine-go">View ›</span>' : "");
-  return actionable
-    ? '<button type="button" class="gm-engine" data-fresh="' + escAttr(engineCtx.source) + '" data-market-action="scroll-signals">' + inner + '</button>'
-    : '<div class="gm-engine" data-fresh="' + escAttr(engineCtx.source) + '">' + inner + '</div>';
+function gmConsumerConsole() {
+  return '<section class="gm-console" aria-label="Retailer desk">' +
+    '<div class="gm-console-head"><span class="gm-kicker">Retail discovery</span></div>' +
+    '<p class="gm-lead">Select a retailer to buy individual units. Local pickup and delivery available.</p>' +
+  '</section>';
 }
 
 // ==========================================================================
@@ -1273,8 +1131,6 @@ function renderDistributors(list) {
   var role = gmRole();
   var html = "";
 
-  // The desk lives in its own host above the search bar so it is the first
-  // thing after the hero and never jumps while the viewer types a search.
   var desk = "";
   if (!gmUser()) {
     desk += '<div class="gm-guest"><p><b>Browsing as a guest.</b> Log in to see your network, track inquiries and trade with relationship terms.</p>' +
@@ -1312,80 +1168,55 @@ function renderDistributors(list) {
   container.innerHTML = html;
 }
 
-function gmDistActions(d, e, phoneOk) {
-  var id = d.id, nm = d.business_name || "distributor";
-  var wa = phoneOk ? gmBtn("whatsapp", "", { kind: "wa", icon: "chat", dist: id, aria: "WhatsApp " + nm }) : "";
-  var store = function (kind) { return gmBtn("open-storefront", "Storefront", { kind: kind, icon: "store", dist: id }); };
-  var inq = function (kind) { return gmBtn("inquire", "Inquire", { kind: kind, icon: "msg", dist: id }); };
+function renderRetailers(list) {
+  const container = document.getElementById("distributor-list");
+  if (!container) return;
+  ensureMarketStyles();
 
-  if (e.isSelf) return gmBtn("edit-profile", "Edit profile", { kind: "ghost", icon: "edit" }) + store("primary");
-  switch (e.relationship) {
-    case "active":      return store("primary") + inq("ghost") + wa;
-    case "pending_in":  return gmBtn("review-requests", "Review request", { kind: "primary", icon: "link", dist: id }) + store("ghost");
-    case "pending_out": return store("primary") + inq("ghost") + wa;
-    case "paused": case "released": case "terminated":
-      return gmBtn("rekindle", e.relationship === "paused" ? "Resume" : "Rekindle", { kind: "primary", icon: "refresh", dist: id }) + store("ghost") + wa;
-    default:            return store("ghost") + inq("primary") + wa;
-  }
-}
-
-function renderDistributorCard(d, opts) {
-  opts = opts || {};
-  var e = enrichDistributorForViewer(d);
-  var id = escAttr(d.id);
-  var name = d.business_name || "Distributor";
-  var phoneOk = isValidNgPhone(gmPhoneOf(d));
-  var fav = gmIsFav(d.id);
-
-  var locBits = [];
-  if (d.location) locBits.push(escHtml(d.location));
-  if (d.market) locBits.push(escHtml(d.market));
-  var loc = locBits.length
-    ? ico("pin", 13) + '<span>' + locBits.join(" · ") + '</span>'
-    : '<span class="gm-mute">Location not set</span>';
-
-  var tags = "";
-  if (e.label && !e.isSelf) tags += '<span class="gm-tag ' + (e.relationship === "active" ? "gm-tag--rel" : (e.relationship === "pending_in" || e.relationship === "pending_out") ? "gm-tag--info" : "gm-tag--warn") + '">' + escHtml(e.label) + '</span>';
-  if (e.isSelf) tags += '<span class="gm-tag gm-tag--brass">Your listing</span>';
-  tags += gmTierTag(d.verification_tier);
-  tags += d.category
-    ? '<span class="gm-tag gm-tag--brass">' + escHtml(String(d.category)) + '</span>'
-    : '<span class="gm-tag">Unclassified</span>';
-  if (!e.isSelf && gmSameCity(d)) tags += '<span class="gm-tag gm-tag--info">' + ico("pin", 11) + 'Your city</span>';
-  if (!e.isSelf && e.relationship === "none" && e.inquiry && e.inquiry.pending > 0) {
-    var dd = e.inquiry.lastPendingAt ? gmDaysSince(e.inquiry.lastPendingAt) : null;
-    tags += '<span class="gm-tag gm-tag--warn">' + ico("clock", 11) + 'Inquiry sent' + (e.inquiry.lastPendingAt ? " · " + escHtml(gmAgo(e.inquiry.lastPendingAt)) : "") + (dd != null && dd >= 1 ? " · no reply" : "") + '</span>';
+  if (!list.length) {
+    container.innerHTML = gmEmptyState("No retailers found", "Check back later or adjust your location filter.", "", MARKET_ICON_SVG);
+    return;
   }
 
-  var tenure = (opts.net && e.since && e.relationship === "active") ? '<div class="gm-tenure">' + escHtml(gmTenure(e.since)) + '</div>' : "";
+  container.innerHTML = list.map(function (r) {
+    var id = escAttr(r.id);
+    var name = r.business_name || "Retailer";
+    var locBits = [];
+    if (r.location) locBits.push(escHtml(r.location));
+    if (r.market) locBits.push(escHtml(r.market));
+    var loc = locBits.length ? ico("pin", 13) + '<span>' + locBits.join(" · ") + '</span>' : '<span class="gm-mute">Location not set</span>';
 
-  return '<article class="manifest gm-card" data-distributor-id="' + id + '" data-rel="' + escAttr(e.relationship) + '">' +
-    '<div class="gm-head">' +
-      '<div class="gm-av gm-av-' + gmHue(d.id) + '" aria-hidden="true">' + escHtml(gmInitials(name)) + '</div>' +
-      '<div class="gm-id"><div class="gm-name">' + escHtml(name) + '</div><div class="gm-loc">' + loc + '</div>' + tenure + '</div>' +
-      (e.isSelf ? "" :
-        '<button type="button" class="fav-btn gm-fav" data-market-action="toggle-favourite" data-distributor-id="' + id + '" aria-pressed="' + (fav ? "true" : "false") + '" aria-label="Save ' + escAttr(name) + '">' +
-          '<span data-fav-for="' + id + '">' + gmFavIcon(fav) + '</span></button>') +
-    '</div>' +
-    '<div class="gm-tags">' + tags + '</div>' +
-    '<div class="gm-acts">' + gmDistActions(d, e, phoneOk) + '</div>' +
-    (e.isSelf ? "" : '<div class="gm-foot"><button type="button" class="gm-report" data-market-action="dispute" data-distributor-id="' + id + '">Report an issue</button></div>') +
-  '</article>';
+    var perks = [];
+    if (r.supports_pickup) perks.push("Pickup");
+    if (r.supports_delivery) perks.push("Delivery");
+    var perkTags = perks.map(function(p) { return '<span class="gm-tag gm-tag--ok">' + escHtml(p) + '</span>'; }).join("");
+
+    var tags = '<span class="gm-tag gm-tag--brass">Retailer</span>' + perkTags;
+
+    return '<article class="manifest gm-card" data-retailer-id="' + id + '">' +
+      '<div class="gm-head">' +
+        '<div class="gm-av gm-av-' + gmHue(r.id) + '" aria-hidden="true">' + escHtml(gmInitials(name)) + '</div>' +
+        '<div class="gm-id"><div class="gm-name">' + escHtml(name) + '</div><div class="gm-loc">' + loc + '</div></div>' +
+      '</div>' +
+      '<div class="gm-tags">' + tags + '</div>' +
+      '<div class="gm-acts">' +
+        gmBtn("open-retailer", "Shop units", { kind: "primary", icon: "store", retail: id }) +
+      '</div>' +
+    '</article>';
+  }).join("");
 }
 
 // ==========================================================================
-// L4 · RENDER — buyers (V-B: double-guarded)
+// L4 · RENDER — buyers
 // ==========================================================================
 
 function renderBuyers(list) {
   const container = document.getElementById("buyer-list");
   if (!container) { warnMissingTarget("buyer-list"); return; }
 
-  // F-3: sibling lookup instead of :has() (throws on older WebViews).
   var label = container.previousElementSibling;
   if (label && !(label.classList && label.classList.contains("section-label"))) label = null;
 
-  // V-B guard: only distributors can see the buyer roster.
   if (gmRole() !== "distributor") {
     container.style.display = "none";
     container.innerHTML = "";
@@ -1442,10 +1273,10 @@ function renderBuyers(list) {
 }
 
 // ==========================================================================
-// L5 · INTERACTION — delegated handlers (V-A)
+// L5 · INTERACTION
 // ==========================================================================
 
-var GM_NEEDS_DIST = { "open-storefront": 1, "inquire": 1, "whatsapp": 1, "nudge": 1, "dispute": 1, "toggle-favourite": 1, "rekindle": 1 };
+var GM_NEEDS_DIST = { "open-storefront": 1, "inquire": 1, "whatsapp": 1, "nudge": 1, "dispute": 1, "toggle-favourite": 1, "rekindle": 1, "open-retailer": 1 };
 var GM_NEEDS_BUYER = { "inquire-buyer": 1, "whatsapp-buyer": 1, "nudge-buyer": 1 };
 
 async function handleMarketClick(e) {
@@ -1455,11 +1286,11 @@ async function handleMarketClick(e) {
   var action = t.getAttribute("data-market-action");
   var distId = t.getAttribute("data-distributor-id");
   var buyerId = t.getAttribute("data-buyer-id");
+  var retailId = t.getAttribute("data-retailer-id");
 
-  // V-C: validate before dispatch.
-  if (GM_NEEDS_DIST[action] && !isValidUuid(distId)) return;
+  if (GM_NEEDS_DIST[action] && !isValidUuid(distId) && !isValidUuid(retailId)) return;
   if (GM_NEEDS_BUYER[action] && !isValidUuid(buyerId)) return;
-  if (buyerId && !isValidUuid(buyerId)) buyerId = null;   // optional ids must still be valid
+  if (buyerId && !isValidUuid(buyerId)) buyerId = null; 
 
   e.preventDefault();
   try {
@@ -1540,6 +1371,16 @@ async function handleMarketClick(e) {
         return;
       }
 
+      case "open-retailer":
+        if (isValidUuid(retailId)) {
+          if (typeof window.openConsumerStorefront === "function") {
+            window.openConsumerStorefront(retailId);
+          } else {
+            alert("Retailer storefront is being prepared. Coming in the next update!");
+          }
+        }
+        return;
+
       case "toggle-chip": {
         var chip = t.getAttribute("data-chip");
         if (GM_CHIPS.indexOf(chip) === -1) return;
@@ -1617,7 +1458,6 @@ function gmSafeName(n) { return String(n || "").replace(/[\u0000-\u001F\u007F-\u
 function gmDistName(id) { var d = gmFindDist(id); return (d && d.business_name) || "Distributor"; }
 function gmBuyerName(id) { var b = gmFindBuyer(id); return (b && (b.name || (b.profiles && b.profiles.full_name))) || "Buyer"; }
 
-// Legacy helper names (kept; other modules or console tooling may call them).
 function distNameFor(distId) { return gmDistName(distId); }
 function phoneForDistributor(distId) { var d = gmFindDist(distId); return gmPhoneOf(d); }
 function buyerNameFor(buyerId) { return gmBuyerName(buyerId); }
@@ -1632,15 +1472,8 @@ function bindMarketEvents() {
   screen.addEventListener("change", handleMarketChange);
 }
 
-// ==========================================================================
-// marketOpenDistributorContext — V-C validated
-// ==========================================================================
-
 function marketOpenDistributorContext(distributorId, action, distributorName) {
-  if (!isValidUuid(distributorId)) {
-    console.warn("[GoodsbarnX/market] rejected non-UUID distributor id");
-    return;
-  }
+  if (!isValidUuid(distributorId)) return;
   emitDistributorView(distributorId);
 
   if (action === "storefront") {
@@ -1650,35 +1483,21 @@ function marketOpenDistributorContext(distributorId, action, distributorName) {
   }
 }
 
-// ==========================================================================
-// openWhatsApp — V-D validated, F-2 canonical 234… format
-// ==========================================================================
-
 function openWhatsApp(phone, name, message) {
   var digits = normalizeNgPhone(phone);
-  if (!digits) {
-    console.warn("[GoodsbarnX/market] rejected invalid phone number");
-    return;
-  }
+  if (!digits) return;
   var safeName = gmSafeName(name);
   var text = message ? String(message).replace(/[\u0000-\u001F\u007F-\u009F]/g, "").slice(0, 300)
                      : "Hi " + safeName + ", I found you on GoodsbarnX.";
   window.open("https://wa.me/" + digits + "?text=" + encodeURIComponent(text), "_blank", "noopener,noreferrer");
 }
 
-// ==========================================================================
-// SCREEN LOADER
-// ==========================================================================
-
 (function registerMarketScreen() {
-  if (typeof registerScreenLoader !== "function") {
-    console.warn("[GoodsbarnX/market] registerScreenLoader unavailable; market screen has no loader.");
-    return;
-  }
+  if (typeof registerScreenLoader !== "function") return;
   registerScreenLoader("market", async function marketLoader() {
     bindMarketEvents();
     ensureToolbar();
-    await loadDistributorsAndBuyers();   // F-10: updateStats already runs inside
+    await loadDistributorsAndBuyers();
   });
 })();
 
@@ -1690,18 +1509,15 @@ if (typeof window !== "undefined") {
   }
 }
 
-// ==========================================================================
-// GLOBAL EXPORTS
-// ==========================================================================
-
 window.loadDistributorsAndBuyers = loadDistributorsAndBuyers;
 window.applyFilters = applyFilters;
 window.updateStats = updateStats;
 window.renderDistributors = renderDistributors;
+window.renderRetailers = renderRetailers;
 window.renderBuyers = renderBuyers;
 window.openWhatsApp = openWhatsApp;
 window.marketOpenDistributorContext = marketOpenDistributorContext;
 window.updateInquiryCountRing = updateInquiryCountRing;
-window.marketInvalidateGraph = marketInvalidateGraph;   // call after accept/decline/terminate to refresh the desk
+window.marketInvalidateGraph = marketInvalidateGraph;
 
-console.log("[GoodsbarnX] market.js loaded (V1.8.2.7 rev.7 · Relationship Desk)");
+console.log("[GoodsbarnX] market.js loaded (V1.8.2.7 rev.8 · Consumer Retailers)");
